@@ -77,28 +77,25 @@ Make sure the app is installed in the standard `Applications` folder or update t
 
 ## Example Workflow
 
-Here is an example of a workflow file (`workflows/hello_world.md`) that FlowCast can execute:
+Here is an example of how FlowCast interprets a workflow file (`workflows/hello_world.md`):
 
+### Workflow Snippet
 ```markdown
-# Hello World
+### Step 3: Add println node
 
-app: WSO2 Integrator
-app_path: $HOME/Applications/WSO2 Integrator.app
-
-## Steps
-
-### Step 1: Open the app and create a project
-
-Open the app and maximize the window.
-Click the Create button to open the project creation wizard.
-In the Integration Name field, enter {project_name}.
-...
+Click + after the Start node to open the node panel.
+Select Call Function and select println.
+Click Initialize Array.
+Click Fx offset 100px right to click inside the value input "Hello World".
+Enter '"Hello World"'.
+Click Save.
+Click the Run button in the top right to run the integration.
 ```
 
 ### Resulting GIF
-When run, FlowCast generates a GIF of the actions performed:
+FlowCast automates the steps and records the output:
 
-![Example Output](output/recordings/hello-world/create-integration-project.gif)
+![Final Integration](output/recordings/hello-world/add-println-node.gif)
 
 ---
 
