@@ -22,23 +22,34 @@ FlowCast is a powerful tool designed to convert human instructions into GIFs by 
 
 ---
 
-## Installation
+## Installation & Setup
 
+Follow these steps to get FlowCast running on your local machine:
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/Sachindu-Nethmin/FlowCast.git
+cd FlowCast
+```
+
+### 2. Install dependencies
 We recommend using [uv](https://github.com/astral-sh/uv) for fast and reliable dependency management.
 
-1.  **Install `uv`** (if not already installed):
-    ```bash
-    curl -LsSf https://astral-sh.uv.io/install.sh | sh
-    ```
-2.  **Sync Dependencies**:
-    ```bash
-    uv sync
-    ```
+**Install `uv`** (if not already installed):
+```bash
+curl -LsSf https://astral-sh.uv.io/install.sh | sh
+```
 
----
+**Sync Dependencies**:
+```bash
+# Install core dependencies
+uv sync
 
-## Environment Setup
+# Install development dependencies (for Pylint/Testing)
+uv sync --dev
+```
 
+### 3. Environment Setup
 FlowCast requires a `.env` file to manage API keys and model configurations.
 
 1.  **Create the `.env` file**:
