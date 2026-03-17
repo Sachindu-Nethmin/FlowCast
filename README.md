@@ -75,6 +75,33 @@ Make sure the app is installed in the standard `Applications` folder or update t
 
 ---
 
+## Example Workflow
+
+Here is an example of a workflow file (`workflows/hello_world.md`) that FlowCast can execute:
+
+```markdown
+# Hello World
+
+app: WSO2 Integrator
+app_path: $HOME/Applications/WSO2 Integrator.app
+
+## Steps
+
+### Step 1: Open the app and create a project
+
+Open the app and maximize the window.
+Click the Create button to open the project creation wizard.
+In the Integration Name field, enter {project_name}.
+...
+```
+
+### Resulting GIF
+When run, FlowCast generates a GIF of the actions performed:
+
+![Example Output](output/recordings/hello-world/create-integration-project.gif)
+
+---
+
 ## Usage
 
 To run a workflow and generate GIFs:
