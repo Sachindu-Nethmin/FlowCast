@@ -266,6 +266,7 @@ def main() -> None:
         print("Usage: python main.py workflow.md [--step N]", file=sys.stderr)
         sys.exit(1)
 
+    # Parse flags
     only_step: int | None = None
     md_path:   Path | None = None
     i = 0
@@ -273,6 +274,12 @@ def main() -> None:
         if args[i] == "--step" and i + 1 < len(args):
             only_step = int(args[i + 1])
             i += 2
+        elif args[i] == "--prompt" and i + 1 < len(args):
+            prompt = args[i + 1]
+            i += 2
+        elif args[i] == "--dry-run":
+            dry_run = True
+            i += 1
         else:
             md_path = Path(args[i])
             i += 1

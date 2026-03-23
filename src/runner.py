@@ -104,6 +104,81 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
 
     # OCR failed — hand off to healer for diagnosis + escalating retry
     from src import healer
+
+pyautogui.FAILSAFE = True  # Move mouse to top-left corner to abort
+pyautogui.PAUSE = 0.3        # 0.3s pause after every pyautogui call
+pyautogui.MINIMUM_DURATION = 0.3   # minimum time for mouse moves
+
+DEFAULT_TIMEOUT = 10.0   # seconds to wait for an element before raising
+MAX_RETRIES = 3
+RETRY_DELAY = 2.0
+
+_log_path = Path(__file__).parent.parent / "logs" / "run_log.json"
+_target_app: str = "WSO2 Integrator"
+_target_pid: int | None = None   # when set, activate by PID instead of app name
+
+
+class ElementNotFoundError(Exception):
+    pass
+
+
+class TypeVerificationError(Exception):
+    """Raised when typed text is not visible on screen after entry."""
+    pass
+
+
+def set_log_path(path: str | Path) -> None:
+    """Redirect action logs to a custom path."""
+    global _log_path
+    _log_path = Path(path)
+
+
+def set_target_app(name: str) -> None:
+    """Set the app name used by _activate_target_app()."""
+    global _target_app
+    _target_app = name
+
+
+def set_target_pid(pid: int | None) -> None:
+    """Pin activation to a specific process PID (use for multi-instance apps)."""
+    global _target_pid
+    _target_pid = pid
+
+
+def _activate_target_app() -> None:
+    """Bring the target app to front before taking screenshots."""
+    try:
+        if _target_pid is not None:
+            subprocess.run(
+                ['osascript', '-e',
+                 f'tell application "System Events" to set frontmost of '
+                 f'(first process whose unix id is {_target_pid}) to true'],
+                timeout=5, capture_output=True,
+            )
+        else:
+            subprocess.run(
+                ['osascript', '-e', f'activate application "{_target_app}"'],
+                timeout=5, capture_output=True,
+            )
+        time.sleep(0.3)
+    except Exception:
+        pass
+
+
+def _screenshot() -> Image.Image:
+    _activate_target_app()
+    shot = pyautogui.screenshot()
+    if shot is None or shot.width < 100:
+        raise PermissionError(
+            "pyautogui.screenshot() returned a blank image.\n"
+            "Grant Screen Recording permission to Terminal in:\n"
+            "  System Settings → Privacy & Security → Screen Recording"
+        )
+    return shot
+
+
+def _ui_changed(before: Image.Image, after: Image.Image, threshold: float = 0.001) -> bool:
+    """Return True if more than `threshold` fraction of pixels changed between screenshots."""
     import numpy as np
     from src.detector import _ocr
     arr = np.array(screenshot)
@@ -183,6 +258,448 @@ def wait_ui_change(timeout: float = 5.0) -> bool:
             return True
     print("[runner] wait_ui_change: no change detected within timeout")
     return False
+    diff = np.abs(a - b).mean(axis=2)          # per-pixel mean RGB channel diff
+    changed_fraction = float((diff > 10).mean())  # pixels that changed by >10/255
+    return changed_fraction > threshold
+
+
+def _read_field_via_clipboard(x: int, y: int) -> str:
+    """Click into a field, select all, copy to clipboard, return the text."""
+    # Triple-click to select all text in the field
+    pyautogui.click(x, y, clicks=3, interval=0.1)
+    time.sleep(0.2)
+    # Copy selection to clipboard
+    pyautogui.hotkey("command", "c")
+    time.sleep(0.2)
+    # Read clipboard
+    result = subprocess.run(["pbpaste"], capture_output=True, text=True)
+    text = result.stdout.strip()
+    # Click once to deselect (put cursor at end)
+    pyautogui.click(x, y)
+    time.sleep(0.1)
+    if text:
+        print(f"[runner] Field clipboard read: '{text}'")
+    return text
+
+
+def _find_element(target: str, timeout: float, hint: str | None = None) -> tuple[int, int]:
+    """
+    Retry up to MAX_RETRIES times to find the target on screen.
+    Returns logical-pixel (x, y) center.
+    """
+    retries = max(1, int(timeout / (RETRY_DELAY + 1)))
+    retries = min(retries, MAX_RETRIES)
+
+    for attempt in range(retries):
+        shot = _screenshot()
+        result = detector.find(shot, target, hint=hint)
+        if result is not None:
+            return result.center
+        if attempt < retries - 1:
+            print(f"[runner] Retry {attempt + 1}/{retries} for '{target}'...")
+            time.sleep(RETRY_DELAY)
+
+    raise ElementNotFoundError(f"Element not found after {retries} attempts: '{target}'")
+
+
+
+def _log_action(entry: dict[str, Any]) -> None:
+    _log_path.parent.mkdir(parents=True, exist_ok=True)
+    if _log_path.exists():
+        with _log_path.open() as f:
+            log = json.load(f)
+    else:
+        log = []
+    log.append(entry)
+    with _log_path.open("w") as f:
+        json.dump(log, f, indent=2)
+
+
+def execute_single_action(action: dict[str, Any]) -> None:
+    """
+    Execute one action dict from the workflow.
+    Supported action types: click, type, scroll, hotkey, shell
+    """
+    action_type = action["action"]
+    target = action.get("target", "")
+    timeout = action.get("timeout", DEFAULT_TIMEOUT)
+
+    if action_type == "click":
+        x, y = _find_element(target, timeout, hint=action.get("hint"))
+        before = _screenshot()
+        pyautogui.click(x, y, duration=0.4)
+        time.sleep(2.0)
+        after = _screenshot()
+
+        if not _ui_changed(before, after):
+            print(f"[runner] UI unchanged after clicking '{target}' at ({x}, {y}) — searching alternatives...")
+            candidates = detector.find_all_by_ocr(_screenshot(), target)
+            alternatives = [r.center for r in candidates if abs(r.center[0] - x) > 10 or abs(r.center[1] - y) > 10]
+
+            clicked = False
+            for ax, ay in alternatives:
+                print(f"[runner] Trying alternative '{target}' at ({ax}, {ay})")
+                pre = _screenshot()
+                pyautogui.click(ax, ay, duration=0.4)
+                time.sleep(1.0)
+                if _ui_changed(pre, _screenshot()):
+                    x, y = ax, ay
+                    clicked = True
+                    print(f"[runner] Alternative click worked at ({x}, {y})")
+                    break
+
+            if not clicked:
+                print(f"[WARNING] No effective click found for '{target}' — continuing", file=sys.stderr)
+
+        entry = {
+            "action": "click",
+            "target": target,
+            "x": x,
+            "y": y,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _log_action(entry)
+        print(f"[runner] Clicked '{target}' at ({x}, {y})")
+
+    elif action_type == "type":
+        field_target = action.get("field_target", target)
+        value = action.get("value", "")
+        try:
+            x, y = _find_element(field_target, timeout)
+            # Triple-click: focus field and select all existing content within it
+            pyautogui.click(x, y, clicks=3, interval=0.1)
+            time.sleep(0.3)
+        except ElementNotFoundError:
+            print(f"[runner] '{field_target}' not found on screen — typing into focused field")
+            x, y = pyautogui.position()
+        # Use clipboard paste for full character support (spaces, /, etc.)
+        import subprocess as _sp
+        _sp.run(["pbcopy"], input=value.encode(), check=True)
+        pyautogui.hotkey("command", "v")
+        time.sleep(1.0)
+        entry = {
+            "action": "type",
+            "target": field_target,
+            "value": value,
+            "x": x,
+            "y": y,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _log_action(entry)
+        print(f"[runner] Typed '{value}' into '{field_target}'")
+
+    elif action_type == "scroll":
+        x, y = _find_element(target, timeout)
+        clicks = action.get("clicks", -3)
+        pyautogui.scroll(clicks, x=x, y=y)
+        time.sleep(1.0)
+        entry = {
+            "action": "scroll",
+            "target": target,
+            "clicks": clicks,
+            "x": x,
+            "y": y,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _log_action(entry)
+        print(f"[runner] Scrolled at '{target}' ({x}, {y}) by {clicks}")
+
+    elif action_type == "shell":
+        command = action.get("command", "")
+        wait = action.get("wait", 0)
+        subprocess.run(command, shell=True, check=True)
+        if wait:
+            time.sleep(wait)
+        else:
+            time.sleep(1.0)
+        entry = {
+            "action": "shell",
+            "command": command,
+            "wait": wait,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _log_action(entry)
+        print(f"[runner] Shell: {command}")
+
+    elif action_type == "hotkey":
+        keys = action.get("keys", [])
+        wait = action.get("wait", 1.0)
+        pyautogui.hotkey(*keys)
+        time.sleep(wait)
+        entry = {
+            "action": "hotkey",
+            "keys": keys,
+            "wait": wait,
+            "timestamp": datetime.now().isoformat(),
+        }
+        _log_action(entry)
+        print(f"[runner] Hotkey {'+'.join(keys)}")
+
+    else:
+        raise ValueError(f"Unknown action type: '{action_type}'")
+
+
+def resolve_action(action: dict[str, Any]) -> dict[str, Any]:
+    """
+    Detection-only phase: find the target element on screen and return the action
+    dict with x/y coordinates filled in.  No pyautogui input is fired.
+    Raises ElementNotFoundError if the element cannot be found.
+    For shell/hotkey actions (no detection needed) the action is returned unchanged.
+    """
+    action_type = action["action"]
+    timeout = action.get("timeout", DEFAULT_TIMEOUT)
+
+    if action_type == "click":
+        target = action.get("target", "")
+        hint = action.get("hint")
+        x, y = _find_element(target, timeout, hint=hint)
+        off_x = action.get("offset_x", 0)
+        off_y = action.get("offset_y", 0)
+        if off_x or off_y:
+            print(f"[runner] Applying offset ({off_x:+d}, {off_y:+d}) to click '{target}' → ({x + off_x}, {y + off_y})")
+        x += off_x
+        y += off_y
+        # Store all candidates so fire_action can retry if the click has no effect
+        all_candidates = [r.center for r in detector.find_all_by_ocr(_screenshot(), target)]
+        return {**action, "x": x, "y": y, "_candidates": all_candidates}
+
+    elif action_type == "type":
+        field_target = action.get("field_target", action.get("target", ""))
+        search_hints = action.get("_search_hints", [])
+        component_type = action.get("_component_type")
+        placeholder = action.get("_placeholder")
+        default_value = action.get("_default_value")
+
+        if action.get("skip_click"):
+            # Field was pre-focused by a preceding offset-click — skip detection
+            print(f"[runner] Type '{field_target}': field pre-focused, skipping click")
+            x, y = pyautogui.position()
+            field_found = False
+        else:
+            field_found = False
+            shot = _screenshot()
+
+            # ── Strategy 1: OCR for default_value or placeholder inside the field ──
+            # If KB tells us the field has a pre-filled value or placeholder,
+            # OCR for that text — it IS inside the field, so clicking it = clicking the field.
+            field_content_texts = []
+            if default_value and len(default_value) > 1:
+                field_content_texts.append(default_value)
+            if placeholder and len(placeholder) > 1:
+                field_content_texts.append(placeholder)
+
+            for content_text in field_content_texts:
+                content_bbox = detector.find_label_bbox_by_ocr(shot, content_text)
+                if content_bbox is not None:
+                    scale = detector._get_scale_factor(shot)
+                    cx = int((content_bbox[0] + content_bbox[2]) / 2 / scale)
+                    cy = int((content_bbox[1] + content_bbox[3]) / 2 / scale)
+                    x, y = cx, cy
+                    field_found = True
+                    print(f"[runner] OCR found field content '{content_text}' at ({x}, {y}) — clicking field directly")
+                    break
+
+            # ── Strategy 2: Groq Vision 4-corner detection ──
+            if not field_found:
+                label_bbox = detector.find_label_bbox_by_ocr(shot, field_target)
+                groq_result = detector.find_input_field(
+                    shot, field_target,
+                    component_type=component_type,
+                    placeholder=placeholder,
+                    label_region=label_bbox,
+                )
+                if groq_result is not None:
+                    x, y = groq_result.center
+                    field_found = True
+                    print(f"[runner] Groq Vision found input for '{field_target}' at ({x}, {y})")
+
+            # ── Fallback: type into focused field ──
+            if not field_found:
+                print(f"[runner] '{field_target}' not found — will type into focused field")
+                x, y = pyautogui.position()
+
+        return {**action, "x": x, "y": y, "field_target": field_target, "_field_found": field_found}
+
+    elif action_type == "scroll":
+        target = action.get("target", "")
+        x, y = _find_element(target, timeout)
+        return {**action, "x": x, "y": y}
+
+    else:  # shell, hotkey — no detection needed
+        return action
+
+
+def fire_action(entry: dict[str, Any]) -> None:
+    """
+    Action-only phase: fire the pyautogui / shell input from a resolved entry.
+    No element detection is performed — coordinates must already be set.
+    Call this between recorder.start() and recorder.stop().
+    """
+    action_type = entry.get("action", "")
+    x = entry.get("x")
+    y = entry.get("y")
+
+    if action_type == "click":
+        target = entry.get("target", "")
+        before = pyautogui.screenshot()
+        pyautogui.click(x, y, duration=0.4)
+        time.sleep(1.0)
+        if not _ui_changed(before, pyautogui.screenshot()):
+            print(f"[runner] UI unchanged after clicking '{target}' at ({x}, {y}) — trying alternatives...")
+            candidates = entry.get("_candidates", [])
+            alternatives = [(ax, ay) for ax, ay in candidates if abs(ax - x) > 10 or abs(ay - y) > 10]
+            for ax, ay in alternatives:
+                print(f"[runner] Trying alternative '{target}' at ({ax}, {ay})")
+                pre = pyautogui.screenshot()
+                pyautogui.click(ax, ay, duration=0.4)
+                time.sleep(1.0)
+                if _ui_changed(pre, pyautogui.screenshot()):
+                    print(f"[runner] Alternative click worked at ({ax}, {ay})")
+                    break
+
+    elif action_type == "type":
+        value = entry.get("value", "")
+        field_target = entry.get("field_target", "")
+        component_type = entry.get("_component_type")
+        placeholder = entry.get("_placeholder")
+        default_value = entry.get("_default_value")
+
+        def _type_into(fx: int, fy: int) -> None:
+            """Clear all content in the field at (fx, fy), then paste value.
+
+            Uses KB default_value knowledge:
+            - If the value starts with the default, move to end and type the remainder
+            - Otherwise, select all and replace with full value
+            """
+            # Click to focus
+            pyautogui.click(fx, fy)
+            time.sleep(0.2)
+
+            # Read current field content via clipboard
+            pyautogui.hotkey("end")
+            time.sleep(0.05)
+            pyautogui.hotkey("shift", "home")
+            time.sleep(0.05)
+            pyautogui.hotkey("command", "c")
+            time.sleep(0.2)
+            current_content = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout
+
+            if current_content:
+                print(f"[runner] Field contains: '{current_content}'")
+
+            # Decide what to type based on current content and desired value
+            type_value = value
+            if current_content and value.startswith(current_content) and current_content != value:
+                # Value starts with what's already in the field — just append the rest
+                type_value = value[len(current_content):]
+                pyautogui.hotkey("end")  # deselect, move cursor to end
+                time.sleep(0.1)
+                print(f"[runner] Appending '{type_value}' after existing '{current_content}'")
+            elif current_content and current_content != value:
+                # Different content — delete it and type full value
+                pyautogui.press("delete")
+                time.sleep(0.2)
+                print(f"[runner] Cleared '{current_content}', entering '{value}'")
+            elif not current_content and default_value and value.startswith(default_value):
+                # Field appears empty but KB says it has a default — check if default is still there
+                # (placeholder text won't be selected, but default values will be)
+                pyautogui.hotkey("end")
+                time.sleep(0.05)
+                type_value = value[len(default_value):]
+                print(f"[runner] Field likely has default '{default_value}', appending '{type_value}'")
+            else:
+                # Replace selected content
+                pass
+
+            subprocess.run(["pbcopy"], input=type_value.encode(), check=True)
+            pyautogui.hotkey("command", "v")
+            time.sleep(1.0)
+
+        def _type_and_verify(fx: int, fy: int) -> bool:
+            """Clear field at (fx, fy), paste value, OCR the field region to verify."""
+            import re as _re
+
+            # Take before screenshot for pixel-diff comparison
+            before_shot = pyautogui.screenshot()
+            _type_into(fx, fy)
+
+            # Take after screenshot
+            after_shot = pyautogui.screenshot()
+
+            # Region around the field for verification
+            scale = detector._get_scale_factor(after_shot)
+            region_radius = 120  # logical px
+            phys_cx = int(fx * scale)
+            phys_cy = int(fy * scale)
+            phys_r = int(region_radius * scale)
+            x1 = max(0, phys_cx - phys_r * 2)
+            y1 = max(0, phys_cy - phys_r)
+            x2 = min(after_shot.width, phys_cx + phys_r * 2)
+            y2 = min(after_shot.height, phys_cy + phys_r)
+
+            # Primary: pixel-diff — did the field region change after typing?
+            import numpy as _np2
+            crop_before = _np2.array(before_shot.crop((x1, y1, x2, y2)).convert("RGB"), dtype=_np2.float32)
+            crop_after = _np2.array(after_shot.crop((x1, y1, x2, y2)).convert("RGB"), dtype=_np2.float32)
+            diff = _np2.abs(crop_after - crop_before).mean()
+            if diff > 3.0:
+                print(f"[runner] Pixel-diff verified value entered at ({fx}, {fy}) (diff={diff:.1f})")
+                return True
+
+            # Secondary: OCR — look for the exact value text (not just a substring word)
+            cropped = after_shot.crop((x1, y1, x2, y2))
+            reader = detector._get_ocr_reader()
+            results = reader.readtext(_np2.array(cropped))
+            # Strip leading punctuation from value for matching
+            check_value = _re.sub(r'^[^a-zA-Z0-9]+', '', value).lower()
+            for _, txt, conf in results:
+                detected = txt.lower().strip()
+                # Exact match or detected text IS the value (not a larger word containing it)
+                if detected == value.lower() or detected == check_value:
+                    print(f"[runner] OCR exact match '{txt}' near ({fx}, {fy}) — verified")
+                    return True
+                # Value is detected as standalone (not substring of a longer word like HelloWorld)
+                if check_value and _re.search(r'\b' + _re.escape(check_value) + r'\b', detected):
+                    print(f"[runner] OCR word match '{txt}' near ({fx}, {fy}) — verified")
+                    return True
+
+            print(f"[runner] Verification failed: value '{value}' not detected at ({fx}, {fy}) (diff={diff:.1f})")
+            return False
+
+        # First attempt — type at detected coordinates
+        if not _type_and_verify(x, y):
+            # Ask Groq fresh for the field location and retry
+            print(f"[runner] Asking Groq for field location of '{field_target}'...")
+            fresh_shot = pyautogui.screenshot()
+            label_bbox = detector.find_label_bbox_by_ocr(fresh_shot, field_target)
+            groq_result = detector.find_input_field(
+                fresh_shot, field_target,
+                component_type=component_type,
+                placeholder=placeholder,
+                label_region=label_bbox,
+            )
+            if groq_result:
+                nx, ny = groq_result.center
+                print(f"[runner] Groq found field at ({nx}, {ny}) — retrying")
+                if not _type_and_verify(nx, ny):
+                    print(f"[WARNING] Could not verify '{value}' in field '{field_target}' — continuing")
+            else:
+                print(f"[WARNING] Groq could not locate '{field_target}' — continuing")
+
+    elif action_type == "scroll":
+        clicks = entry.get("clicks", -3)
+        pyautogui.scroll(clicks, x=x, y=y)
+
+    elif action_type == "shell":
+        command = entry.get("command", "")
+        subprocess.run(command, shell=True, check=True)
+
+    elif action_type == "hotkey":
+        keys = entry.get("keys", [])
+        pyautogui.hotkey(*keys)
+
+    else:
+        raise ValueError(f"Unknown action type: '{action_type}'")
 
 
 def wait_ui_settle(timeout: float = 6.0, stable_for: float = 0.4) -> None:
