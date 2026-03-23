@@ -3,9 +3,15 @@
 FlowCast — Convert human instructions to GIFs.
 
 Usage:
+  # From a workflow .md file:
   uv run python main.py path/to/workflow.md
   uv run python main.py path/to/workflow.md --step N
-  uv run python main.py path/to/workflow.md output/my_dir
+
+  # From a simple prompt (generates MD → runs → records GIFs → codegen):
+  uv run python main.py --prompt "create hello world automation"
+
+  # Generate workflow .md only (no execution):
+  uv run python main.py --prompt "create hello world automation" --dry-run
 """
 from __future__ import annotations
 
@@ -32,6 +38,7 @@ def _run_step(
     gif_output_dir: Path,
     app_name: str,
     title: str = "",
+    collect_actions: list | None = None,
 ) -> Path | None:
     gif_stem = Path(gif_filename).stem
 
@@ -53,6 +60,7 @@ def _run_step(
 
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"rec_{gif_stem}_"))
     clips: list[Path] = []
+    resolved_actions: list[dict] = []
 
     try:
         for i, action in enumerate(actions):
@@ -63,6 +71,8 @@ def _run_step(
             except runner.ElementNotFoundError as e:
                 print(f"[WARNING] Element not found: {e}", file=sys.stderr)
                 return None
+
+            resolved_actions.append(resolved)
 
             recorder.start(f"clip_{i:03d}", output_dir=tmp_dir, raw=True)
             try:
@@ -79,27 +89,121 @@ def _run_step(
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    # Collect resolved actions for codegen
+    if collect_actions is not None:
+        collect_actions.extend(resolved_actions)
+
     print(f"[doc] GIF saved → {gif_path}")
     return gif_path
+
+
+def _run_from_prompt(prompt: str, dry_run: bool = False) -> None:
+    """Generate a workflow from a prompt, then optionally execute it."""
+    from src.workflow_gen import generate_workflow
+
+    print("=" * 60)
+    print(f"  FlowCast — Prompt Mode")
+    print(f"  Task: {prompt}")
+    print("=" * 60)
+
+    # Step 1: Generate the workflow .md
+    md_path = generate_workflow(prompt)
+    print(f"\n[prompt] Generated workflow: {md_path}")
+
+    if dry_run:
+        print(f"\n[prompt] Dry run — workflow saved to {md_path}")
+        print(f"[prompt] To execute: uv run python main.py {md_path}")
+        return
+
+    # Step 2: Parse and run the generated workflow
+    title, folder_slug, steps, meta = parse_doc(md_path)
+    gif_output_dir = OUTPUT_DIR / folder_slug
+    gif_output_dir.mkdir(parents=True, exist_ok=True)
+
+    app_name = meta.get("app", "")
+
+    print(f"\n[prompt] Running workflow: {title}")
+    print(f"[prompt] Steps: {len(steps)}  |  Output: {gif_output_dir}")
+
+    if not steps:
+        print("[ERROR] No GIF references found in the generated workflow.", file=sys.stderr)
+        print(f"[prompt] Check the generated file: {md_path}")
+        sys.exit(1)
+
+    saved = []
+    all_step_actions: dict[str, list[dict]] = {}
+
+    for i, (instructions, gif_filename) in enumerate(steps, 1):
+        step_actions: list[dict] = []
+        result = _run_step(
+            i, instructions, gif_filename, gif_output_dir,
+            app_name, title, collect_actions=step_actions,
+        )
+        if result:
+            saved.append(result)
+            step_name = Path(gif_filename).stem
+            all_step_actions[step_name] = step_actions
+
+    # Step 3: Generate PyAutoGUI replay scripts
+    if all_step_actions:
+        from src.codegen import generate_all_scripts
+
+        scripts_dir = gif_output_dir / "scripts"
+        scripts = generate_all_scripts(all_step_actions, scripts_dir)
+        print(f"\n[prompt] Generated {len(scripts)} PyAutoGUI script(s) in {scripts_dir}")
+
+    # Summary
+    print("\n" + "=" * 60)
+    print(f"  FlowCast — Complete")
+    print(f"  Workflow: {md_path}")
+    print(f"  GIFs: {len(saved)}/{len(steps)} recorded → {gif_output_dir}")
+    if all_step_actions:
+        print(f"  Scripts: {scripts_dir}")
+    print("=" * 60)
 
 
 def main() -> None:
     args = sys.argv[1:]
     if not args:
-        print("Usage: uv run python main.py path/to/workflow.md [output_dir] [--step N]", file=sys.stderr)
+        print(
+            "Usage:\n"
+            "  uv run python main.py path/to/workflow.md [--step N]\n"
+            "  uv run python main.py --prompt \"create hello world automation\"\n"
+            "  uv run python main.py --prompt \"task\" --dry-run",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
+    # Parse flags
     only_step: int | None = None
+    prompt: str | None = None
+    dry_run = False
     filtered_args = []
     i = 0
     while i < len(args):
         if args[i] == "--step" and i + 1 < len(args):
             only_step = int(args[i + 1])
             i += 2
+        elif args[i] == "--prompt" and i + 1 < len(args):
+            prompt = args[i + 1]
+            i += 2
+        elif args[i] == "--dry-run":
+            dry_run = True
+            i += 1
         else:
             filtered_args.append(args[i])
             i += 1
     args = filtered_args
+
+    # Prompt mode: generate → run → record → codegen
+    if prompt:
+        _run_from_prompt(prompt, dry_run=dry_run)
+        return
+
+    # File mode: run existing workflow .md
+    if not args:
+        print("[ERROR] No workflow file or --prompt provided.", file=sys.stderr)
+        sys.exit(1)
 
     doc_path = Path(args[0])
     if not doc_path.exists():

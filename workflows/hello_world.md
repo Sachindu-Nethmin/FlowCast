@@ -50,7 +50,7 @@ Click Create to create an automation.
 Click + after the Start node to open the node panel.
 Select Call Function and select println.
 Click Initialize Array.
-Click Fx offset 100px right to click inside the value input "Hello World".
+Click Fx offset 200px right to click inside the value input "Hello World".
 Enter '"Hello World"'.
 Click Save.
 Click the Run button in the top right to run the integration.

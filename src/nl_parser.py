@@ -30,6 +30,84 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ---------------------------------------------------------------------------
+# WSO2 UI Knowledge Base — field label → search hints mapping
+# ---------------------------------------------------------------------------
+_KB_PATH = Path(__file__).parent.parent / "kb" / "wso2_ui_kb.json"
+_kb_cache: dict | None = None
+
+
+def _get_kb() -> dict:
+    """Load the WSO2 UI knowledge base (cached)."""
+    global _kb_cache
+    if _kb_cache is None:
+        if _KB_PATH.exists():
+            _kb_cache = json.loads(_KB_PATH.read_text())
+        else:
+            _kb_cache = {}
+    return _kb_cache
+
+
+def _resolve_field_target(raw_field: str) -> tuple[str, list[str], str | None, str | None, str | None]:
+    """
+    Resolve a field name from markdown instructions to the best OCR search target.
+
+    Returns (resolved_target, search_hints, component_type, placeholder, default_value):
+      - resolved_target: the exact text to search for on screen
+      - search_hints: alternative strings to try if the first doesn't match
+      - component_type: e.g. "TextField", "DirectorySelector", "Dropdown" (from KB)
+      - placeholder: placeholder text shown in the empty input field (from KB)
+      - default_value: pre-filled value in the field (e.g. "/" for Service base path)
+
+    Uses the KB field_lookup table to map common names to exact UI labels,
+    then returns the field's search_hints for OCR matching.
+    """
+    kb = _get_kb()
+    field_lookup = kb.get("field_lookup", {})
+    fields = kb.get("fields", {})
+
+    # Normalize: lowercase, strip surrounding punctuation
+    normalized = raw_field.lower().strip().rstrip('.,;:')
+
+    # Direct lookup
+    canonical = field_lookup.get(normalized)
+    if canonical and canonical in fields:
+        entry = fields[canonical]
+        hints = entry.get("search_hints", [canonical])
+        placeholder = entry.get("placeholder")
+        default_value = entry.get("default_value")
+        comp_type = entry.get("component")
+        target = placeholder if placeholder else canonical
+        return target, hints + ([placeholder] if placeholder else []), comp_type, placeholder, default_value
+
+    # Partial match: only if the lookup key is at least 60% of the input length
+    # to avoid "path" matching "resource path" → "Select Path"
+    best_match = None
+    best_overlap = 0
+    for key, canonical_name in field_lookup.items():
+        # Require the key to appear as a full word boundary in the input, or vice versa
+        if key == normalized:
+            continue  # already checked in direct lookup
+        # Check if key matches as whole words within normalized
+        if re.search(r'\b' + re.escape(key) + r'\b', normalized):
+            overlap = len(key) / max(len(normalized), 1)
+            if overlap > best_overlap and overlap >= 0.6:
+                best_overlap = overlap
+                best_match = canonical_name
+
+    if best_match and best_match in fields:
+        entry = fields[best_match]
+        hints = entry.get("search_hints", [best_match])
+        placeholder = entry.get("placeholder")
+        default_value = entry.get("default_value")
+        comp_type = entry.get("component")
+        target = placeholder if placeholder else best_match
+        return target, hints + ([placeholder] if placeholder else []), comp_type, placeholder, default_value
+
+    # No KB match — return as-is
+    return raw_field, [raw_field], None, None, None
+
+
 _gemini_client = None
 
 
@@ -227,9 +305,247 @@ def _make_open_and_maximize(app_name: str, app_path: str) -> list[dict]:
     ]
 
 
+def _parse_structured_md(instructions: str) -> list[dict] | None:
+    """
+    Fast-path parser for well-formatted markdown instructions.
+
+    Key convention:
+      "Select/Click" + **bold**  → CLICK on the bold UI element
+      "Set/Enter/Keep" + **field** + `value` → SEARCH for field, TYPE the value
+      `backtick` alone  → value to type
+
+    Examples:
+      1. Select **Create New Integration**.        → click "Create New Integration"
+      2. Enter the integration name (`HelloWorld`). → type "HelloWorld" in "integration name"
+      3. Set **Service base path** to `/hello`.     → type "/hello" in "Service base path"
+      4. Keep **Service contract** as **Design from scratch**. → type/select "Design from scratch" in "Service contract"
+      5. Click **+** after the **Start** node.      → click "+" with hint "near Start"
+      6. Select **Browse** and select **Open**.     → click "Browse", click "Open"
+    """
+    # Extract numbered/bulleted list items
+    lines = []
+    for line in instructions.splitlines():
+        s = line.strip()
+        m = re.match(r'^\d+\.\s+(.+)$', s) or re.match(r'^[-*]\s+(.+)$', s)
+        if m:
+            lines.append(m.group(1).strip())
+
+    if not lines:
+        return None
+
+    # Need at least some lines with **bold** markers
+    bold_count = sum(1 for l in lines if '**' in l)
+    if bold_count == 0:
+        return None
+
+    # Keyword sets for intent detection
+    CLICK_VERBS = r'\bselect\b|\bclick\b|\btap\b|\bpress\b|\badd\b'
+    TYPE_VERBS = r'\bset\b|\benter\b|\btype\b|\bname\b|\bstore\b|\bfill\b'
+
+    actions = []
+    for line in lines:
+        low = line.lower()
+        bolds = re.findall(r'\*\*(.+?)\*\*', line)
+        ticks = re.findall(r'`([^`]+)`', line)
+
+        # ── 1. Offset click: Click **Fx** offset 200px right ──
+        offset_m = re.search(
+            r'\*\*(.+?)\*\*\s+offset\s+(\d+)\s*px\s+(right|left|up|down)',
+            line, re.IGNORECASE,
+        )
+        if offset_m:
+            target = offset_m.group(1)
+            amount = int(offset_m.group(2))
+            direction = offset_m.group(3).lower()
+            off_x = amount if direction == "right" else -amount if direction == "left" else 0
+            off_y = amount if direction == "down" else -amount if direction == "up" else 0
+            act = {"action": "click", "target": target, "timeout": 10}
+            if off_x:
+                act["offset_x"] = off_x
+            if off_y:
+                act["offset_y"] = off_y
+            actions.append(act)
+            continue
+
+        # ── 2. Open app: "Open WSO2 Integrator" ──
+        if re.search(r'\bopen\b.*\bintegrator\b|\blaunch\b|\bstart\b.*\bapp\b', low):
+            app_name = ""
+            if bolds:
+                app_name = bolds[0]
+            else:
+                am = re.search(r'open\s+(.+?)\.?\s*$', line, re.IGNORECASE)
+                if am:
+                    app_name = am.group(1)
+            actions.append({"action": "open_app", "app_name": app_name,
+                            "app_path": f"$HOME/Applications/{app_name}.app"})
+            continue
+
+        # ── 3a. "Add the `action` from the `connection`" → click connection, click action ──
+        add_action_m = re.match(
+            r'add\s+the\s+`([^`]+)`\s+action\s+from\s+(?:the\s+)?`([^`]+)`',
+            line, re.IGNORECASE,
+        )
+        if add_action_m:
+            action_name = add_action_m.group(1)
+            connection_name = add_action_m.group(2)
+            actions.append({"action": "click", "target": connection_name, "timeout": 10,
+                            "hint": "connection in node panel"})
+            actions.append({"action": "click", "target": action_name, "timeout": 10,
+                            "hint": f"action from {connection_name}"})
+            print(f"[nl_parser] ADD ACTION: click '{connection_name}' → click '{action_name}'")
+            continue
+
+        # ── 3b. KEEP → skip (leave default, don't change) ──
+        # "Keep **Service contract** as **Design from scratch**."
+        if re.search(r'\bkeep\b', low):
+            print(f"[nl_parser] Skipping 'Keep' (leave default): {line[:60]}")
+            continue
+
+        # ── 4. SET/ENTER → TYPE action (search field, enter value) ──
+        # "Set **Service base path** to `/hello`."
+        # "Enter the integration name (for example, `HelloWorld`)."
+        # "Name the connection `externalApi` and save."
+        # "Store the action result in a variable named `response` with type `json`."
+        # "Set the resource path to `/greeting` and select **Save**."  (compound)
+        if re.search(TYPE_VERBS, low):
+            # ── Compound: strip trailing "and select/click **X**" into a separate click ──
+            trailing_clicks = []
+            working_line = line
+            trailing_pat = re.compile(
+                r'\s+and\s+(?:select|click|press|tap)\s+\*\*(.+?)\*\*\.?\s*$',
+                re.IGNORECASE,
+            )
+            tm = trailing_pat.search(working_line)
+            while tm:
+                trailing_clicks.append(tm.group(1))
+                working_line = working_line[:tm.start()].rstrip()
+                tm = trailing_pat.search(working_line)
+
+            # Re-extract bolds/ticks from the cleaned line (without trailing click parts)
+            line_bolds = re.findall(r'\*\*(.+?)\*\*', working_line)
+            line_ticks = re.findall(r'`([^`]+)`', working_line)
+
+            # Determine value: from `backtick` or second **bold**
+            value = None
+            raw_field = None
+
+            if line_ticks:
+                # Value is the first backtick
+                value = line_ticks[0]
+                # Field is the first **bold**, or extracted from text
+                if line_bolds:
+                    raw_field = line_bolds[0]
+                else:
+                    fm = (
+                        re.search(r'(?:variable|field|param)\s+named\b', working_line, re.IGNORECASE)
+                        or re.search(
+                            r'(?:enter|set|type|fill|name)\s+(?:the\s+)?(.+?)(?:\s+to\b|\s+as\b|\s+named\b|\s*\(|\s*`)',
+                            working_line, re.IGNORECASE,
+                        )
+                    )
+                    if fm and fm.lastindex:
+                        raw_field = fm.group(1).strip().rstrip(',. ')
+                        raw_field = re.sub(r'\s+(?:in|into|a|an|the)\s*$', '', raw_field, flags=re.IGNORECASE).strip()
+                    elif re.search(r'variable\s+named', working_line.lower()):
+                        raw_field = "variable name"
+                    else:
+                        raw_field = "field"
+            elif len(line_bolds) >= 2:
+                # "Set **field** to **value**" — no backticks
+                raw_field = line_bolds[0]
+                value = line_bolds[1]
+
+            if value and raw_field:
+                resolved, hints, comp_type, placeholder, default_val = _resolve_field_target(raw_field)
+                action_dict = {"action": "type", "field_target": resolved,
+                               "value": value, "timeout": 10}
+                if hints and hints != [resolved]:
+                    action_dict["_search_hints"] = hints
+                if comp_type:
+                    action_dict["_component_type"] = comp_type
+                if placeholder:
+                    action_dict["_placeholder"] = placeholder
+                if default_val:
+                    action_dict["_default_value"] = default_val
+                actions.append(action_dict)
+                print(f"[nl_parser] SET/ENTER: field '{raw_field}' → '{resolved}', value '{value}'")
+
+                # Append any trailing click actions
+                for click_target in trailing_clicks:
+                    actions.append({"action": "click", "target": click_target, "timeout": 10})
+                    print(f"[nl_parser] COMPOUND CLICK: '{click_target}'")
+                continue
+
+        # ── 4. Enter quoted value into focused field: Enter '"Hello World"' ──
+        enter_quoted = re.search(r"""[Ee]nter\s+'([^']+)'""", line)
+        if enter_quoted:
+            actions.append({"action": "type", "field_target": "field",
+                            "value": enter_quoted.group(1), "timeout": 10,
+                            "skip_click": True})
+            continue
+
+        # ── 5. SELECT/CLICK → CLICK action ──
+        if bolds and re.search(CLICK_VERBS, low):
+
+            # Multi-action: "Select **Browse** and select **Open**."
+            multi_action = re.split(
+                r'\s+(?:and\s+)?(?:select|click|press|tap)\s+',
+                line, flags=re.IGNORECASE,
+            )
+            if len(multi_action) > 1 and len(bolds) > 1:
+                for bold_target in bolds:
+                    hint = None
+                    pat = re.compile(
+                        r'\*\*' + re.escape(bold_target) + r'\*\*'
+                        r'\s+(?:after|before|inside|next to|near)\s+(?:the\s+)?(.+?)(?:\s+and\b|\.|$)',
+                        re.IGNORECASE,
+                    )
+                    hm = pat.search(line)
+                    if hm:
+                        hint = hm.group(1).strip()
+                    act: dict = {"action": "click", "target": bold_target, "timeout": 10}
+                    if hint:
+                        act["hint"] = hint
+                    actions.append(act)
+                continue
+
+            # Single click with optional hint
+            target = bolds[0]
+            hint = None
+            if len(bolds) > 1:
+                # "Click **+** after the **Start** node" → hint from second bold
+                hint = " ".join(f"near {b}" for b in bolds[1:])
+            elif re.search(r'(?:after|before|inside|next to|near|from|under)\s+', low):
+                hint_m = re.search(
+                    r'(?:after|before|inside|next to|near|from|under)\s+(?:the\s+)?(.+?)(?:\.|$)',
+                    line, re.IGNORECASE,
+                )
+                if hint_m:
+                    hint = hint_m.group(1).strip()
+            action: dict = {"action": "click", "target": target, "timeout": 10}
+            if hint:
+                action["hint"] = hint
+            actions.append(action)
+            continue
+
+        # ── 6. Informational lines — skip ──
+        if not bolds and not re.search(CLICK_VERBS + r'|' + TYPE_VERBS, low):
+            print(f"[nl_parser] Skipping informational: {line[:60]}")
+            continue
+
+        # ── 7. Fallback: bold without clear verb → click ──
+        if bolds:
+            actions.append({"action": "click", "target": bolds[0], "timeout": 10})
+            continue
+
+        print(f"[nl_parser] Skipping unrecognized: {line[:60]}")
+
+    return actions if actions else None
+
+
 def _parse_markdown_actions(raw: str) -> list[dict] | None:
     """
-    Fallback: parse qwen's markdown-formatted response into action dicts.
+    Fallback: parse LLM markdown-formatted response into action dicts.
     Handles numbered lists where each item describes an action.
     Returns None if it can't extract anything useful.
     """
@@ -426,6 +742,43 @@ def parse_text_with_meta(content: str) -> tuple[list[dict[str, Any]], dict[str, 
     user_prompt = f"{context}\n\nInstructions:\n{instructions}" if context else instructions
 
     print(f"[nl_parser] Instructions from file:\n{instructions}\n")
+
+    # Fast path: try structured markdown parsing (**bold** = UI, `tick` = value)
+    structured = _parse_structured_md(instructions)
+    if structured:
+        print(f"[nl_parser] Fast-parsed {len(structured)} actions from structured markdown")
+        # Expand open_app into shell commands
+        expanded = []
+        for action in structured:
+            if action.get("action") == "open_app":
+                app_name = action.get("app_name", meta.get("app", ""))
+                app_path = action.get("app_path", meta.get("app_path", ""))
+                expanded.extend(_make_open_and_maximize(app_name, app_path))
+            else:
+                expanded.append(action)
+
+        # Apply offsets from instruction text
+        _apply_click_offsets(expanded, instructions)
+
+        # Show parsed steps
+        for i, a in enumerate(expanded, 1):
+            if a["action"] == "click":
+                hint = f" (hint: {a['hint']})" if a.get("hint") else ""
+                off = ""
+                if a.get("offset_x") or a.get("offset_y"):
+                    off = f" [offset: ({a.get('offset_x', 0)}, {a.get('offset_y', 0)})]"
+                print(f"  {i}. Click on \"{a.get('target')}\"{hint}{off}")
+            elif a["action"] == "type":
+                print(f"  {i}. Type \"{a.get('value')}\" in \"{a.get('field_target')}\"")
+            elif a["action"] == "hotkey":
+                print(f"  {i}. Press {'+'.join(a.get('keys', []))}")
+            elif a["action"] == "shell":
+                print(f"  {i}. Run: {a.get('command', '')[:60]}")
+
+        return expanded, meta
+
+    # Slow path: use LLM
+    print("[nl_parser] No structured markdown found, falling back to LLM...")
     raw = _call_llm(user_prompt)
 
     # Strip markdown code fences if present

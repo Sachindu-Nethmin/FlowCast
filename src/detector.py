@@ -247,6 +247,501 @@ def find_by_groq(
         return None
 
 
+# ── Input field detection ────────────────────────────────────────────────────
+
+def find_label_bbox_by_ocr(
+    screenshot: Image.Image,
+    target: str,
+) -> Optional[tuple[int, int, int, int]]:
+    """
+    Find the label text via OCR and return its bounding box in *physical* pixels
+    as (x_min, y_min, x_max, y_max).  Returns None if the label is not found.
+
+    Prefers exact/close matches over partial substring matches to avoid matching
+    toolbar or breadcrumb text. Also excludes the top 12% of the screen (toolbar area).
+    """
+    reader = _get_ocr_reader()
+    scale = _get_scale_factor(screenshot)
+    img_array = np.array(screenshot)
+    results = reader.readtext(img_array)
+
+    # Toolbar exclusion: top 12% of image height
+    toolbar_cutoff = int(screenshot.height * 0.12)
+
+    # Score matches: prefer exact > contains-target > target-contains-detected
+    best_bbox = None
+    best_score = -1
+
+    target_lower = target.lower().strip()
+
+    for bbox, text, conf in results:
+        # Skip results in toolbar area
+        y_center = (bbox[0][1] + bbox[2][1]) / 2
+        if y_center < toolbar_cutoff:
+            continue
+
+        detected = text.lower().strip()
+        score = -1
+
+        # Exact match → highest priority
+        if detected == target_lower:
+            score = 3 + conf
+        # Detected text contains full target
+        elif target_lower in detected:
+            score = 2 + conf
+        # Target contains full detected text (but only if detected is substantial)
+        elif detected in target_lower and len(detected) > len(target_lower) * 0.5:
+            score = 1 + conf
+
+        if score > best_score:
+            best_score = score
+            best_bbox = bbox
+
+    # Multi-word fallback — also exclude toolbar
+    if best_bbox is None:
+        target_words = target_lower.split()
+        if len(target_words) > 1:
+            # Filter results to exclude toolbar area
+            filtered = [(bbox, text, conf) for bbox, text, conf in results
+                        if (bbox[0][1] + bbox[2][1]) / 2 >= toolbar_cutoff]
+            best_bbox, _ = _find_multi_word(filtered, target_words)
+
+    if best_bbox is None:
+        return None
+
+    xs = [pt[0] for pt in best_bbox]
+    ys = [pt[1] for pt in best_bbox]
+    return (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
+
+
+def _find_input_rect_below(
+    screenshot: Image.Image,
+    label_bbox: tuple[int, int, int, int],
+) -> Optional[tuple[int, int]]:
+    """
+    Use OpenCV to find an empty input field rectangle below a label.
+
+    WSO2 input fields have:
+      - Distinct background from form (--vscode-input-background vs --vscode-editor-background)
+      - 1px solid border
+      - ~28px height (physical pixels scale with Retina)
+      - Full width within their FieldGroup container
+
+    Returns (cx, cy) in physical pixels, or None if no input rect found.
+    """
+    scale = _get_scale_factor(screenshot)
+    lx_min, ly_min, lx_max, ly_max = label_bbox
+
+    # Search region: below the label, extending down ~80px and wide enough
+    # to capture the full input field
+    img_w, img_h = screenshot.size
+    search_top = ly_max
+    search_bot = min(img_h, ly_max + int(80 * scale))
+    # Extend horizontally — input fields are wider than labels
+    search_left = max(0, lx_min - int(50 * scale))
+    search_right = min(img_w, lx_max + int(400 * scale))
+
+    crop = screenshot.crop((search_left, search_top, search_right, search_bot))
+    gray = cv2.cvtColor(np.array(crop.convert("RGB")), cv2.COLOR_RGB2GRAY)
+
+    # Edge detection to find rectangular borders
+    edges = cv2.Canny(gray, 30, 100)
+
+    # Find contours — input fields are rectangles
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Expected input height in physical pixels (~28px * scale, allow some tolerance)
+    min_h = int(20 * scale)
+    max_h = int(45 * scale)
+    min_w = int(80 * scale)  # input fields are at least 80px wide
+
+    best_rect = None
+    best_area = 0
+
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if min_h <= h <= max_h and w >= min_w:
+            area = w * h
+            if area > best_area:
+                best_area = area
+                best_rect = (x, y, w, h)
+
+    if best_rect is None:
+        # Fallback: try horizontal line detection for input field borders
+        # Look for pairs of horizontal edges that are ~28px apart
+        h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(60 * scale), 1))
+        h_lines = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, h_kernel)
+        line_contours, _ = cv2.findContours(h_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        for cnt in line_contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if min_h <= h <= max_h and w >= min_w:
+                area = w * h
+                if area > best_area:
+                    best_area = area
+                    best_rect = (x, y, w, h)
+
+    if best_rect is None:
+        return None
+
+    rx, ry, rw, rh = best_rect
+    # Convert back to full-image physical coordinates
+    phys_cx = search_left + rx + rw // 2
+    phys_cy = search_top + ry + rh // 2
+    return (phys_cx, phys_cy)
+
+
+def find_input_field_by_label_ocr(
+    screenshot: Image.Image,
+    field_label: str,
+    component_type: str | None = None,
+    placeholder: str | None = None,
+) -> Optional[DetectionResult]:
+    """
+    Find an input field using OCR label detection + WSO2 layout knowledge.
+
+    WSO2 Integrator forms use a label-above-input vertical stack:
+      Label text  (small, gray)
+      [  input field  ]   (28px tall, directly below label)
+
+    Strategy:
+      1. Find the label via OCR to get its bounding box.
+      2. Use OpenCV to detect the input rectangle below the label (works for empty fields).
+      3. Fall back to computed offset if CV detection fails.
+    """
+    scale = _get_scale_factor(screenshot)
+    bbox = find_label_bbox_by_ocr(screenshot, field_label)
+
+    if bbox is None:
+        # Try placeholder text as a fallback — the placeholder IS in the input field
+        if placeholder:
+            placeholder_bbox = find_label_bbox_by_ocr(screenshot, placeholder)
+            if placeholder_bbox:
+                px_cx = (placeholder_bbox[0] + placeholder_bbox[2]) // 2
+                px_cy = (placeholder_bbox[1] + placeholder_bbox[3]) // 2
+                cx = int(px_cx / scale)
+                cy = int(px_cy / scale)
+                print(f"[detector] OCR found placeholder '{placeholder}' at ({cx}, {cy})")
+                return DetectionResult(center=(cx, cy), confidence=0.80, method="ocr_placeholder")
+        return None
+
+    x_min, y_min, x_max, y_max = bbox
+
+    # Primary: use CV to find the actual input rectangle below the label
+    cv_result = _find_input_rect_below(screenshot, bbox)
+    if cv_result is not None:
+        phys_cx, phys_cy = cv_result
+        cx = int(phys_cx / scale)
+        cy = int(phys_cy / scale)
+        print(f"[detector] CV found input rect below '{field_label}' at ({cx}, {cy}) [method=cv_rect]")
+        return DetectionResult(center=(cx, cy), confidence=0.85, method="cv_rect")
+
+    # Fallback: computed offset from label bottom
+    # (8px gap + 14px = half of 28px input height)
+    input_cx = (x_min + x_max) // 2
+    input_cy = y_max + int(22 * scale)
+
+    cx = int(input_cx / scale)
+    cy = int(input_cy / scale)
+    print(f"[detector] OCR label '{field_label}' bbox bottom={y_max}, "
+          f"computed input field at ({cx}, {cy}) [method=ocr_offset]")
+    return DetectionResult(center=(cx, cy), confidence=0.70, method="ocr_offset")
+
+
+def _find_input_field_cropped(
+    screenshot: Image.Image,
+    field_label: str,
+    label_bbox: tuple[int, int, int, int],
+    component_type: str | None = None,
+) -> Optional[DetectionResult]:
+    """
+    Crop a tight region around the label and send ONLY that to Groq.
+    Much more reliable than full-screen — Groq can't get confused by toolbar etc.
+
+    Crop region: full-width strip from 10px above label to 80px below label bottom.
+    Returns coordinates in logical pixels of the full screenshot.
+    """
+    import base64
+    import re
+
+    scale = _get_scale_factor(screenshot)
+    lx_min, ly_min, lx_max, ly_max = label_bbox
+
+    # Crop: full width of screen, generous vertical band around the label+field
+    pad_above = int(20 * scale)
+    pad_below = int(150 * scale)
+    crop_x1 = 0
+    crop_y1 = max(0, ly_min - pad_above)
+    crop_x2 = screenshot.width
+    crop_y2 = min(screenshot.height, ly_max + pad_below)
+
+    crop = screenshot.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+
+    # Save debug crop
+    try:
+        debug_slug = re.sub(r'[^a-z0-9]', '_', field_label.lower())
+        crop.save(os.path.join(os.getcwd(), f"debug_crop_{debug_slug}.png"))
+    except Exception:
+        pass
+
+    buf = io.BytesIO()
+    crop.save(buf, format="PNG")
+    image_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    model = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    cw = crop_x2 - crop_x1
+    ch = crop_y2 - crop_y1
+
+    component_hint = ""
+    if component_type == "DirectorySelector":
+        component_hint = "The field has a Browse button to its right. Target the text input area, not the button. "
+
+    prompt = (
+        f"This is a cropped WSO2 form screenshot ({cw}x{ch} physical pixels). "
+        f"It shows the label '{field_label}' and the input field directly below it. "
+        f"WSO2 input fields are ~28px tall rectangles with a 1px border and dark background. "
+        f"The label text is near the TOP of this image. The input box is directly BELOW the label. "
+        f"{component_hint}"
+        f"Give me the 4 corner coordinates of the input field rectangle in THIS cropped image (physical pixels): "
+        f"top-left (x1,y1), top-right (x2,y2), bottom-right (x3,y3), bottom-left (x4,y4). "
+        f"Reply with ONLY 4 coordinate pairs in this exact format: x1,y1 x2,y2 x3,y3 x4,y4\n"
+        f"If not found reply: NOT_FOUND"
+    )
+
+    try:
+        client = _get_groq_client()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+                {"type": "text", "text": prompt},
+            ]}],
+        )
+        text = response.choices[0].message.content.strip()
+        if not text or text == "NOT_FOUND":
+            return None
+
+        # Parse 4 corner coordinate pairs: x1,y1 x2,y2 x3,y3 x4,y4
+        corners = re.findall(r'(\d+)\s*,\s*(\d+)', text)
+        if len(corners) >= 4:
+            # Compute center as average of all 4 corners (physical pixels in crop)
+            crop_px = sum(int(c[0]) for c in corners[:4]) // 4
+            crop_py = sum(int(c[1]) for c in corners[:4]) // 4
+        elif len(corners) == 1:
+            # Fallback: single coordinate pair
+            crop_px = int(corners[0][0])
+            crop_py = int(corners[0][1])
+        else:
+            return None
+
+        # Convert crop-relative physical coords → full-screenshot logical coords
+        full_px = crop_x1 + crop_px
+        full_py = crop_y1 + crop_py
+        cx = int(full_px / scale)
+        cy = int(full_py / scale)
+        print(f"[detector] Groq (4-corner) found '{field_label}' input center at ({cx}, {cy})")
+        return DetectionResult(center=(cx, cy), confidence=0.90, method="groq_cropped")
+    except Exception as e:
+        print(f"[detector] Groq cropped field error: {e}")
+        return None
+
+
+def find_input_field(
+    screenshot: Image.Image,
+    field_label: str,
+    component_type: str | None = None,
+    placeholder: str | None = None,
+    label_region: tuple[int, int, int, int] | None = None,
+) -> Optional[DetectionResult]:
+    """
+    Find the input field for a label.
+    If label_region is known, crops to that area and sends a small focused image to Groq.
+    Otherwise sends the full screen with WSO2-specific prompt.
+    """
+    import base64
+    import re
+
+    # Primary: if we have the label position, use focused crop — much more accurate
+    if label_region is not None:
+        result = _find_input_field_cropped(
+            screenshot, field_label, label_region, component_type=component_type)
+        if result is not None:
+            return result
+        print(f"[detector] Cropped Groq failed, falling back to full-screen...")
+
+    scale = _get_scale_factor(screenshot)
+
+    buf = io.BytesIO()
+    screenshot.save(buf, format="PNG")
+    image_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    model = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    print(f"[detector] Asking Groq Vision to find input field for '{field_label}'...")
+
+    # Save debug screenshot so we can see what Groq is seeing
+    try:
+        debug_slug = re.sub(r'[^a-z0-9]', '_', field_label.lower())
+        debug_path = os.path.join(os.getcwd(), f"debug_field_{debug_slug}.png")
+        screenshot.save(debug_path)
+        print(f"[detector] Debug screenshot → {debug_path}")
+    except Exception:
+        pass
+
+    import pyautogui as _pag
+    sw, sh = _pag.size()
+
+    # Build WSO2-specific prompt parts
+    component_clause = ""
+    if component_type == "DirectorySelector":
+        component_clause = (
+            "This field is a DirectorySelector: an input text box with a 'Browse' button "
+            "to its right in a horizontal flex row. Click inside the text input, not the button. "
+        )
+    elif component_type == "Dropdown":
+        component_clause = (
+            "This field is a dropdown/select control with 4px border-radius. "
+            "It may show the current selection value inside it. "
+        )
+
+    placeholder_clause = ""
+    if placeholder:
+        placeholder_clause = (
+            f"The input may show gray placeholder text: '{placeholder}'. "
+        )
+
+    region_clause = ""
+    if label_region:
+        lx_min, ly_min, lx_max, ly_max = label_region
+        # Convert physical to logical for the prompt
+        l_cx = int((lx_min + lx_max) / 2 / scale)
+        l_by = int(ly_max / scale)
+        region_clause = (
+            f"The label '{field_label}' was detected at approximately x={l_cx}, y_bottom={l_by}. "
+            f"The input field is directly BELOW this label, roughly at y={l_by + 15} to y={l_by + 45}. "
+            f"Focus your search in that region. "
+        )
+
+    toolbar_bottom = sh // 8   # top ~12% is toolbar/tab bar — ignore this area
+    prompt = (
+        f"This is a WSO2 Integrator screenshot (VSCode webview, dark theme, "
+        f"logical screen size: {sw}x{sh} pixels). "
+        f"I need to find the INPUT FIELD (text box) for the label '{field_label}'.\n\n"
+        f"IMPORTANT EXCLUSION ZONE: The top {toolbar_bottom}px (y < {toolbar_bottom}) is the "
+        f"application toolbar and tab bar — do NOT return any coordinates in that area.\n\n"
+        f"WSO2 form layout rules:\n"
+        f"- Labels appear ABOVE their input fields (vertical stack)\n"
+        f"- Input fields are ~28px tall rectangles with 1px solid border, dark background, 2px border-radius\n"
+        f"- There is a 4-8px gap between a label and its input field\n"
+        f"- Forms appear in panels, dialogs, or side panels — NOT in the toolbar\n\n"
+        f"{component_clause}{placeholder_clause}{region_clause}"
+        f"Reply with ONLY the x,y coordinates of the CENTER of the input field in logical pixels. "
+        f"If not found, reply: NOT_FOUND"
+    )
+
+    try:
+        client = _get_groq_client()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ],
+        )
+        text = response.choices[0].message.content.strip()
+        if not text or text == "NOT_FOUND":
+            print(f"[detector] Groq Vision: input field for '{field_label}' not found")
+            return None
+
+        coord_m = re.search(r'(\d+)\s*,\s*(\d+)', text)
+        if not coord_m:
+            print(f"[detector] Groq Vision: could not parse response: {text[:100]}")
+            return None
+
+        px_x = int(coord_m.group(1))
+        px_y = int(coord_m.group(2))
+        cx = int(px_x / scale)
+        cy = int(px_y / scale)
+
+        # Reject toolbar-area coordinates (top ~12% of screen)
+        if cy < sh // 8:
+            print(f"[detector] Groq returned toolbar coordinates ({cx}, {cy}) — rejecting (y < {sh // 8})")
+            return None
+
+        print(f"[detector] Groq Vision found input field for '{field_label}' at ({cx}, {cy})")
+        return DetectionResult(center=(cx, cy), confidence=0.85, method="groq_field")
+    except Exception as e:
+        print(f"[detector] Groq vision field error: {e}")
+        return None
+
+
+def verify_text_in_region(
+    screenshot: Image.Image,
+    expected_text: str,
+    region_center: tuple[int, int],
+    region_radius: int = 80,
+    before_screenshot: Image.Image | None = None,
+) -> bool:
+    """
+    Verify that expected_text was entered by checking the region changed
+    and/or the text is visible via OCR.
+
+    Primary check: pixel-diff (before vs after) — did the region change at all?
+    Secondary check: OCR — is the expected text readable in the region?
+    Either passing is enough to confirm entry.
+    """
+    scale = _get_scale_factor(screenshot)
+    phys_cx = int(region_center[0] * scale)
+    phys_cy = int(region_center[1] * scale)
+    phys_r = int(region_radius * scale)
+
+    # Crop region (clamp to image bounds)
+    x1 = max(0, phys_cx - phys_r * 2)  # wider horizontal crop for input fields
+    y1 = max(0, phys_cy - phys_r)
+    x2 = min(screenshot.width, phys_cx + phys_r * 2)
+    y2 = min(screenshot.height, phys_cy + phys_r)
+
+    # ── Primary: pixel-diff (fast, reliable — did anything change in the field area?) ──
+    if before_screenshot is not None:
+        crop_after = np.array(screenshot.crop((x1, y1, x2, y2)).convert("RGB"), dtype=np.float32)
+        crop_before = np.array(before_screenshot.crop((x1, y1, x2, y2)).convert("RGB"), dtype=np.float32)
+        diff = np.abs(crop_after - crop_before).mean()
+        if diff > 3.0:
+            print(f"[detector] Pixel-diff verification passed for '{expected_text}' (diff={diff:.1f})")
+            return True
+        print(f"[detector] Pixel-diff: no change detected (diff={diff:.1f}), trying OCR...")
+
+    # ── Secondary: OCR on cropped region ──
+    cropped = screenshot.crop((x1, y1, x2, y2))
+    reader = _get_ocr_reader()
+    results = reader.readtext(np.array(cropped))
+
+    # Strip leading punctuation for matching (OCR often misses '/' or reads it as 'I')
+    expected_clean = expected_text.lower().strip().lstrip('/')
+    for _, text, conf in results:
+        detected = text.lower().strip()
+        # Exact or substring match
+        if expected_text.lower() in detected or detected in expected_text.lower():
+            print(f"[detector] OCR verification passed: found '{text}' matching '{expected_text}'")
+            return True
+        # Fuzzy: strip leading slash and compare
+        if expected_clean and expected_clean in detected.lstrip('/'):
+            print(f"[detector] OCR verification passed (fuzzy): '{text}' ~ '{expected_text}'")
+            return True
+
+    detected_texts = [t for _, t, _ in results]
+    print(f"[detector] Verification FAILED: '{expected_text}' not found in region around "
+          f"({region_center[0]}, {region_center[1]}). OCR saw: {detected_texts}")
+    return False
+
+
 # ── All-matches OCR scan ────────────────────────────────────────────────────
 
 def find_all_by_ocr(screenshot: Image.Image, target: str) -> list[DetectionResult]:
