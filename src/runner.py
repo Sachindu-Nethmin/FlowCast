@@ -14,7 +14,11 @@ from PIL import Image
 from src.detector import ElementNotFoundError, find_element, find_input_field, is_text_visible_near
 =======
 from src.detector import ElementNotFoundError, find_element, find_input_field
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+<<<<<<< HEAD
+>>>>>>> ee262bc (improved text files)
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.3
@@ -104,79 +108,48 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
 
     # OCR failed — hand off to healer for diagnosis + escalating retry
     from src import healer
+=======
+>>>>>>> 7d1f240 (improved text files)
 
-pyautogui.FAILSAFE = True  # Move mouse to top-left corner to abort
-pyautogui.PAUSE = 0.3        # 0.3s pause after every pyautogui call
-pyautogui.MINIMUM_DURATION = 0.3   # minimum time for mouse moves
+pyautogui.FAILSAFE = True
+pyautogui.PAUSE = 0.3
 
-DEFAULT_TIMEOUT = 10.0   # seconds to wait for an element before raising
-MAX_RETRIES = 3
-RETRY_DELAY = 2.0
+_MAX_RETRIES = 3
+_RETRY_DELAY = 2.0
+_TARGET_APP = "WSO2 Integrator"
+_APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 
-_log_path = Path(__file__).parent.parent / "logs" / "run_log.json"
-_target_app: str = "WSO2 Integrator"
-_target_pid: int | None = None   # when set, activate by PID instead of app name
-
-
-class ElementNotFoundError(Exception):
-    pass
+_KB: dict | None = None
 
 
-class TypeVerificationError(Exception):
-    """Raised when typed text is not visible on screen after entry."""
-    pass
+def _kb() -> dict:
+    global _KB
+    if _KB is None:
+        p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+        _KB = json.loads(p.read_text()) if p.exists() else {}
+    return _KB
 
 
-def set_log_path(path: str | Path) -> None:
-    """Redirect action logs to a custom path."""
-    global _log_path
-    _log_path = Path(path)
+def _is_autofocus(field_label: str) -> bool:
+    for f in _kb().get("autofocus_fields", {}).get("fields", []):
+        if f["label"].lower() == field_label.lower():
+            return True
+    return False
 
 
-def set_target_app(name: str) -> None:
-    """Set the app name used by _activate_target_app()."""
-    global _target_app
-    _target_app = name
-
-
-def set_target_pid(pid: int | None) -> None:
-    """Pin activation to a specific process PID (use for multi-instance apps)."""
-    global _target_pid
-    _target_pid = pid
-
-
-def _activate_target_app() -> None:
-    """Bring the target app to front before taking screenshots."""
-    try:
-        if _target_pid is not None:
-            subprocess.run(
-                ['osascript', '-e',
-                 f'tell application "System Events" to set frontmost of '
-                 f'(first process whose unix id is {_target_pid}) to true'],
-                timeout=5, capture_output=True,
-            )
-        else:
-            subprocess.run(
-                ['osascript', '-e', f'activate application "{_target_app}"'],
-                timeout=5, capture_output=True,
-            )
-        time.sleep(0.3)
-    except Exception:
-        pass
+def _is_auto_populated(field_label: str) -> bool:
+    for f in _kb().get("auto_populated_fields", {}).get("fields", []):
+        if f["label"].lower() == field_label.lower():
+            return True
+    return False
 
 
 def _screenshot() -> Image.Image:
-    _activate_target_app()
-    shot = pyautogui.screenshot()
-    if shot is None or shot.width < 100:
-        raise PermissionError(
-            "pyautogui.screenshot() returned a blank image.\n"
-            "Grant Screen Recording permission to Terminal in:\n"
-            "  System Settings → Privacy & Security → Screen Recording"
-        )
-    return shot
+    _activate()
+    return pyautogui.screenshot()
 
 
+<<<<<<< HEAD
 def _ui_changed(before: Image.Image, after: Image.Image, threshold: float = 0.001) -> bool:
     """Return True if more than `threshold` fraction of pixels changed between screenshots."""
     import numpy as np
@@ -224,6 +197,25 @@ def _find_set_button() -> tuple[int, int] | None:
     cy = best_loc[1] + best_th // 2
     print(f"[runner] Set button found at ({cx}, {cy}) confidence={best_val:.2f}")
     return (cx, cy)
+=======
+def _activate() -> None:
+    subprocess.run(
+        ["osascript", "-e", f'activate application "{_TARGET_APP}"'],
+        capture_output=True, timeout=5,
+    )
+    time.sleep(0.3)
+
+
+def _find(target: str, hint: str | None = None) -> tuple[int, int]:
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return find_element(_screenshot(), target, hint)
+        except ElementNotFoundError:
+            if attempt < _MAX_RETRIES - 1:
+                print(f"[runner] Retry {attempt + 1} for '{target}'...")
+                time.sleep(_RETRY_DELAY)
+    raise ElementNotFoundError(f"'{target}' not found after {_MAX_RETRIES} attempts")
+>>>>>>> 7d1f240 (improved text files)
 
 
 <<<<<<< HEAD
@@ -240,6 +232,7 @@ def _ui_changed(before: Image.Image, after: Image.Image) -> bool:
     a = np.array(before.convert("RGB"), dtype=np.float32)
     b = np.array(after.convert("RGB"), dtype=np.float32)
     return float((np.abs(a - b).mean(axis=2) > 10).mean()) > 0.001
+<<<<<<< HEAD
 
 
 def wait_ui_change(timeout: float = 5.0) -> bool:
@@ -261,47 +254,29 @@ def wait_ui_change(timeout: float = 5.0) -> bool:
     diff = np.abs(a - b).mean(axis=2)          # per-pixel mean RGB channel diff
     changed_fraction = float((diff > 10).mean())  # pixels that changed by >10/255
     return changed_fraction > threshold
+=======
+>>>>>>> 7d1f240 (improved text files)
 
 
-def _read_field_via_clipboard(x: int, y: int) -> str:
-    """Click into a field, select all, copy to clipboard, return the text."""
-    # Triple-click to select all text in the field
-    pyautogui.click(x, y, clicks=3, interval=0.1)
-    time.sleep(0.2)
-    # Copy selection to clipboard
-    pyautogui.hotkey("command", "c")
-    time.sleep(0.2)
-    # Read clipboard
-    result = subprocess.run(["pbpaste"], capture_output=True, text=True)
-    text = result.stdout.strip()
-    # Click once to deselect (put cursor at end)
-    pyautogui.click(x, y)
-    time.sleep(0.1)
-    if text:
-        print(f"[runner] Field clipboard read: '{text}'")
-    return text
+def wait_ui_change(timeout: float = 5.0) -> bool:
+    """Wait until the screen visually changes from its current state.
 
-
-def _find_element(target: str, timeout: float, hint: str | None = None) -> tuple[int, int]:
+    Returns True if a change was detected, False if timeout elapsed with no change.
+    Use this after firing an action to confirm the UI has actually responded
+    before moving on to detect/fire the next action.
     """
-    Retry up to MAX_RETRIES times to find the target on screen.
-    Returns logical-pixel (x, y) center.
-    """
-    retries = max(1, int(timeout / (RETRY_DELAY + 1)))
-    retries = min(retries, MAX_RETRIES)
-
-    for attempt in range(retries):
-        shot = _screenshot()
-        result = detector.find(shot, target, hint=hint)
-        if result is not None:
-            return result.center
-        if attempt < retries - 1:
-            print(f"[runner] Retry {attempt + 1}/{retries} for '{target}'...")
-            time.sleep(RETRY_DELAY)
-
-    raise ElementNotFoundError(f"Element not found after {retries} attempts: '{target}'")
+    baseline = pyautogui.screenshot()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        time.sleep(0.1)
+        curr = pyautogui.screenshot()
+        if _ui_changed(baseline, curr):
+            return True
+    print("[runner] wait_ui_change: no change detected within timeout")
+    return False
 
 
+<<<<<<< HEAD
 
 def _log_action(entry: dict[str, Any]) -> None:
     _log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -702,6 +677,8 @@ def fire_action(entry: dict[str, Any]) -> None:
         raise ValueError(f"Unknown action type: '{action_type}'")
 
 
+=======
+>>>>>>> 7d1f240 (improved text files)
 def wait_ui_settle(timeout: float = 6.0, stable_for: float = 0.4) -> None:
     """Poll until screen is visually stable or timeout."""
     deadline = time.time() + timeout
@@ -733,6 +710,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
     if kind == "click":
         target = action["target"]
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
@@ -744,6 +722,8 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             return {**action, "x": x + offset["x"], "y": y + offset["y"]}
 
 =======
+=======
+>>>>>>> ee262bc (improved text files)
         
 >>>>>>> 9e44480 (Light (#6))
         # Verify clickability via WSO2 Integrator React source code
@@ -757,6 +737,9 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             
 >>>>>>> 9e44480 (Light (#6))
         x, y = _find(target, action.get("hint"), action=action)
+=======
+        x, y = _find(target, action.get("hint"))
+>>>>>>> 7d1f240 (improved text files)
         return {**action, "x": x, "y": y}
 
     if kind == "type":
@@ -766,7 +749,11 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         # Autofocus fields are already focused — no click needed, just clear + paste
         if _is_autofocus(field_target):
             return {**action, "x": None, "y": None, "_needs_click": False}
+<<<<<<< HEAD
         # Locate target input box
+=======
+        # Ask Groq Vision where to click to focus the actual input box
+>>>>>>> 7d1f240 (improved text files)
         result = find_input_field(_screenshot(), field_target)
         if result:
             return {**action, "x": result[0], "y": result[1], "_needs_click": True}
@@ -829,6 +816,7 @@ def fire(action: dict[str, Any]) -> None:
         time.sleep(1.0)
 
     elif kind == "click":
+<<<<<<< HEAD
         _trigger_pre_move()
 <<<<<<< HEAD
         pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
@@ -849,11 +837,15 @@ def fire(action: dict[str, Any]) -> None:
 =======
         pyautogui.moveTo(x, y, duration=0.3)
         time.sleep(0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
+=======
+        pyautogui.moveTo(x, y, duration=0.3)
+>>>>>>> 7d1f240 (improved text files)
         pyautogui.click(x, y)
 
     elif kind == "type":
 >>>>>>> 9e44480 (Light (#6))
         if action.get("_needs_click") and x is not None and y is not None:
+<<<<<<< HEAD
             _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
@@ -875,6 +867,11 @@ def fire(action: dict[str, Any]) -> None:
                 else:
                     print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
 
+=======
+            pyautogui.moveTo(x, y, duration=0.2)
+            pyautogui.click(x, y)
+            wait_ui_change(timeout=2.0)
+>>>>>>> 7d1f240 (improved text files)
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)
@@ -918,7 +915,10 @@ def fire(action: dict[str, Any]) -> None:
         # ─────────────────────────────────────────────────────────────────────
 
     elif kind == "select":
+<<<<<<< HEAD
         _trigger_pre_move()
+=======
+>>>>>>> 7d1f240 (improved text files)
         pyautogui.moveTo(x, y, duration=0.2)
         pyautogui.click(x, y)
         time.sleep(0.4)
@@ -944,7 +944,10 @@ def fire(action: dict[str, Any]) -> None:
 
 >>>>>>> 9e44480 (Light (#6))
     elif kind == "hotkey":
+<<<<<<< HEAD
         _trigger_pre_move()
+=======
+>>>>>>> 7d1f240 (improved text files)
         pyautogui.hotkey(*action["keys"])
 
     elif kind == "scroll":

@@ -395,6 +395,7 @@
           "condition": "'Create a new folder for the packages' checkbox is checked"
         }
       ]
+<<<<<<< HEAD
     },
 <<<<<<< HEAD
     "open_project_choice": {
@@ -509,6 +510,8 @@
 >>>>>>> 9e44480 (Light (#6))
         }
       ]
+=======
+>>>>>>> 7d1f240 (improved text files)
     }
   },
   "element_hints": {
@@ -543,12 +546,16 @@
     "Version": "Text field in MI Advanced Options, default '1.0.0'",
     "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
     "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
+<<<<<<< HEAD
     "Automation": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'Automation' in the center of the screen. Has a blue icon or blue-highlighted background. Do NOT match text in the file tree or breadcrumbs.",
     "HTTP Service": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'HTTP Service' in the center of the screen.",
     "API": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'API' in the center of the screen.",
     "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
     "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
     "Resource Path": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens.",
+=======
+    "HTTP Service": "Card/option inside the artifact picker dialog, under 'Integration as API' section.",
+>>>>>>> 7d1f240 (improved text files)
     "Service Base Path": "Text input field in the HTTP Service creation form. Has a pre-filled '/'. Click the input to focus it, select all to remove '/', then paste the new value.",
     "Listener port": "Text input field in HTTP Service creation form for the port number e.g. 9090.",
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
@@ -578,13 +585,19 @@
     "Connection Name": "Text input field in the connection dialog for naming the connection e.g. externalApi.",
     "Save": "Primary submit/save button in dialogs such as connection dialog, action dialog, and resource dialog.",
     "get": "Action option in the connection action picker. Represents the HTTP GET action to call.",
+<<<<<<< HEAD
     "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
     "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
+=======
+    "Response Variable": "Text input field in the action configuration dialog for naming the result variable e.g. response.",
+    "Response Type": "Dropdown in the action configuration dialog for setting the response data type e.g. json.",
+>>>>>>> 7d1f240 (improved text files)
     "json": "Option in the Response Type dropdown inside action configuration dialog.",
     "Return": "Node type button in the flow editor toolbar or add-node menu. Adds a return/response node to the flow.",
     "Type:": "Inline dropdown at the top of the creation form showing current project type (WSO2: BI or WSO2: MI) with a chevron icon.",
     "WSO2: BI": "Option in the Type: dropdown selector at the top of the creation form. Selects Ballerina Integration type.",
     "WSO2: MI": "Option in the Type: dropdown selector at the top of the creation form. Selects Micro Integrator type.",
+<<<<<<< HEAD
     "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button.",
 <<<<<<< HEAD
     "Url": {
@@ -633,7 +646,13 @@
     "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
     "Path*": "Same as 'Path' field.",
     "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+    "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button."
+>>>>>>> 7d1f240 (improved text files)
+>>>>>>> ee262bc (improved text files)
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
@@ -649,7 +668,10 @@
       "Workspace Name": "Enter workspace name",
       "Package Version": "0.1.0",
       "Service Base Path": "/",
+<<<<<<< HEAD
       "Resource Path": "/path",
+=======
+>>>>>>> 7d1f240 (improved text files)
       "Listener port": "8080",
       "Base URL": "Enter base URL",
       "Connection Name": "Enter connection name",
@@ -682,11 +704,14 @@
         "label": "Service Base Path",
         "screens": ["http_service_creation"],
         "note": "Already focused when the form opens. Select all (Cmd+A) to clear pre-filled '/' then paste value."
+<<<<<<< HEAD
       },
       {
         "label": "Resource Path",
         "screens": ["add_resource_dialog"],
         "note": "Auto-focused when Add Resource dialog opens. Select all to clear pre-filled '/path' then paste value."
+=======
+>>>>>>> 7d1f240 (improved text files)
       }
     ]
   },
@@ -743,6 +768,7 @@
         "can_override": true
       }
     ]
+<<<<<<< HEAD
   },
   "smart_inputs": [
     "Path",
@@ -756,4 +782,7 @@
     "Url",
     "Url*"
   ]
+=======
+  }
+>>>>>>> 7d1f240 (improved text files)
 }

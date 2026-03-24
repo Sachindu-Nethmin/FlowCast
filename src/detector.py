@@ -70,6 +70,7 @@ def _fuzzy(detected: str, target: str) -> bool:
 
 =======
     d, t = detected.lower().strip(), target.lower().strip()
+<<<<<<< HEAD
     if d == t:
         return True
 >>>>>>> 9e44480 (Light (#6))
@@ -120,6 +121,9 @@ def _fuzzy(detected: str, target: str) -> bool:
         return True
 
     return False
+=======
+    return d == t or t in d or (d in t and len(d) > 2)
+>>>>>>> 7d1f240 (improved text files)
 
 
 <<<<<<< HEAD
@@ -229,6 +233,7 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     return blue_ratio > 0.15
 
 
+<<<<<<< HEAD
 def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
     """Detect if the element is inside a WSO2 'ButtonCard' container.
     
@@ -402,10 +407,212 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             cx, cy, _, is_blue = kw_candidates[0]
             print(f"[detector] Longest-word '{keyword}' (~fuzzy) found for '{target}' at ({cx}, {cy}), blue={is_blue}")
             return (cx, cy)
+=======
+def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
+    arr = np.array(screenshot)
+    results = _ocr().readtext(arr)
+    scale = _scale(screenshot)
+
+    # Collect all fuzzy matches, scoring blue-background ones higher
+    candidates: list[tuple[int, int, float, bool]] = []  # (cx, cy, conf, is_blue)
+    for bbox, text, conf in results:
+        if _fuzzy(text, target):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            cx = int((min(xs) + max(xs)) / 2 / scale)
+            cy = int((min(ys) + max(ys)) / 2 / scale)
+            candidates.append((cx, cy, conf, _is_blue_background(arr, bbox)))
+
+    if candidates:
+        # Prefer blue background, then highest confidence
+        candidates.sort(key=lambda c: (c[3], c[2]), reverse=True)
+        cx, cy, conf, is_blue = candidates[0]
+        if len(candidates) > 1:
+            print(f"[detector] OCR: {len(candidates)} matches for '{target}', picked {'blue' if is_blue else 'highest-conf'} at ({cx}, {cy})")
+        return (cx, cy)
+
+    # Multi-word merge: try adjacent OCR boxes
+    words = target.lower().split()
+    if len(words) < 2:
+        return None
+
+    for i, (bbox_i, text_i, _) in enumerate(results):
+        combined = text_i
+        last_bbox = bbox_i
+        for bbox_j, text_j, _ in results[i + 1:]:
+            gap = bbox_j[0][0] - last_bbox[1][0]
+            if gap > 60:
+                break
+            combined = combined + " " + text_j
+            last_bbox = bbox_j
+            if _fuzzy(combined, target):
+                xs = [p[0] for p in bbox_i] + [p[0] for p in last_bbox]
+                ys = [p[1] for p in bbox_i] + [p[1] for p in last_bbox]
+                cx = int((min(xs) + max(xs)) / 2 / scale)
+                cy = int((min(ys) + max(ys)) / 2 / scale)
+                return (cx, cy)
+    return None
+
+
+# ── Knowledge base loaders ────────────────────────────────────────────────────
+
+_KB_HINTS: dict | None = None
+_ICON_DATA: dict | None = None
+
+
+def _load_kb_hints() -> dict:
+    global _KB_HINTS
+    if _KB_HINTS is None:
+        p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+        raw = json.loads(p.read_text()).get("element_hints", {}) if p.exists() else {}
+        _KB_HINTS = {k.lower(): v for k, v in raw.items()}
+    return _KB_HINTS
+
+
+def _load_icon_data() -> dict:
+    global _ICON_DATA
+    if _ICON_DATA is None:
+        p = Path(__file__).parent.parent / "kb" / "icon_prompts.json"
+        _ICON_DATA = json.loads(p.read_text()) if p.exists() else {}
+    return _ICON_DATA
+
+
+def _load_icon_prompts() -> list:
+    return _load_icon_data().get("icons", [])
+
+
+def _groq_vision_model() -> str:
+    return _load_icon_data().get("groq_vision_model", "meta-llama/llama-4-scout-17b-16e-instruct")
+
+
+def _icon_entry_for(target: str) -> dict | None:
+    t = target.lower().strip()
+    for entry in _load_icon_prompts():
+        if entry.get("element_label", "").lower() == t:
+            return entry
+    return None
+
+
+def _kb_hint(target: str) -> str | None:
+    return _load_kb_hints().get(target.lower())
+
+
+# ── Groq Vision ───────────────────────────────────────────────────────────────
+
+def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[int, int] | None:
+    from groq import Groq
+
+    buf = io.BytesIO()
+    screenshot.save(buf, format="PNG")
+    screenshot_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+
+    icon_entry = _icon_entry_for(target)
+    content: list[dict] = []
+
+    if icon_entry:
+        icon_b64 = icon_entry.get("icon_b64")
+        prompt = icon_entry["groq_prompt"]
+
+        if icon_b64:
+            # Send the icon image first so Groq knows exactly what to look for
+            content.append({"type": "image_url", "image_url": {"url": icon_b64}})
+            content.append({"type": "text", "text": f"This is the icon I am looking for: '{target}'."})
+            print(f"[detector] Sending icon image + screenshot to Groq for '{target}'")
+        else:
+            print(f"[detector] Using icon text prompt for '{target}'")
+
+        content.append({"type": "image_url", "image_url": {"url": screenshot_b64}})
+        content.append({"type": "text", "text": f"Now find this icon in the above screenshot of WSO2 Integrator. {prompt} Reply with ONLY: x,y"})
+    else:
+        # Generic fallback: text-only description
+        kb = _kb_hint(target)
+        prompt = f"In this screenshot of WSO2 Integrator, find the UI element: '{target}'."
+        if kb:
+            prompt += f" Location hint: {kb}."
+        if hint:
+            prompt += f" Additional context: {hint}."
+        prompt += " Reply with ONLY the pixel coordinates of its center as: x,y (integers). Nothing else."
+        content.append({"type": "image_url", "image_url": {"url": screenshot_b64}})
+        content.append({"type": "text", "text": prompt})
+
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    resp = client.chat.completions.create(
+        model=_groq_vision_model(),
+        messages=[{"role": "user", "content": content}],
+        temperature=0,
+    )
+    raw = resp.choices[0].message.content.strip()
+    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
+    if not m:
+        return None
+
+    px, py = int(m.group(1)), int(m.group(2))
+    scale = _scale(screenshot)
+    return (int(px / scale), int(py / scale))
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Locate an input field using its label position as an anchor.
+
+    No external API calls — works entirely locally.
+    Strategy:
+      1. Find the field label via OCR → defines the search region below it.
+      2. OpenCV contour detection in that region — find the widest input-shaped rect.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # ── Step 1: locate field label → defines the search region ───────────────
+    label_pos: tuple[int, int] | None = None
+    for bbox, text, conf in results:
+        if _fuzzy(text, field_label):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            label_pos = (int((min(xs) + max(xs)) / 2), int(max(ys)))
+            break
+
+    if label_pos is None:
+        return None
+
+    lx, ly = label_pos
+    sx1 = max(0, lx - 200)
+    sy1 = ly + 2
+    sx2 = min(arr.shape[1], lx + 600)
+    sy2 = min(arr.shape[0], ly + 90)
+
+    # ── Step 2: OpenCV contour detection in the label region ─────────────────
+    region = arr[sy1:sy2, sx1:sx2]
+    if region.size == 0:
+        return None
+
+    gray = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 30, 100)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    best: tuple[int, int, int, int] | None = None
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w > 80 and 10 < h < 45 and w > h * 3:
+            if best is None or w > best[2]:
+                best = (x, y, w, h)
+
+    if best:
+        x, y, w, h = best
+        cx = int((sx1 + x + w / 2) / scale)
+        cy = int((sy1 + y + h / 2) / scale)
+        print(f"[detector] Contour found input for '{field_label}' at ({cx}, {cy})")
+        return (cx, cy)
+>>>>>>> 7d1f240 (improved text files)
 
     return None
 
 
+<<<<<<< HEAD
 # ── Knowledge base loaders ────────────────────────────────────────────────────
 
 _KB_HINTS: dict | None = None
@@ -1685,11 +1892,23 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
 def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
     """Find where to click to focus a named input field."""
     # Try direct visual detection first
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Find where to click to focus a named input field.
+
+    Tries local visual detection first (OCR + OpenCV), falls back to Groq Vision
+    only when the local approach returns no result.
+    """
+>>>>>>> 7d1f240 (improved text files)
+>>>>>>> ee262bc (improved text files)
     result = _find_input_by_visual(screenshot, field_label)
     if result:
         return result
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     # Fall back to description-anchor method: locate the field's helper text and
     # click just below its last line — most reliable when a description is present.
@@ -1833,6 +2052,8 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> t
     print(f"[detector] Search field '{field_label}' not found")
     return None
 =======
+=======
+>>>>>>> ee262bc (improved text files)
     # Try indexed fallback if metadata exists
     kb = _kb_entry(field_label)
     if kb and "field_index" in kb and "anchor_label" in kb:
@@ -1899,4 +2120,68 @@ if __name__ == "__main__":
         print(f"Skipping Groq test — Groq removed.")
     else:
         print(f"Test file not found at {test_path}")
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+    # ── Groq Vision fallback ──────────────────────────────────────────────────
+    print(f"[detector] Visual detection failed for '{field_label}', falling back to Groq Vision...")
+    from groq import Groq
+
+    buf = io.BytesIO()
+    screenshot.save(buf, format="PNG")
+    screenshot_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+
+    kb = _kb_hint(field_label)
+    prompt = (
+        f"In this screenshot of WSO2 Integrator, I need to type a value into the '{field_label}' input field. "
+        f"Where exactly should I click to focus that input box? "
+        f"Point to the centre of the actual text input element, NOT its label. "
+    )
+    if kb:
+        prompt += f"Hint: {kb}. "
+    prompt += "Reply with ONLY the pixel coordinates as: x,y (integers). Nothing else."
+
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    resp = client.chat.completions.create(
+        model=_groq_vision_model(),
+        messages=[{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": screenshot_b64}},
+            {"type": "text", "text": prompt},
+        ]}],
+        temperature=0,
+    )
+    raw = resp.choices[0].message.content.strip()
+    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
+    if not m:
+        print(f"[detector] Groq also failed for '{field_label}': {raw!r}")
+        return None
+
+    px, py = int(m.group(1)), int(m.group(2))
+    scale = _scale(screenshot)
+    coords = (int(px / scale), int(py / scale))
+    print(f"[detector] Groq Vision found input for '{field_label}' at {coords}")
+    return coords
+
+
+def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+    result = _find_ocr(screenshot, target)
+    if result:
+        print(f"[detector] OCR found '{target}' at {result}")
+        return result
+
+    # Check if we have an icon image for this target — icon-only elements have no OCR-readable text
+    icon_entry = _icon_entry_for(target)
+    if icon_entry:
+        print(f"[detector] '{target}' is icon-based — skipping OCR, going straight to Groq Vision with icon image")
+    else:
+        print(f"[detector] OCR failed for '{target}', trying Groq Vision...")
+
+    result = _find_groq(screenshot, target, hint)
+    if result:
+        print(f"[detector] Groq Vision found '{target}' at {result}")
+        return result
+
+    raise ElementNotFoundError(f"Cannot find element: '{target}'")
+>>>>>>> 7d1f240 (improved text files)
+>>>>>>> ee262bc (improved text files)

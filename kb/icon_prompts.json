@@ -6,6 +6,7 @@
 >>>>>>> 9e44480 (Light (#6))
   "icons": [
     {
+<<<<<<< HEAD
       "id": "resource-flow-plus",
       "element_label": "+",
       "screen": "HTTP Service design view or Automation diagram view",
@@ -20,6 +21,8 @@
 >>>>>>> 9e44480 (Light (#6))
     },
     {
+=======
+>>>>>>> 7d1f240 (improved text files)
       "id": "settings-gear",
       "element_label": "Configure",
       "screen": "Welcome Screen",
@@ -241,7 +244,11 @@
 =======
       "icon_b64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHQAAAB0CAMAAABjROYVAAAC9FBMVEUAAAD///////////+/v7/MzMzV1dXb29vf39/j4+Pm5ubR0dHV1dXY2Njb29vd3d3f39/S0tLV1dXX19fZ2dnb29vc3Nze3t7V1dXW1tbY2NjZ2dnb29vc3Nzd3d3W1tbX19fa2trb29vc3NzW1tbX19fY2NjZ2dna2trb29vb29vW1tbX19fY2NjZ2dna2trb29vb29vX19fY2NjZ2dnZ2dna2trb29vb29vX19fY2NjZ2dnZ2dna2trb29vX19fY2NjY2NjZ2dna2tra2trb29vX19fY2NjZ2dna2tra2trb29vY2NjY2NjZ2dnZ2dna2trY2NjY2NjZ2dnZ2dna2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dnZ2dnX19fa2tra2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjY2NjZ2dna2tra2trY2NjZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dna2trZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dna2trZ2dna2trZ2dnZ2dnZ2dnY2NjZ2dnZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dna2trZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnY2NjZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnY2NjY2NjZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dkRrr7AAAAA+3RSTlMAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hKS0xNTk9QUVNVVldYWltcXV5f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",
       "groq_prompt": "Find the WSO2 Integrator logo/wordmark at the top of the welcome screen. Return its center pixel coordinates as x,y."
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+<<<<<<< HEAD
+>>>>>>> ee262bc (improved text files)
     },
     {
       "id": "run-button",
@@ -293,6 +300,8 @@
       "groq_prompt": "Find the green Run (play) button in the toolbar at the top of WSO2 Integrator. It is a green triangular play icon. Return center pixel coordinates as x,y.",
       "prefer_template": true,
       "match_threshold": 0.5
+=======
+>>>>>>> 7d1f240 (improved text files)
     }
   ]
 }

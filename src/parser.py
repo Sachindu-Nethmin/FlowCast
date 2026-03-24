@@ -16,7 +16,11 @@ _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 # visible label in the application.
 _FIELD_ALIASES: dict[str, str] = {
     "integration name":  "Integration Name",
+<<<<<<< HEAD
     "resource path":     "Resource Path",
+=======
+    "resource path":     "Resource path",
+>>>>>>> 7d1f240 (improved text files)
     "base url":          "Base URL",
     "action path":       "Path",
     "return expression": "Return expression",
@@ -96,7 +100,11 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         # ── Click: "Select **X**" ─────────────────────────────────────────────
         # Handles multiple selects in one sentence ("… and select **Open**")
+<<<<<<< HEAD
         for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
+=======
+        for m in re.finditer(r'[Ss]elect\s+\*\*([^*]+)\*\*', line):
+>>>>>>> 7d1f240 (improved text files)
             line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Click: "Add [a [new]] **X**" ──────────────────────────────────────
@@ -110,6 +118,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
+<<<<<<< HEAD
         # ── Type: "Set [the] [base] **X** to `Y`"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:
@@ -123,6 +132,21 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         # ── Type: "Set [the] X to `Y`" (non-bold field name)
         elif not line_actions:
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
+=======
+        # ── Type: "Set **X** to `Y`" ──────────────────────────────────────────
+        if not line_actions:
+            m = re.search(r'[Ss]et\s+\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line)
+            if m:
+                line_actions.append({
+                    "action":       "type",
+                    "field_target": _normalise_field(m.group(1)),
+                    "value":        m.group(2),
+                })
+
+        # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
+        if not line_actions:
+            m = re.search(r'[Ss]et\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line)
+>>>>>>> 7d1f240 (improved text files)
             if m:
                 line_actions.append({
                     "action":       "type",

@@ -26,8 +26,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+<<<<<<< HEAD
 from src import healer, recorder, runner
 from src.healer import HealingAbortedError
+=======
+from src import recorder, runner
+>>>>>>> 7d1f240 (improved text files)
 from src.parser import Step, parse_markdown
 from src.runner import ElementNotFoundError
 
@@ -51,7 +55,10 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
 
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"fc_{step_index}_"))
     clips: list[Path] = []
+<<<<<<< HEAD
     healer.reset_session()
+=======
+>>>>>>> 7d1f240 (improved text files)
 
     try:
         for i, action in enumerate(step.actions):
@@ -73,8 +80,12 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
                 continue
 
             print(f"   [fire  {i+1}/{len(step.actions)}] {kind}: {target}")
+<<<<<<< HEAD
             clip_name = f"clip_{i:03d}"
             runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
+=======
+            recorder.start(f"clip_{i:03d}", tmp_dir)
+>>>>>>> 7d1f240 (improved text files)
             try:
                 runner.fire(resolved)
                 runner.wait_ui_change()
@@ -115,9 +126,13 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
 
 =======
             except Exception as e:
+<<<<<<< HEAD
                 runner.set_pre_move_callback(None)
                 if recorder._proc is not None:
                     recorder.stop()
+=======
+                recorder.stop()
+>>>>>>> 7d1f240 (improved text files)
                 print(f"[ERROR] Action {i+1} failed: {e}", file=sys.stderr)
                 return None
             # Only stop if recording was actually started by the callback
@@ -141,7 +156,30 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
         print(f"   MOV saved → {step_mov.name}")
         return gif, step_mov
 
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+<<<<<<< HEAD
+=======
+        if not clips:
+            print(f"[WARN] No clips recorded for step {step_index}")
+            return None
+
+        # Combine clips → step MOV (kept permanently) → GIF
+        combined_tmp = tmp_dir / "combined.mov"
+        recorder.combine(clips, combined_tmp)
+
+        step_mov = out_dir / f"step-{step_index:02d}-{_slug(step.title)}.mov"
+        shutil.move(str(combined_tmp), str(step_mov))
+
+        gif = out_dir / step.gif_filename
+        recorder.to_gif(step_mov, gif)
+        print(f"   GIF saved → {gif}")
+        print(f"   MOV saved → {step_mov.name}")
+        return gif, step_mov
+
+>>>>>>> 7d1f240 (improved text files)
+>>>>>>> ee262bc (improved text files)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -266,7 +304,6 @@ def main() -> None:
         print("Usage: python main.py workflow.md [--step N]", file=sys.stderr)
         sys.exit(1)
 
-    # Parse flags
     only_step: int | None = None
     md_path:   Path | None = None
     i = 0
@@ -274,12 +311,6 @@ def main() -> None:
         if args[i] == "--step" and i + 1 < len(args):
             only_step = int(args[i + 1])
             i += 2
-        elif args[i] == "--prompt" and i + 1 < len(args):
-            prompt = args[i + 1]
-            i += 2
-        elif args[i] == "--dry-run":
-            dry_run = True
-            i += 1
         else:
             md_path = Path(args[i])
             i += 1

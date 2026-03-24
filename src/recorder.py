@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import re
+<<<<<<< HEAD
 import shutil
+=======
+>>>>>>> 7d1f240 (improved text files)
 import subprocess
 import tempfile
 import time
@@ -13,7 +16,10 @@ WIDTH = 1280
 _proc: subprocess.Popen | None = None
 _mov_path: Path | None = None
 _screen_idx: str | None = None
+<<<<<<< HEAD
 _stderr_tmp = None
+=======
+>>>>>>> 7d1f240 (improved text files)
 
 
 def _get_screen_index() -> str:
@@ -33,6 +39,7 @@ def _get_screen_index() -> str:
                     return _screen_idx
     except Exception:
         pass
+<<<<<<< HEAD
     _screen_idx = "2"
     return _screen_idx
 
@@ -72,10 +79,38 @@ def start(name: str, output_dir: Path) -> None:
         _stderr_tmp.seek(0)
         err = _stderr_tmp.read().decode(errors="replace")
         raise RuntimeError(f"Recorder exited early:\n{err}")
+=======
+    _screen_idx = "1"
+    return _screen_idx
+
+
+def start(name: str, output_dir: Path) -> None:
+    global _proc, _mov_path
+    if _proc is not None:
+        raise RuntimeError("Recorder already running")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _mov_path = output_dir / f"{name}.mov"
+
+    idx = _get_screen_index()
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "avfoundation",
+        "-capture_cursor", "1",
+        "-framerate", str(FPS),
+        "-i", f"{idx}:none",
+        "-vf", f"fps={FPS},scale={WIDTH}:-1:flags=lanczos",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+        str(_mov_path),
+    ]
+    _proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.8)
+>>>>>>> 7d1f240 (improved text files)
     print(f"[recorder] Recording → {_mov_path.name}")
 
 
 def stop() -> Path:
+<<<<<<< HEAD
     global _proc, _mov_path, _stderr_tmp
 
     if _proc is None:
@@ -87,10 +122,21 @@ def stop() -> Path:
     except (BrokenPipeError, OSError):
         pass
 
+=======
+    global _proc, _mov_path
+    if _proc is None:
+        raise RuntimeError("Recorder not running")
+    try:
+        _proc.stdin.write(b"q")
+        _proc.stdin.flush()
+    except BrokenPipeError:
+        pass
+>>>>>>> 7d1f240 (improved text files)
     try:
         _proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         _proc.terminate()
+<<<<<<< HEAD
         try:
             _proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -120,10 +166,17 @@ def stop() -> Path:
     # Optimize: Remove idle time (static frames) from the clip
     path = trim(path)
 
+=======
+        _proc.wait(timeout=10)
+    path = _mov_path
+    _proc = None
+    _mov_path = None
+>>>>>>> 7d1f240 (improved text files)
     print(f"[recorder] Saved → {path.name}")
     return path
 
 
+<<<<<<< HEAD
 def trim(mov_path: Path) -> Path:
     """Remove near-identical frames (idle time) using ffmpeg mpdecimate.
     
@@ -165,10 +218,22 @@ def trim(mov_path: Path) -> Path:
 
 def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
     """Concatenate .mov clips into a single .mov file."""
+=======
+def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
+    """Concatenate .mov clips into a single .mov file.
+
+    keep_inputs=True leaves the source files untouched (used when combining
+    permanent step MOVs into the full recording).
+    """
+>>>>>>> 7d1f240 (improved text files)
     if not clips:
         raise ValueError("No clips to combine")
     if len(clips) == 1:
         if keep_inputs:
+<<<<<<< HEAD
+=======
+            import shutil
+>>>>>>> 7d1f240 (improved text files)
             shutil.copy2(clips[0], output)
         else:
             clips[0].rename(output)
@@ -179,12 +244,20 @@ def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
         for clip in clips:
             f.write(f"file '{clip.resolve()}'\n")
 
+<<<<<<< HEAD
     result = subprocess.run([
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(list_file),
         # Re-encode to fix discontinuous PTS across avfoundation clips
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+=======
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", str(list_file),
+        "-c", "copy",
+>>>>>>> 7d1f240 (improved text files)
         str(output),
     ], capture_output=True)
     if result.returncode != 0:
@@ -203,9 +276,14 @@ def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
 
 
 def to_gif(mov: Path, gif: Path) -> Path:
+<<<<<<< HEAD
     # frames already cropped/scaled during recording — just resample fps and palette
     vf = f"fps={FPS},scale={WIDTH}:-2:flags=lanczos"
     palette = gif.parent / f"{gif.stem}_palette.png"
+=======
+    palette = gif.parent / f"{gif.stem}_palette.png"
+    vf = f"fps={FPS},scale={WIDTH}:-1:flags=lanczos"
+>>>>>>> 7d1f240 (improved text files)
 
     subprocess.run([
         "ffmpeg", "-y", "-i", str(mov),

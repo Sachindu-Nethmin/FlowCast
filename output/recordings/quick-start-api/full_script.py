@@ -27,8 +27,13 @@ def _run(action):
 # Step 1: Create the project
 # ──────────────────────────────────────────────────────────
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
+<<<<<<< HEAD
 _run({'action': 'click', 'target': 'Create'})
 _run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
+=======
+_run({'action': 'click', 'target': 'Create New Integration'})
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'HelloWorld'})
+>>>>>>> 7d1f240 (improved text files)
 _run({'action': 'click', 'target': 'Browse'})
 _run({'action': 'click', 'target': 'Open'})
 _run({'action': 'click', 'target': 'Create Integration'})
@@ -44,6 +49,7 @@ _run({'action': 'click', 'target': 'Create'})
 # ──────────────────────────────────────────────────────────
 # Step 3: Design the integration flow
 # ──────────────────────────────────────────────────────────
+<<<<<<< HEAD
 _run({'action': 'click', 'target': '+ Add Resouses'})
 _run({'action': 'click', 'target': 'GET'})
 _run({'action': 'type', 'field_target': 'Resource Path', 'value': 'greeting'})
@@ -67,3 +73,16 @@ _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Return'})
 _run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
 _run({'action': 'click', 'target': 'Save'})
+=======
+_run({'action': 'type', 'field_target': 'Resource path', 'value': '/greeting'})
+_run({'action': 'hotkey', 'keys': ['command', 's']})
+_run({'action': 'click', 'target': '+'})
+_run({'action': 'type', 'field_target': 'Base URL', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})
+_run({'action': 'type', 'field_target': 'Connection Name', 'value': 'externalApi'})
+_run({'action': 'hotkey', 'keys': ['command', 's']})
+_run({'action': 'click', 'target': 'get'})
+_run({'action': 'type', 'field_target': 'Path', 'value': '/'})
+_run({'action': 'type', 'field_target': 'Response Variable', 'value': 'response'})
+_run({'action': 'select', 'field_target': 'Response Type', 'value': 'json'})
+_run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
+>>>>>>> 7d1f240 (improved text files)

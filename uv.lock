@@ -16,6 +16,7 @@ wheels = [
 
 [[package]]
 <<<<<<< HEAD
+<<<<<<< HEAD
 name = "cairosvg"
 version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -29,6 +30,8 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/38/07/e8412a13019b3f737972dea23a2c61ca42becafc16c9338f4ca7a0caa993/cairosvg-2.9.0.tar.gz", hash = "sha256:1debb00cd2da11350d8b6f5ceb739f1b539196d71d5cf5eb7363dbd1bfbc8dc5", size = 40877, upload-time = "2026-03-13T15:42:00.564Z" }
 wheels = [
 =======
+=======
+>>>>>>> ee262bc (improved text files)
 name = "cairocffi"
 version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -58,8 +61,15 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "cffi"
 version = "2.0.0"
+=======
+=======
+>>>>>>> 7d1f240 (improved text files)
+name = "certifi"
+version = "2026.2.25"
+>>>>>>> ee262bc (improved text files)
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pycparser", marker = "implementation_name != 'PyPy'" },
@@ -129,6 +139,7 @@ wheels = [
 
 [[package]]
 <<<<<<< HEAD
+<<<<<<< HEAD
 name = "cssselect2"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -139,6 +150,8 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e0/20/92eaa6b0aec7189fa4b75c890640e076e9e793095721db69c5c81142c2e1/cssselect2-0.9.0.tar.gz", hash = "sha256:759aa22c216326356f65e62e791d66160a0f9c91d1424e8d8adc5e74dddfc6fb", size = 35595, upload-time = "2026-02-12T17:16:39.614Z" }
 wheels = [
 =======
+=======
+>>>>>>> ee262bc (improved text files)
 name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -223,6 +236,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> 7d1f240 (improved text files)
 name = "cuda-bindings"
 version = "13.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -292,7 +307,10 @@ nvrtc = [
 nvtx = [
     { name = "nvidia-nvtx", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> ee262bc (improved text files)
 ]
 
 [[package]]
@@ -302,7 +320,12 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+>>>>>>> 7d1f240 (improved text files)
+>>>>>>> ee262bc (improved text files)
 ]
 
 [[package]]
@@ -1441,6 +1464,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "tinycss2"
 version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1453,6 +1477,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> 7d1f240 (improved text files)
 name = "torch"
 version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
