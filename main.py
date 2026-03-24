@@ -27,11 +27,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 from src import healer, recorder, runner
 from src.healer import HealingAbortedError
 =======
 from src import recorder, runner
 >>>>>>> 7d1f240 (improved text files)
+=======
+from src import healer, recorder, runner
+from src.healer import HealingAbortedError
+>>>>>>> b856107 (1.0)
 from src.parser import Step, parse_markdown
 from src.runner import ElementNotFoundError
 
@@ -56,9 +61,13 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"fc_{step_index}_"))
     clips: list[Path] = []
 <<<<<<< HEAD
+<<<<<<< HEAD
     healer.reset_session()
 =======
 >>>>>>> 7d1f240 (improved text files)
+=======
+    healer.reset_session()
+>>>>>>> b856107 (1.0)
 
     try:
         for i, action in enumerate(step.actions):

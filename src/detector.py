@@ -234,6 +234,7 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
     """Detect if the element is inside a WSO2 'ButtonCard' container.
     
@@ -408,15 +409,31 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             print(f"[detector] Longest-word '{keyword}' (~fuzzy) found for '{target}' at ({cx}, {cy}), blue={is_blue}")
             return (cx, cy)
 =======
+=======
+def _alpha_target(target: str) -> str:
+    """Return the longest purely-alpha word from target for focused OCR matching.
+
+    e.g. '+ Add Resources' → 'Resources'
+         '+ Add Resouses'  → 'Resouses'
+    """
+    words = [w for w in target.split() if w.isalpha()]
+    return max(words, key=len) if words else target
+
+
+>>>>>>> b856107 (1.0)
 def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     arr = np.array(screenshot)
     results = _ocr().readtext(arr)
     scale = _scale(screenshot)
 
+    # For multi-word targets, also try without non-alpha tokens (e.g. strip leading "+")
+    clean_target = _alpha_target(target)
+
     # Collect all fuzzy matches, scoring blue-background ones higher
+    # Try both original target and cleaned target (non-alpha tokens stripped)
     candidates: list[tuple[int, int, float, bool]] = []  # (cx, cy, conf, is_blue)
     for bbox, text, conf in results:
-        if _fuzzy(text, target):
+        if _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target)):
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             cx = int((min(xs) + max(xs)) / 2 / scale)
@@ -431,26 +448,52 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             print(f"[detector] OCR: {len(candidates)} matches for '{target}', picked {'blue' if is_blue else 'highest-conf'} at ({cx}, {cy})")
         return (cx, cy)
 
-    # Multi-word merge: try adjacent OCR boxes
-    words = target.lower().split()
-    if len(words) < 2:
-        return None
+    # Multi-word merge: try adjacent OCR boxes using cleaned target
+    merge_target = clean_target if clean_target != target else target
+    words = merge_target.lower().split()
+    if len(words) >= 2:
+        for i, (bbox_i, text_i, _) in enumerate(results):
+            combined = text_i
+            last_bbox = bbox_i
+            for bbox_j, text_j, _ in results[i + 1:]:
+                gap = bbox_j[0][0] - last_bbox[1][0]
+                if gap > 60:
+                    break
+                combined = combined + " " + text_j
+                last_bbox = bbox_j
+                if _fuzzy(combined, merge_target):
+                    xs = [p[0] for p in bbox_i] + [p[0] for p in last_bbox]
+                    ys = [p[1] for p in bbox_i] + [p[1] for p in last_bbox]
+                    cx = int((min(xs) + max(xs)) / 2 / scale)
+                    cy = int((min(ys) + max(ys)) / 2 / scale)
+                    return (cx, cy)
 
-    for i, (bbox_i, text_i, _) in enumerate(results):
-        combined = text_i
-        last_bbox = bbox_i
-        for bbox_j, text_j, _ in results[i + 1:]:
-            gap = bbox_j[0][0] - last_bbox[1][0]
-            if gap > 60:
-                break
-            combined = combined + " " + text_j
-            last_bbox = bbox_j
-            if _fuzzy(combined, target):
-                xs = [p[0] for p in bbox_i] + [p[0] for p in last_bbox]
-                ys = [p[1] for p in bbox_i] + [p[1] for p in last_bbox]
-                cx = int((min(xs) + max(xs)) / 2 / scale)
-                cy = int((min(ys) + max(ys)) / 2 / scale)
-                return (cx, cy)
+    # Longest-word fallback: search for the most distinctive word in the target
+    # Uses similarity matching so typos (e.g. "Resouses" → "Resources") still match
+    from difflib import SequenceMatcher
+
+    real_words = [w for w in words if w.isalpha()]
+    if real_words:
+        keyword = max(real_words, key=len)
+        kw_candidates: list[tuple[int, int, float, bool]] = []
+        for bbox, text, conf in results:
+            for ocr_word in text.lower().split():
+                if not ocr_word.isalpha():
+                    continue
+                similarity = SequenceMatcher(None, keyword, ocr_word).ratio()
+                if similarity >= 0.75:
+                    xs = [p[0] for p in bbox]
+                    ys = [p[1] for p in bbox]
+                    cx = int((min(xs) + max(xs)) / 2 / scale)
+                    cy = int((min(ys) + max(ys)) / 2 / scale)
+                    kw_candidates.append((cx, cy, conf, _is_blue_background(arr, bbox)))
+                    break
+        if kw_candidates:
+            kw_candidates.sort(key=lambda c: (c[3], c[2]), reverse=True)
+            cx, cy, _, is_blue = kw_candidates[0]
+            print(f"[detector] Longest-word '{keyword}' (~fuzzy) found for '{target}' at ({cx}, {cy}), blue={is_blue}")
+            return (cx, cy)
+
     return None
 
 
@@ -488,13 +531,33 @@ def _groq_vision_model() -> str:
 def _icon_entry_for(target: str) -> dict | None:
     t = target.lower().strip()
     for entry in _load_icon_prompts():
-        if entry.get("element_label", "").lower() == t:
+        label = entry.get("element_label", "").lower()
+        if label == t:
+            return entry
+        # Only fuzzy-match labels that are 3+ chars to prevent short symbols
+        # like "+" matching unrelated targets such as "+ Add Resources"
+        if len(label) >= 3 and (label in t or t in label):
             return entry
     return None
 
 
 def _kb_hint(target: str) -> str | None:
-    return _load_kb_hints().get(target.lower())
+    hints = _load_kb_hints()
+    t = target.lower().strip()
+    # Exact match first
+    if t in hints:
+        return hints[t]
+    # Fuzzy: hint key contained in target or target contained in hint key
+    for key, val in hints.items():
+        if key in t or t in key:
+            return val
+    # Word-level: any word from target matches a hint key word
+    target_words = set(w for w in t.split() if w.isalpha() and len(w) > 3)
+    for key, val in hints.items():
+        key_words = set(w for w in key.split() if w.isalpha() and len(w) > 3)
+        if target_words & key_words:
+            return val
+    return None
 
 
 # ── Groq Vision ───────────────────────────────────────────────────────────────
@@ -548,7 +611,16 @@ def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[
 
     px, py = int(m.group(1)), int(m.group(2))
     scale = _scale(screenshot)
-    return (int(px / scale), int(py / scale))
+    lx, ly = int(px / scale), int(py / scale)
+
+    # Validate: if icon entry specifies canvas position, reject toolbar-zone results (y < 100)
+    if icon_entry and icon_entry.get("position_hint", ""):
+        hint_lower = icon_entry["position_hint"].lower()
+        if any(kw in hint_lower for kw in ("canvas", "flow", "resource flow")) and ly < 100:
+            print(f"[detector] Groq returned toolbar-zone y={ly} for canvas element '{target}' — rejecting")
+            return None
+
+    return (lx, ly)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -2165,16 +2237,17 @@ if __name__ == "__main__":
 
 
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
-    result = _find_ocr(screenshot, target)
-    if result:
-        print(f"[detector] OCR found '{target}' at {result}")
-        return result
+    # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
+    # For all other targets, try OCR first and fall back to Groq Vision.
+    skip_ocr = len(target.strip()) <= 2 and _icon_entry_for(target) is not None
 
-    # Check if we have an icon image for this target — icon-only elements have no OCR-readable text
-    icon_entry = _icon_entry_for(target)
-    if icon_entry:
-        print(f"[detector] '{target}' is icon-based — skipping OCR, going straight to Groq Vision with icon image")
+    if skip_ocr:
+        print(f"[detector] '{target}' is a short symbol — skipping OCR, using Groq Vision")
     else:
+        result = _find_ocr(screenshot, target)
+        if result:
+            print(f"[detector] OCR found '{target}' at {result}")
+            return result
         print(f"[detector] OCR failed for '{target}', trying Groq Vision...")
 
     result = _find_groq(screenshot, target, hint)

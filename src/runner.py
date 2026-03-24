@@ -206,6 +206,7 @@ def _activate() -> None:
     time.sleep(0.3)
 
 
+<<<<<<< HEAD
 def _find(target: str, hint: str | None = None) -> tuple[int, int]:
     for attempt in range(_MAX_RETRIES):
         try:
@@ -216,6 +217,30 @@ def _find(target: str, hint: str | None = None) -> tuple[int, int]:
                 time.sleep(_RETRY_DELAY)
     raise ElementNotFoundError(f"'{target}' not found after {_MAX_RETRIES} attempts")
 >>>>>>> 7d1f240 (improved text files)
+=======
+def _find(target: str, hint: str | None = None, action: dict | None = None,
+          step_title: str = "", action_index: int = 0) -> tuple[int, int]:
+    screenshot = _screenshot()
+    try:
+        return find_element(screenshot, target, hint)
+    except ElementNotFoundError:
+        pass
+
+    # OCR failed — hand off to healer for diagnosis + escalating retry
+    from src import healer
+    import numpy as np
+    from src.detector import _ocr
+    arr = np.array(screenshot)
+    ocr_results = _ocr().readtext(arr)
+    ctx = healer.HealContext(
+        action=action or {"target": target},
+        screenshot=screenshot,
+        ocr_results=ocr_results,
+        step_title=step_title,
+        action_index=action_index,
+    )
+    return healer.heal(ctx)  # raises HealingAbortedError or ElementNotFoundError on total failure
+>>>>>>> b856107 (1.0)
 
 
 <<<<<<< HEAD
@@ -711,6 +736,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         target = action["target"]
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
@@ -724,6 +750,8 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 =======
 =======
 >>>>>>> ee262bc (improved text files)
+=======
+>>>>>>> 59739ff (1.0)
         
 >>>>>>> 9e44480 (Light (#6))
         # Verify clickability via WSO2 Integrator React source code
@@ -740,6 +768,9 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 =======
         x, y = _find(target, action.get("hint"))
 >>>>>>> 7d1f240 (improved text files)
+=======
+        x, y = _find(target, action.get("hint"), action=action)
+>>>>>>> b856107 (1.0)
         return {**action, "x": x, "y": y}
 
     if kind == "type":

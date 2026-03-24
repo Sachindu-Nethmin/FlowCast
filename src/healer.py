@@ -8,7 +8,11 @@ Strategies (in order):
   1. cache_winner  — previously successful strategy for this element
   2. ocr_exact     — standard OCR fuzzy match
   3. ocr_longest   — longest alpha word from target, similarity-matched
+<<<<<<< HEAD
 # (Strategies 1-3 only)
+=======
+  4. groq_vision   — Groq Vision API (last resort)
+>>>>>>> b856107 (1.0)
 
 Diagnosis:
   MD_ERROR   — similar text exists on screen but does not match target → probable typo
@@ -181,7 +185,12 @@ def diagnose(target: str, ocr_results: list, screenshot: Any | None = None) -> D
         similarity=best_ratio,
         message=(
             f"Ambiguous failure for '{target}': "
+<<<<<<< HEAD
             f"closest='{best_text}' (sim={best_ratio:.2f})."
+=======
+            f"closest='{best_text}' (sim={best_ratio:.2f}). "
+            f"Trying Groq Vision."
+>>>>>>> b856107 (1.0)
         ),
     )
 
@@ -204,6 +213,10 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
     """
     from src.detector import (
         ElementNotFoundError,
+<<<<<<< HEAD
+=======
+        _find_groq,
+>>>>>>> b856107 (1.0)
         _find_ocr,
         _scale,
         _ocr,
@@ -221,7 +234,16 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
 
     # ── Phase 0: try cached winner first ──────────────────────────────────────
     winner = get_winner(target)
+<<<<<<< HEAD
     # (Strategy 0: check cached winner)
+=======
+    if winner == "groq_vision":
+        result = _find_groq(ctx.screenshot, target, None)
+        if result:
+            print(f"[healer] Cache winner 'groq_vision' found '{target}' at {result}")
+            return result
+        record_fail(target, "groq_vision")
+>>>>>>> b856107 (1.0)
 
     # ── Phase 1: fresh OCR ────────────────────────────────────────────────────
     time.sleep(0.5)
@@ -259,7 +281,19 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
             record_win(target, "ocr_corrected")
             return result
 
+<<<<<<< HEAD
     # ── Phase 4: All strategies failed ─────────────────────────────────────────
+=======
+    # ── Phase 4: Groq Vision (last resort) ────────────────────────────────────
+    print(f"[healer] Phase 4: Groq Vision for '{target}'")
+    result = _find_groq(fresh_screenshot, target, None)
+    if result:
+        print(f"[healer] Groq Vision found '{target}' at {result}")
+        record_win(target, "groq_vision")
+        return result
+
+    record_fail(target, "groq_vision")
+>>>>>>> b856107 (1.0)
     debug_path = _save_debug_screenshot(target, fresh_screenshot)
     raise ElementNotFoundError(
         f"All healing strategies failed for '{target}'. "
