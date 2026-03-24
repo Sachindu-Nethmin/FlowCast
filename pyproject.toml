@@ -1,7 +1,6 @@
 [project]
 name = "flowcast"
 version = "0.1.0"
-description = "Convert human instructions to GIFs"
 requires-python = ">=3.11"
 dependencies = [
     "pyautogui>=0.9.54",
@@ -13,13 +12,6 @@ dependencies = [
     "easyocr>=1.7.1",
     "numpy>=1.26.0",
     "opencv-python-headless>=4.8.0",
-    "scipy>=1.11.0",
-]
-
-[dependency-groups]
-dev = [
-    "pylint>=3.1.0",
-    "pytest>=8.1.0",
 ]
 
 [build-system]
