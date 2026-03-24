@@ -44,7 +44,9 @@ _run({'action': 'click', 'target': 'Create'})
 # ──────────────────────────────────────────────────────────
 # Step 3: Design the integration flow
 # ──────────────────────────────────────────────────────────
-_run({'action': 'type', 'field_target': 'Resource path', 'value': '/greeting'})
+_run({'action': 'click', 'target': '+ Add Resouses'})
+_run({'action': 'click', 'target': 'GET'})
+_run({'action': 'type', 'field_target': 'Resource Path', 'value': 'greeting'})
 _run({'action': 'hotkey', 'keys': ['command', 's']})
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'type', 'field_target': 'Base URL', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})

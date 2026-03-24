@@ -58,15 +58,28 @@ def _activate() -> None:
     time.sleep(0.3)
 
 
-def _find(target: str, hint: str | None = None) -> tuple[int, int]:
-    for attempt in range(_MAX_RETRIES):
-        try:
-            return find_element(_screenshot(), target, hint)
-        except ElementNotFoundError:
-            if attempt < _MAX_RETRIES - 1:
-                print(f"[runner] Retry {attempt + 1} for '{target}'...")
-                time.sleep(_RETRY_DELAY)
-    raise ElementNotFoundError(f"'{target}' not found after {_MAX_RETRIES} attempts")
+def _find(target: str, hint: str | None = None, action: dict | None = None,
+          step_title: str = "", action_index: int = 0) -> tuple[int, int]:
+    screenshot = _screenshot()
+    try:
+        return find_element(screenshot, target, hint)
+    except ElementNotFoundError:
+        pass
+
+    # OCR failed — hand off to healer for diagnosis + escalating retry
+    from src import healer
+    import numpy as np
+    from src.detector import _ocr
+    arr = np.array(screenshot)
+    ocr_results = _ocr().readtext(arr)
+    ctx = healer.HealContext(
+        action=action or {"target": target},
+        screenshot=screenshot,
+        ocr_results=ocr_results,
+        step_title=step_title,
+        action_index=action_index,
+    )
+    return healer.heal(ctx)  # raises HealingAbortedError or ElementNotFoundError on total failure
 
 
 def _paste(value: str) -> None:
@@ -129,7 +142,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "click":
         target = action["target"]
-        x, y = _find(target, action.get("hint"))
+        x, y = _find(target, action.get("hint"), action=action)
         return {**action, "x": x, "y": y}
 
     if kind == "type":

@@ -16,7 +16,7 @@ _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 # visible label in the application.
 _FIELD_ALIASES: dict[str, str] = {
     "integration name":  "Integration Name",
-    "resource path":     "Resource path",
+    "resource path":     "Resource Path",
     "base url":          "Base URL",
     "action path":       "Path",
     "return expression": "Return expression",
@@ -78,7 +78,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         # ── Click: "Select **X**" ─────────────────────────────────────────────
         # Handles multiple selects in one sentence ("… and select **Open**")
-        for m in re.finditer(r'[Ss]elect\s+\*\*([^*]+)\*\*', line):
+        for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
             line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Click: "Add [a [new]] **X**" ──────────────────────────────────────
@@ -92,9 +92,9 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
-        # ── Type: "Set **X** to `Y`" ──────────────────────────────────────────
+        # ── Type: "Set [the] **X** to `Y`" ───────────────────────────────────
         if not line_actions:
-            m = re.search(r'[Ss]et\s+\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line)
+            m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action":       "type",
@@ -104,7 +104,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
         if not line_actions:
-            m = re.search(r'[Ss]et\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line)
+            m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action":       "type",

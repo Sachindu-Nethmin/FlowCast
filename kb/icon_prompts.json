@@ -3,6 +3,16 @@
   "groq_vision_model": "meta-llama/llama-4-scout-17b-16e-instruct",
   "icons": [
     {
+      "id": "resource-flow-plus",
+      "element_label": "+",
+      "screen": "HTTP Service design view",
+      "position_hint": "inside the resource flow canvas, NOT in the top toolbar",
+      "action": "Add a new node to the integration flow",
+      "icon_file": null,
+      "icon_b64": null,
+      "groq_prompt": "Find the small BLUE circular plus (+) button inside the resource flow canvas in WSO2 Integrator. It has a solid blue or teal filled circle background with a white + symbol inside. It is located in the MIDDLE of the screen vertically (y > 150), inside the flow diagram area between or below nodes — NOT in the top toolbar (y < 100). Do NOT return toolbar icons. Return center pixel coordinates as x,y."
+    },
+    {
       "id": "settings-gear",
       "element_label": "Configure",
       "screen": "Welcome Screen",

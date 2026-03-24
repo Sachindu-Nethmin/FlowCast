@@ -430,6 +430,9 @@
     "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
     "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
     "HTTP Service": "Card/option inside the artifact picker dialog, under 'Integration as API' section.",
+    "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
+    "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
+    "Resource Path": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens.",
     "Service Base Path": "Text input field in the HTTP Service creation form. Has a pre-filled '/'. Click the input to focus it, select all to remove '/', then paste the new value.",
     "Listener port": "Text input field in HTTP Service creation form for the port number e.g. 9090.",
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
@@ -459,6 +462,7 @@
       "Workspace Name": "Enter workspace name",
       "Package Version": "0.1.0",
       "Service Base Path": "/",
+      "Resource Path": "/path",
       "Listener port": "8080",
       "Base URL": "Enter base URL",
       "Connection Name": "Enter connection name",
@@ -485,6 +489,11 @@
         "label": "Service Base Path",
         "screens": ["http_service_creation"],
         "note": "Already focused when the form opens. Select all (Cmd+A) to clear pre-filled '/' then paste value."
+      },
+      {
+        "label": "Resource Path",
+        "screens": ["add_resource_dialog"],
+        "note": "Auto-focused when Add Resource dialog opens. Select all to clear pre-filled '/path' then paste value."
       }
     ]
   },
