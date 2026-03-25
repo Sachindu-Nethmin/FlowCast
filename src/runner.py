@@ -197,6 +197,7 @@ def _find_set_button() -> tuple[int, int] | None:
     cy = best_loc[1] + best_th // 2
     print(f"[runner] Set button found at ({cx}, {cy}) confidence={best_val:.2f}")
     return (cx, cy)
+<<<<<<< HEAD
 =======
 def _activate() -> None:
     subprocess.run(
@@ -241,6 +242,8 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
     )
     return healer.heal(ctx)  # raises HealingAbortedError or ElementNotFoundError on total failure
 >>>>>>> b856107 (1.0)
+=======
+>>>>>>> 6e2f95f (add image indentification)
 
 
 <<<<<<< HEAD
@@ -848,6 +851,9 @@ def fire(action: dict[str, Any]) -> None:
 
     elif kind == "click":
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 6e2f95f (add image indentification)
         _trigger_pre_move()
 <<<<<<< HEAD
         pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
@@ -877,13 +883,19 @@ def fire(action: dict[str, Any]) -> None:
 >>>>>>> 9e44480 (Light (#6))
         if action.get("_needs_click") and x is not None and y is not None:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 6e2f95f (add image indentification)
             _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
             wait_ui_change(timeout=2.0)
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
+=======
+>>>>>>> 7edd6ac (add image indentification)
             
 >>>>>>> 9e44480 (Light (#6))
             # If a "Set" button is visible, click it to activate the input field
@@ -903,6 +915,15 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.click(x, y)
             wait_ui_change(timeout=2.0)
 >>>>>>> 7d1f240 (improved text files)
+=======
+        # If a "Set" button is visible, click it to activate the input field first
+        set_pos = _find_set_button()
+        if set_pos:
+            _trigger_pre_move()
+            pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
+            pyautogui.click(set_pos[0], set_pos[1])
+            wait_ui_change(timeout=2.0)
+>>>>>>> 6e2f95f (add image indentification)
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)
@@ -947,9 +968,13 @@ def fire(action: dict[str, Any]) -> None:
 
     elif kind == "select":
 <<<<<<< HEAD
+<<<<<<< HEAD
         _trigger_pre_move()
 =======
 >>>>>>> 7d1f240 (improved text files)
+=======
+        _trigger_pre_move()
+>>>>>>> 6e2f95f (add image indentification)
         pyautogui.moveTo(x, y, duration=0.2)
         pyautogui.click(x, y)
         time.sleep(0.4)
@@ -976,9 +1001,13 @@ def fire(action: dict[str, Any]) -> None:
 >>>>>>> 9e44480 (Light (#6))
     elif kind == "hotkey":
 <<<<<<< HEAD
+<<<<<<< HEAD
         _trigger_pre_move()
 =======
 >>>>>>> 7d1f240 (improved text files)
+=======
+        _trigger_pre_move()
+>>>>>>> 6e2f95f (add image indentification)
         pyautogui.hotkey(*action["keys"])
 
     elif kind == "scroll":

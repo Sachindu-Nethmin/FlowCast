@@ -45,14 +45,19 @@
 
 ## Step 3: Add logic
 
-1. Select **Call Function** node to the flow.
-2. Select **Println** from the node panel.
-3. Select **Initialize Array** from the node panel.
-4. Set **Values** to `"Hello World"` and select **Save**.
+1. Select **+** after the **Start** node to open the node panel.
+2. Select **Call Function** node to the flow.
+3. Select **Println** from the node panel.
+4. Select **Initialize Array** from the node panel.
+5. Set **Values** to `"Hello World"` and select **Save**.
 
 ## Step 4: Run and test
 
+<<<<<<< HEAD
 1. Select **Run** in the toolbar.
 >>>>>>> f89df14 (ffmpeg)
+=======
+1. Select **Run**.
+>>>>>>> 6e2f95f (add image indentification)
 2. The automation executes immediately and prints output to the terminal.
 3. Check the terminal output for `Hello World`.

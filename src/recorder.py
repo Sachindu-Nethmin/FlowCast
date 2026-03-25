@@ -64,6 +64,7 @@ def start(name: str, output_dir: Path) -> None:
     _mov_path = output_dir / f"{name}.mov"
 
     MENU_BAR_H = 70  # logical pixels — macOS menu bar + border
+<<<<<<< HEAD
     idx = _get_screen_index()
     # crop removes the menu bar, then resample fps and scale
     vf = f"crop=in_w:in_h-{MENU_BAR_H}:0:{MENU_BAR_H},fps={FPS},scale={WIDTH}:-2:flags=lanczos"
@@ -106,9 +107,11 @@ def start(name: str, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _mov_path = output_dir / f"{name}.mov"
 
+=======
+>>>>>>> 6e2f95f (add image indentification)
     idx = _get_screen_index()
-    # avfoundation captures at logical resolution — just resample fps and scale
-    vf = f"fps={FPS},scale={WIDTH}:-2:flags=lanczos"
+    # crop removes the menu bar, then resample fps and scale
+    vf = f"crop=in_w:in_h-{MENU_BAR_H}:0:{MENU_BAR_H},fps={FPS},scale={WIDTH}:-2:flags=lanczos"
 
     cmd = [
         "ffmpeg", "-y",

@@ -90,11 +90,16 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
 
             print(f"   [fire  {i+1}/{len(step.actions)}] {kind}: {target}")
 <<<<<<< HEAD
+<<<<<<< HEAD
             clip_name = f"clip_{i:03d}"
             runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
 =======
             recorder.start(f"clip_{i:03d}", tmp_dir)
 >>>>>>> 7d1f240 (improved text files)
+=======
+            clip_name = f"clip_{i:03d}"
+            runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
+>>>>>>> 6e2f95f (add image indentification)
             try:
                 runner.fire(resolved)
                 runner.wait_ui_change()
@@ -136,12 +141,18 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
 =======
             except Exception as e:
 <<<<<<< HEAD
+<<<<<<< HEAD
                 runner.set_pre_move_callback(None)
                 if recorder._proc is not None:
                     recorder.stop()
 =======
                 recorder.stop()
 >>>>>>> 7d1f240 (improved text files)
+=======
+                runner.set_pre_move_callback(None)
+                if recorder._proc is not None:
+                    recorder.stop()
+>>>>>>> 6e2f95f (add image indentification)
                 print(f"[ERROR] Action {i+1} failed: {e}", file=sys.stderr)
                 return None
             # Only stop if recording was actually started by the callback

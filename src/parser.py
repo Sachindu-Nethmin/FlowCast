@@ -128,6 +128,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         # ── Type: "Set [the] [base] **X** to `Y`"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:
@@ -161,6 +162,19 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             m = re.search(r'[Ss]et\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line)
 >>>>>>> 7d1f240 (improved text files)
 =======
+=======
+        # ── Type: "Set [the] **X** to `Y`" — always checked, even if line has clicks too
+        m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
+        if m:
+            line_actions.insert(0, {
+                "action":       "type",
+                "field_target": _normalise_field(m.group(1)),
+                "value":        m.group(2),
+            })
+
+        # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
+        elif not line_actions:
+>>>>>>> 6e2f95f (add image indentification)
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
 >>>>>>> b856107 (1.0)
             if m:
