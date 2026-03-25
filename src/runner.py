@@ -15,6 +15,23 @@ from src.detector import ElementNotFoundError, find_element, find_input_field
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.3
 
+# One-shot callback: called right before cursor movement begins in fire().
+# main.py sets this before each fire() call so recording starts at cursor move.
+_pre_move_cb: callable | None = None
+
+
+def set_pre_move_callback(cb: callable | None) -> None:
+    global _pre_move_cb
+    _pre_move_cb = cb
+
+
+def _trigger_pre_move() -> None:
+    global _pre_move_cb
+    if _pre_move_cb is not None:
+        _pre_move_cb()
+        _pre_move_cb = None  # one-shot
+
+
 _MAX_RETRIES = 3
 _RETRY_DELAY = 2.0
 _TARGET_APP = "WSO2 Integrator"
@@ -80,6 +97,39 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
         action_index=action_index,
     )
     return healer.heal(ctx)  # raises HealingAbortedError or ElementNotFoundError on total failure
+
+
+def _find_set_button() -> tuple[int, int] | None:
+    """Use OpenCV template matching to find the Set button on screen."""
+    import cv2
+    from pathlib import Path as _Path
+
+    icon_path = _Path(__file__).parent.parent / "kb" / "icons" / "Set.png"
+    if not icon_path.exists():
+        return None
+
+    screenshot = pyautogui.screenshot()
+    screen_arr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+    tmpl = cv2.cvtColor(cv2.imread(str(icon_path)), cv2.COLOR_BGR2GRAY)
+
+    best_val, best_loc = -1.0, (0, 0)
+    th, tw = tmpl.shape[:2]
+    for s in (1.0, 0.75, 1.25):
+        tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
+        t_resized = cv2.resize(tmpl, (tw_s, th_s))
+        res = cv2.matchTemplate(screen_arr, t_resized, cv2.TM_CCOEFF_NORMED)
+        _, val, _, loc = cv2.minMaxLoc(res)
+        if val > best_val:
+            best_val, best_loc = val, loc
+            best_tw, best_th = tw_s, th_s
+
+    if best_val < 0.6:
+        return None
+
+    cx = best_loc[0] + best_tw // 2
+    cy = best_loc[1] + best_th // 2
+    print(f"[runner] Set button found at ({cx}, {cy}) confidence={best_val:.2f}")
+    return (cx, cy)
 
 
 def _paste(value: str) -> None:
@@ -198,13 +248,22 @@ def fire(action: dict[str, Any]) -> None:
         time.sleep(1.0)
 
     elif kind == "click":
+        _trigger_pre_move()
         pyautogui.moveTo(x, y, duration=0.3)
         pyautogui.click(x, y)
 
     elif kind == "type":
         if action.get("_needs_click") and x is not None and y is not None:
+            _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
+            wait_ui_change(timeout=2.0)
+        # If a "Set" button is visible, click it to activate the input field first
+        set_pos = _find_set_button()
+        if set_pos:
+            _trigger_pre_move()
+            pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
+            pyautogui.click(set_pos[0], set_pos[1])
             wait_ui_change(timeout=2.0)
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
@@ -212,6 +271,7 @@ def fire(action: dict[str, Any]) -> None:
         _paste(action["value"])
 
     elif kind == "select":
+        _trigger_pre_move()
         pyautogui.moveTo(x, y, duration=0.2)
         pyautogui.click(x, y)
         time.sleep(0.4)
@@ -223,6 +283,7 @@ def fire(action: dict[str, Any]) -> None:
             print(f"[runner] Select option '{action['value']}' not found after opening dropdown")
 
     elif kind == "hotkey":
+        _trigger_pre_move()
         pyautogui.hotkey(*action["keys"])
 
     elif kind == "scroll":

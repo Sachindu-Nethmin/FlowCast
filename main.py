@@ -68,16 +68,21 @@ def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] |
                 continue
 
             print(f"   [fire  {i+1}/{len(step.actions)}] {kind}: {target}")
-            recorder.start(f"clip_{i:03d}", tmp_dir)
+            clip_name = f"clip_{i:03d}"
+            runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
             try:
                 runner.fire(resolved)
                 runner.wait_ui_change()
                 runner.wait_ui_settle()
             except Exception as e:
-                recorder.stop()
+                runner.set_pre_move_callback(None)
+                if recorder._proc is not None:
+                    recorder.stop()
                 print(f"[ERROR] Action {i+1} failed: {e}", file=sys.stderr)
                 return None
-            clips.append(recorder.stop())
+            # Only stop if recording was actually started by the callback
+            if recorder._proc is not None:
+                clips.append(recorder.stop())
 
         if not clips:
             print(f"[WARN] No clips recorded for step {step_index}")

@@ -196,6 +196,127 @@ def _groq_vision_model() -> str:
     return _load_icon_data().get("groq_vision_model", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 
+def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
+    """Find the green play/run button in the toolbar using HSV color detection.
+
+    Searches the top toolbar strip for a green-colored icon cluster.
+    """
+    import cv2
+
+    scale = _scale(screenshot)
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    img = np.array(screenshot.resize((w_l, h_l), Image.LANCZOS))
+
+    h, w = img.shape[:2]
+    # Build a mask covering the top toolbar and right-side toolbar
+    search_mask = np.zeros((h, w), dtype=np.uint8)
+    search_mask[:80, :] = 255                # top toolbar strip
+    search_mask[:, int(w * 0.6):] = 255     # right-side toolbar
+
+    hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+
+    # Green hue range in HSV (covers VS Code run-button greens)
+    lower = np.array([60, 60, 60])
+    upper = np.array([165, 255, 255])
+    green_mask = cv2.inRange(hsv_full, lower, upper)
+    # Restrict to toolbar areas only
+    mask = cv2.bitwise_and(green_mask, search_mask)
+
+    # Find contours of green regions
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    # Pick the largest green blob
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < 4:  # too small — noise
+        return None
+
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        return None
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection")
+    return (cx, cy)
+
+
+def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False) -> tuple[int, int] | None:
+    """OpenCV multi-scale template matching against the icon file in kb/icons/.
+
+    Returns logical (x, y) of the best match center, or None if no confident match.
+    """
+    import cv2
+
+    icon_entry = _icon_entry_for(target)
+    if not icon_entry or not icon_entry.get("icon_file"):
+        return None
+
+    icons_dir = Path(__file__).parent.parent / "kb" / "icons"
+    icon_file = icon_entry["icon_file"]
+    stem = Path(icon_file).stem
+
+    # Collect all size variants (e.g. play_green_16.png, play_green_18.png …)
+    # plus the base file. More variants = better chance of matching screen size.
+    candidate_paths = sorted(icons_dir.glob(f"{stem}_*.png")) + \
+                      [icons_dir / Path(icon_file).with_suffix(".png"),
+                       icons_dir / icon_file]
+    icon_paths = [p for p in dict.fromkeys(candidate_paths) if p.exists()]
+    if not icon_paths:
+        return None
+
+    scale = _scale(screenshot)
+    # Work in logical-pixel space: downsample Retina screenshots
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
+
+    screen_gray = cv2.cvtColor(np.array(screen_small.convert("RGB")), cv2.COLOR_RGB2GRAY)
+
+    # Restrict search area to canvas zone if requested
+    x_offset, y_offset = 0, 0
+    if canvas_only:
+        x_offset = 400
+        screen_gray = screen_gray[:, x_offset:]
+
+    best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
+
+    for icon_path in icon_paths:
+        icon_img = Image.open(icon_path)
+        has_alpha = icon_img.mode == "RGBA"
+        tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+        # Use alpha channel as mask so transparent pixels don't affect the match
+        tmpl_mask = np.array(icon_img.split()[-1]) if has_alpha else None
+        th, tw = tmpl_gray.shape[:2]
+
+        for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5):
+            tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
+            if tw_s < 8 or th_s < 8:
+                continue
+            if tw_s > screen_gray.shape[1] or th_s > screen_gray.shape[0]:
+                continue
+            tmpl_r = cv2.resize(tmpl_gray, (tw_s, th_s))
+            if tmpl_mask is not None:
+                mask_r = cv2.resize(tmpl_mask, (tw_s, th_s))
+                res = cv2.matchTemplate(screen_gray, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
+            else:
+                res = cv2.matchTemplate(screen_gray, tmpl_r, cv2.TM_CCOEFF_NORMED)
+            _, val, _, loc = cv2.minMaxLoc(res)
+            if val > best_val:
+                best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
+
+    threshold = icon_entry.get("match_threshold", 0.55) if icon_entry else 0.55
+    if best_val < threshold:
+        print(f"[detector] Template match for '{target}' confidence={best_val:.2f} — below threshold")
+        return None
+
+    cx = best_loc[0] + best_tw // 2 + x_offset
+    cy = best_loc[1] + best_th // 2 + y_offset
+    print(f"[detector] Template match '{target}' at ({cx}, {cy}) confidence={best_val:.2f}")
+    return (cx, cy)
+
+
 def _icon_entry_for(target: str) -> dict | None:
     t = target.lower().strip()
     for entry in _load_icon_prompts():
@@ -233,11 +354,26 @@ def _kb_hint(target: str) -> str | None:
 def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[int, int] | None:
     from groq import Groq
 
+    icon_entry = _icon_entry_for(target)
+
+    # For canvas elements, crop to the canvas area (x > CANVAS_X_MIN) so Groq
+    # physically cannot return a left-sidebar coordinate.
+    CANVAS_X_MIN = 400
+    canvas_x_offset = 0
+    send_screenshot = screenshot
+    if icon_entry and icon_entry.get("position_hint", ""):
+        hint_lower = icon_entry["position_hint"].lower()
+        is_canvas = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
+        if is_canvas:
+            w, h = screenshot.size
+            canvas_x_offset = CANVAS_X_MIN
+            send_screenshot = screenshot.crop((CANVAS_X_MIN, 0, w, h))
+            print(f"[detector] Canvas element '{target}' — cropping screenshot to x>{CANVAS_X_MIN}")
+
     buf = io.BytesIO()
-    screenshot.save(buf, format="PNG")
+    send_screenshot.save(buf, format="PNG")
     screenshot_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
-    icon_entry = _icon_entry_for(target)
     content: list[dict] = []
 
     if icon_entry:
@@ -281,19 +417,7 @@ def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[
 
     px, py = int(m.group(1)), int(m.group(2))
     scale = _scale(screenshot)
-    lx, ly = int(px / scale), int(py / scale)
-
-    # Validate canvas-positioned elements: reject toolbar zone (y<100) and left sidebar (x<400)
-    if icon_entry and icon_entry.get("position_hint", ""):
-        hint_lower = icon_entry["position_hint"].lower()
-        is_canvas = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
-        if is_canvas:
-            if ly < 100:
-                print(f"[detector] Groq returned toolbar-zone y={ly} for canvas element '{target}' — rejecting")
-                return None
-            if lx < 400:
-                print(f"[detector] Groq returned left-sidebar x={lx} for canvas element '{target}' — rejecting")
-                return None
+    lx, ly = int(px / scale) + canvas_x_offset, int(py / scale)
 
     return (lx, ly)
 
@@ -355,6 +479,26 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
         print(f"[detector] Contour found input for '{field_label}' at ({cx}, {cy})")
         return (cx, cy)
 
+    # ── Fallback: threshold scan for a lighter/darker input-box region ────────
+    # Input boxes often have a slightly different brightness from the panel background.
+    gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+    # Try both light-on-dark and dark-on-light input boxes
+    for thresh_val, mode in [(180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
+        _, thresh = cv2.threshold(gray_region, thresh_val, 255, mode)
+        contours2, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        best2 = None
+        for cnt in contours2:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w > 80 and 10 < h < 45 and w > h * 3:
+                if best2 is None or w > best2[2]:
+                    best2 = (x, y, w, h)
+        if best2:
+            x, y, w, h = best2
+            cx = int((sx1 + x + w / 2) / scale)
+            cy = int((sy1 + y + h / 2) / scale)
+            print(f"[detector] Threshold scan found input for '{field_label}' at ({cx}, {cy})")
+            return (cx, cy)
+
     return None
 
 
@@ -410,22 +554,46 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
 
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
     # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
-    # For all other targets, try OCR first and fall back to Groq Vision.
-    skip_ocr = len(target.strip()) <= 2 and _icon_entry_for(target) is not None
+    # For all other targets, try OCR first and fall back to template match then Groq Vision.
+    icon_entry = _icon_entry_for(target)
+    # Skip OCR for short symbols or entries that explicitly prefer template matching
+    skip_ocr = (len(target.strip()) <= 2 and icon_entry is not None) or \
+               (icon_entry is not None and icon_entry.get("prefer_template", False))
+    canvas_only = False
+    if icon_entry and icon_entry.get("position_hint", ""):
+        hint_lower = icon_entry["position_hint"].lower()
+        canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
 
     if skip_ocr:
-        print(f"[detector] '{target}' is a short symbol — skipping OCR, using Groq Vision")
+        print(f"[detector] '{target}' — skipping OCR, using template match first")
     else:
         result = _find_ocr(screenshot, target)
         if result:
             print(f"[detector] OCR found '{target}' at {result}")
             return result
-        print(f"[detector] OCR failed for '{target}', trying Groq Vision...")
+        print(f"[detector] OCR failed for '{target}', trying template match...")
 
+    # For green play icons: HSV color detection avoids transparent-PNG false positives
+    if icon_entry and "play_green" in icon_entry.get("icon_file", ""):
+        result = _find_green_play_button(screenshot)
+        if result:
+            return result
+        print(f"[detector] HSV color detection failed for '{target}', trying template match...")
+
+    # Template matching: exact pixel comparison against the known icon file
+    result = _find_template(screenshot, target, canvas_only=canvas_only)
+    if result:
+        print(f"[detector] Template match found '{target}' at {result}")
+        return result
+
+    print(f"[detector] Template match failed for '{target}', trying Groq Vision...")
     result = _find_groq(screenshot, target, hint)
     if result:
         print(f"[detector] Groq Vision found '{target}' at {result}")
         return result
+
+    raise ElementNotFoundError(f"Could not find '{target}' via OCR, template match, or Groq Vision")
+
 
 def get_location_from_groq(image_path: str, target: str) -> tuple[int, int] | None:
     """Find the specific location of a target object within a local image file using Groq Vision.

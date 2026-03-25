@@ -92,18 +92,17 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
-        # ── Type: "Set [the] **X** to `Y`" ───────────────────────────────────
-        if not line_actions:
-            m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
-            if m:
-                line_actions.append({
-                    "action":       "type",
-                    "field_target": _normalise_field(m.group(1)),
-                    "value":        m.group(2),
-                })
+        # ── Type: "Set [the] **X** to `Y`" — always checked, even if line has clicks too
+        m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
+        if m:
+            line_actions.insert(0, {
+                "action":       "type",
+                "field_target": _normalise_field(m.group(1)),
+                "value":        m.group(2),
+            })
 
         # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
-        if not line_actions:
+        elif not line_actions:
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
             if m:
                 line_actions.append({
