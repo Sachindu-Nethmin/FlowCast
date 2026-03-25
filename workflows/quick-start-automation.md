@@ -12,7 +12,6 @@
 1. In the design view, select **+ Add Artifact**.
 2. Select **Automation** artifact.
 3. Select **Create** to create an automation. This directs you to the automation diagram view.
-4. Select **+** after the **Start** node to open the node panel.
 
 ## Step 3: Add logic
 

@@ -38,7 +38,10 @@ def _fuzzy(detected: str, target: str) -> bool:
     if d == t:
         return True
     # Require word-boundary match so "automation" in "myautomation" does NOT match
-    if re.search(r'\b' + re.escape(t) + r'\b', d):
+    t_clean = re.sub(r'[^\w\s]', '', t).strip()
+    d_clean = re.sub(r'[^\w\s]', '', d).strip()
+    if not t_clean: return False
+    if t_clean in d_clean:
         return True
     # OCR may only capture part of a multi-word target — allow detected ⊂ target
     if d in t and len(d) > 2:
@@ -192,11 +195,32 @@ def _load_icon_prompts() -> list:
     return _load_icon_data().get("icons", [])
 
 
-def _groq_vision_model() -> str:
-    return _load_icon_data().get("groq_vision_model", "meta-llama/llama-4-scout-17b-16e-instruct")
+def _kb_entry(label: str) -> dict | None:
+    """Find a field entry in kb/ui_elements.json by label.
+
+    Searches across all screens in the knowledge base.
+    """
+    p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+    if not p.exists():
+        return None
+    data = json.loads(p.read_text())
+    l_target = label.lower().strip()
+    for screen in data.get("screens", {}).values():
+        for field in screen.get("fields", []):
+            l_field = field.get("label", "").lower().strip()
+            if l_field == l_target or (len(l_field) > 3 and l_field in l_target):
+                return field
+                
+    # Fallback to element_hints if no proper field definition found
+    hints = data.get("element_hints", {})
+    for hint_label, hint_text in hints.items():
+        if hint_label.lower().strip() == l_target:
+            return {"label": hint_label, "hint": hint_text}
+            
+    return None
 
 
-def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -> tuple[int, int] | None:
+def _kb_hint(target: str) -> str | None:
     """Find the + connector button below a named flow node using OCR anchor + template match.
 
     Finds the anchor node via OCR, then searches for the + icon in the region
@@ -438,78 +462,22 @@ def _kb_hint(target: str) -> str | None:
 
 # ── Groq Vision ───────────────────────────────────────────────────────────────
 
-def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[int, int] | None:
-    from groq import Groq
-
-    icon_entry = _icon_entry_for(target)
-
-    # For canvas elements, crop to the canvas area (x > CANVAS_X_MIN) so Groq
-    # physically cannot return a left-sidebar coordinate.
-    CANVAS_X_MIN = 400
-    canvas_x_offset = 0
-    send_screenshot = screenshot
-    if icon_entry and icon_entry.get("position_hint", ""):
-        hint_lower = icon_entry["position_hint"].lower()
-        is_canvas = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
-        if is_canvas:
-            w, h = screenshot.size
-            canvas_x_offset = CANVAS_X_MIN
-            send_screenshot = screenshot.crop((CANVAS_X_MIN, 0, w, h))
-            print(f"[detector] Canvas element '{target}' — cropping screenshot to x>{CANVAS_X_MIN}")
-
-    buf = io.BytesIO()
-    send_screenshot.save(buf, format="PNG")
-    screenshot_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
-
-    content: list[dict] = []
-
-    if icon_entry:
-        icon_b64 = icon_entry.get("icon_b64")
-        prompt = icon_entry["groq_prompt"]
-
-        # Groq Vision only accepts raster images (PNG/JPEG) — skip SVG data URIs
-        is_raster_b64 = icon_b64 and not icon_b64.startswith("data:image/svg")
-        if is_raster_b64:
-            # Send the icon image first so Groq knows exactly what to look for
-            content.append({"type": "image_url", "image_url": {"url": icon_b64}})
-            content.append({"type": "text", "text": f"This is the icon I am looking for: '{target}'."})
-            print(f"[detector] Sending icon image + screenshot to Groq for '{target}'")
-        else:
-            print(f"[detector] Using icon text prompt for '{target}'")
-
-        content.append({"type": "image_url", "image_url": {"url": screenshot_b64}})
-        content.append({"type": "text", "text": f"Now find this icon in the above screenshot of WSO2 Integrator. {prompt} Reply with ONLY: x,y"})
-    else:
-        # Generic fallback: text-only description
-        kb = _kb_hint(target)
-        prompt = f"In this screenshot of WSO2 Integrator, find the UI element: '{target}'."
-        if kb:
-            prompt += f" Location hint: {kb}."
-        if hint:
-            prompt += f" Additional context: {hint}."
-        prompt += " Reply with ONLY the pixel coordinates of its center as: x,y (integers). Nothing else."
-        content.append({"type": "image_url", "image_url": {"url": screenshot_b64}})
-        content.append({"type": "text", "text": prompt})
-
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    resp = client.chat.completions.create(
-        model=_groq_vision_model(),
-        messages=[{"role": "user", "content": content}],
-        temperature=0,
-    )
-    raw = resp.choices[0].message.content.strip()
-    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
-    if not m:
-        return None
-
-    px, py = int(m.group(1)), int(m.group(2))
-    scale = _scale(screenshot)
-    lx, ly = int(px / scale) + canvas_x_offset, int(py / scale)
-
-    return (lx, ly)
+# (Groq Vision functions removed)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
+_DEBUG_SAVE_DIR: Path | None = None
+
+
+def set_debug_dir(path: str | Path | None) -> None:
+    global _DEBUG_SAVE_DIR
+    if path is None:
+        _DEBUG_SAVE_DIR = None
+    else:
+        _DEBUG_SAVE_DIR = Path(path)
+        _DEBUG_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
     """Locate an input field using its label position as an anchor.
@@ -525,26 +493,166 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     scale = _scale(screenshot)
     results = _ocr().readtext(arr)
 
-    # ── Step 1: locate field label → defines the search region ───────────────
-    label_pos: tuple[int, int] | None = None
+    label_candidates = []
+    
+    # Check for direct matches
     for bbox, text, conf in results:
         if _fuzzy(text, field_label):
+            label_candidates.append((bbox, text, conf))
+    
+    # Try anchor_label from KB if no direct matches or if it is more reliable
+    kb = _kb_entry(field_label)
+    if kb and "anchor_label" in kb:
+        anchor = kb["anchor_label"]
+        for bbox, text, conf in results:
+            if _fuzzy(text, anchor):
+                label_candidates.append((bbox, text, conf))
+
+    if not label_candidates:
+        return None
+        
+    # Preference: Prefer labels that are NOT on a blue background (likely links)
+    label_candidates.sort(key=lambda c: (_is_blue_background(arr, c[0]), -c[2]))
+
+    for cand_bbox, cand_text, cand_conf in label_candidates:
+        lx1 = min(p[0] for p in cand_bbox)
+        ly1 = min(p[1] for p in cand_bbox)
+        lx2 = max(p[0] for p in cand_bbox)
+        ly2 = max(p[1] for p in cand_bbox)
+
+        # Regions relative to THIS candidate
+        sy2_buffer = 100
+        dx_buffer_left = 100
+        dx_buffer_right = 2000
+        
+        kb = _kb_entry(field_label)
+        if kb and "search_region" in kb:
+            sr = kb["search_region"]
+            sy2_buffer = sr.get("height", sy2_buffer)
+            dx_buffer_left = sr.get("x_offset_left", dx_buffer_left)
+            dx_buffer_right = sr.get("x_offset_right", dx_buffer_right)
+
+        rs_below = (max(0, lx1 - dx_buffer_left), ly2 + 2, min(arr.shape[1], lx1 + dx_buffer_right), min(arr.shape[0], ly2 + sy2_buffer))
+        rs_right = (lx2 + 5, ly1 - 10, min(arr.shape[1], lx2 + 1200), ly2 + 10)
+
+        best: tuple[int, int, int, int] | None = None
+        best_region_origin: tuple[int, int] = (0, 0)
+
+        # ── Branch A: Contour detection ────────────────────────────────────────
+        for sx1, sy1, sx2, sy2 in [rs_below, rs_right]:
+            region = arr[sy1:sy2, sx1:sx2]
+            if region.size == 0: continue
+            gray = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+            edges = cv2.Canny(gray, 30, 100)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                x, y, w, h = cv2.boundingRect(cnt)
+                if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
+                    # Preference Logic: PROXIMITY to label
+                    # 1. Prefer vertically CLOSEST boxes (within 5px fuzzy zone)
+                    # 2. Prefer WIDEST boxes among those at similar height
+                    if best is None or y < best[1] - 5 or (abs(y - best[1]) <= 5 and w > best[2]):
+                        best = (x, y, w, h)
+                        best_region_origin = (sx1, sy1)
+            if best:
+                break # Exit the region loop if a best candidate is found in this branch
+
+        # ── Branch B: Threshold scan (fallback for THIS candidate) ─────────────
+        if best: break # If best was found in Branch A, skip Branch B for this candidate
+
+        for sx1, sy1, sx2, sy2 in [rs_below, rs_right]:
+            region = arr[sy1:sy2, sx1:sx2]
+            if region.size == 0: continue
+            gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+            for thresh_val, mode in [(180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
+                _, thresh = cv2.threshold(gray_region, thresh_val, 255, mode)
+                contours2, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                best2 = None
+                for cnt in contours2:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
+                        if best2 is None or y < best2[1] - 5 or (abs(y - best2[1]) <= 5 and w > best2[2]):
+                            best2 = (x, y, w, h)
+                if best2:
+                    best = (x, y, w, h)
+                    best_region_origin = (sx1, sy1)
+                    break
+            if best: break
+        if best: break
+
+    if _DEBUG_SAVE_DIR:
+        # Save a "scan" image with all labels found, highlighting matches
+        from PIL import ImageDraw
+        debug_img = screenshot.copy()
+        draw = ImageDraw.Draw(debug_img)
+        
+        # Draw all labels first (small gray)
+        for bbox, text, _ in results:
+            lx1, ly1 = min(p[0] for p in bbox), min(p[1] for p in bbox)
+            lx2, ly2 = max(p[0] for p in bbox), max(p[1] for p in bbox)
+            draw.rectangle([lx1, ly1, lx2, ly2], outline="#CCCCCC", width=1)
+            
+        # Draw target/anchor labels in Red
+        for cand_bbox, cand_text, _ in label_candidates:
+            lx1, ly1, lx2, ly2 = min(p[0] for p in cand_bbox), min(p[1] for p in cand_bbox), max(p[0] for p in cand_bbox), max(p[1] for p in cand_bbox)
+            draw.rectangle([lx1, ly1, lx2, ly2], outline="red", width=3)
+            # Draw the search region in green
+            sy2_buf = 100
+            if kb and "search_region" in kb:
+                sy2_buf = kb["search_region"].get("height", sy2_buf)
+            draw.rectangle([lx1 - 100, ly2 + 2, lx1 + 2000, ly2 + sy2_buf], outline="green", width=2)
+
+        # Draw the selected field in Cyan if found
+        if best:
+            rx, ry = best_region_origin
+            x, y, w, h = best
+            draw.rectangle([rx + x, ry + y, rx + x + w, ry + y + h], outline="cyan", width=4)
+            offset_pct = 0.3 if w > 200 else 0.5
+            cx = (rx + x + w * offset_pct) / scale
+            cy = (ry + y + h / 2) / scale
+            draw.ellipse([cx * scale - 10, cy * scale - 10, cx * scale + 10, cy * scale + 10], fill="yellow", outline="black")
+
+        status = "match" if best else "fail"
+        fname = f"{status}_{field_label.replace('*', '')}.png"
+        debug_img.save(_DEBUG_SAVE_DIR / fname)
+
+    if best:
+        rx, ry = best_region_origin
+        x, y, w, h = best
+        offset_pct = 0.3 if w > 200 else 0.5
+        cx = int((rx + x + w * offset_pct) / scale)
+        cy = int((ry + y + h / 2) / scale)
+        return (cx, cy)
+
+    return None
+
+
+def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index: int) -> tuple[int, int] | None:
+    """Find the Nth input box below or near a stable anchor label."""
+    import cv2
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    anchor_bbox = None
+    for bbox, text, conf in results:
+        if _fuzzy(text, anchor_label):
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
-            label_pos = (int((min(xs) + max(xs)) / 2), int(max(ys)))
+            anchor_bbox = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
             break
 
-    if label_pos is None:
+    if anchor_bbox is None:
+        print(f"[detector] Anchor '{anchor_label}' not found for indexed search")
         return None
 
-    lx, ly = label_pos
-    sx1 = max(0, lx - 200)
-    sy1 = ly + 2
-    sx2 = min(arr.shape[1], lx + 600)
-    sy2 = min(arr.shape[0], ly + 90)
-
-    # ── Step 2: OpenCV contour detection in the label region ─────────────────
+    # Define a tall column region starting from the anchor
+    ax1, ay1, ax2, ay2 = anchor_bbox
+    # Search in a wider X range and a much taller Y range
+    sx1, sy1 = max(0, ax1 - 100), ay2 + 5
+    sx2, sy2 = min(arr.shape[1], ax2 + 500), min(arr.shape[0], ay2 + 600)
     region = arr[sy1:sy2, sx1:sx2]
+    
     if region.size == 0:
         return None
 
@@ -552,91 +660,46 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     edges = cv2.Canny(gray, 30, 100)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    best: tuple[int, int, int, int] | None = None
+    candidates = []
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if w > 80 and 10 < h < 45 and w > h * 3:
-            if best is None or w > best[2]:
-                best = (x, y, w, h)
+        # Input fields are typically short, wide rectangles
+        if 80 < w < 600 and 10 < h < 60 and w > h * 1.5:
+            candidates.append((x, y, w, h))
 
-    if best:
-        x, y, w, h = best
-        cx = int((sx1 + x + w / 2) / scale)
+    # Sort boxes by Y coordinate (top to bottom)
+    candidates.sort(key=lambda c: c[1])
+    
+    if len(candidates) > field_index:
+        x, y, w, h = candidates[field_index]
+        # Same Smart Offset logic for indexed search
+        offset_pct = 0.3 if w > 200 else 0.5
+        cx = int((sx1 + x + w * offset_pct) / scale)
         cy = int((sy1 + y + h / 2) / scale)
-        print(f"[detector] Contour found input for '{field_label}' at ({cx}, {cy})")
+        print(f"[detector] Indexed search found box {field_index} below '{anchor_label}' at ({cx}, {cy}) (w={w})")
         return (cx, cy)
 
-    # ── Fallback: threshold scan for a lighter/darker input-box region ────────
-    # Input boxes often have a slightly different brightness from the panel background.
-    gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
-    # Try both light-on-dark and dark-on-light input boxes
-    for thresh_val, mode in [(180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
-        _, thresh = cv2.threshold(gray_region, thresh_val, 255, mode)
-        contours2, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        best2 = None
-        for cnt in contours2:
-            x, y, w, h = cv2.boundingRect(cnt)
-            if w > 80 and 10 < h < 45 and w > h * 3:
-                if best2 is None or w > best2[2]:
-                    best2 = (x, y, w, h)
-        if best2:
-            x, y, w, h = best2
-            cx = int((sx1 + x + w / 2) / scale)
-            cy = int((sy1 + y + h / 2) / scale)
-            print(f"[detector] Threshold scan found input for '{field_label}' at ({cx}, {cy})")
-            return (cx, cy)
-
+    print(f"[detector] Only found {len(candidates)} boxes below '{anchor_label}', needed index {field_index}")
     return None
 
 
 def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
-    """Find where to click to focus a named input field.
-
-    Tries local visual detection first (OCR + OpenCV), falls back to Groq Vision
-    only when the local approach returns no result.
-    """
+    """Find where to click to focus a named input field."""
+    # Try direct visual detection first
     result = _find_input_by_visual(screenshot, field_label)
     if result:
         return result
 
-    # ── Groq Vision fallback ──────────────────────────────────────────────────
-    print(f"[detector] Visual detection failed for '{field_label}', falling back to Groq Vision...")
-    from groq import Groq
+    # Try indexed fallback if metadata exists
+    kb = _kb_entry(field_label)
+    if kb and "field_index" in kb and "anchor_label" in kb:
+        print(f"[detector] Direct visual failed for '{field_label}', trying indexed search using anchor '{kb['anchor_label']}'...")
+        result = _find_input_by_index(screenshot, kb["anchor_label"], kb["field_index"])
+        if result:
+            return result
 
-    buf = io.BytesIO()
-    screenshot.save(buf, format="PNG")
-    screenshot_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
-
-    kb = _kb_hint(field_label)
-    prompt = (
-        f"In this screenshot of WSO2 Integrator, I need to type a value into the '{field_label}' input field. "
-        f"Where exactly should I click to focus that input box? "
-        f"Point to the centre of the actual text input element, NOT its label. "
-    )
-    if kb:
-        prompt += f"Hint: {kb}. "
-    prompt += "Reply with ONLY the pixel coordinates as: x,y (integers). Nothing else."
-
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    resp = client.chat.completions.create(
-        model=_groq_vision_model(),
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": screenshot_b64}},
-            {"type": "text", "text": prompt},
-        ]}],
-        temperature=0,
-    )
-    raw = resp.choices[0].message.content.strip()
-    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
-    if not m:
-        print(f"[detector] Groq also failed for '{field_label}': {raw!r}")
-        return None
-
-    px, py = int(m.group(1)), int(m.group(2))
-    scale = _scale(screenshot)
-    coords = (int(px / scale), int(py / scale))
-    print(f"[detector] Groq Vision found input for '{field_label}' at {coords}")
-    return coords
+    print(f"[detector] Visual detection failed for '{field_label}'.")
+    return None
 
 
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
@@ -680,62 +743,16 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
         print(f"[detector] Template match found '{target}' at {result}")
         return result
 
-    print(f"[detector] Template match failed for '{target}', trying Groq Vision...")
-    result = _find_groq(screenshot, target, hint)
-    if result:
-        print(f"[detector] Groq Vision found '{target}' at {result}")
-        return result
-
-    raise ElementNotFoundError(f"Could not find '{target}' via OCR, template match, or Groq Vision")
+    raise ElementNotFoundError(f"Could not find '{target}' via OCR or template match.")
 
 
-def get_location_from_groq(image_path: str, target: str) -> tuple[int, int] | None:
-    """Find the specific location of a target object within a local image file using Groq Vision.
-
-    This is useful for 'registering' new icons or finding their centers accurately.
-    """
-    from groq import Groq
-
-    if not os.path.exists(image_path):
-        print(f"[detector] Error: Image file not found at '{image_path}'")
-        return None
-
-    with open(image_path, "rb") as f:
-        img_data = f.read()
-        img_b64 = f"data:image/png;base64,{base64.b64encode(img_data).decode()}"
-
-    prompt = (
-        f"In this image, find the '{target}'. "
-        "Reply with ONLY the pixel coordinates of its center as: x,y (integers). Nothing else."
-    )
-
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    resp = client.chat.completions.create(
-        model=_groq_vision_model(),
-        messages=[{"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": img_b64}},
-            {"type": "text", "text": prompt},
-        ]}],
-        temperature=0,
-    )
-
-    raw = resp.choices[0].message.content.strip()
-    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
-    if not m:
-        print(f"[detector] Groq failed to find '{target}' in '{image_path}': {raw!r}")
-        return None
-
-    px, py = int(m.group(1)), int(m.group(2))
-    print(f"[detector] Groq found '{target}' at ({px}, {py}) in file '{image_path}'")
-    return (px, py)
+# (Groq functions removed)
 
 
 if __name__ == "__main__":
     # Test block for provided icon
     test_path = "/Users/sachindu/Desktop/Repos/wso2/FlowCast/kb/icons/plus.png"
     if os.path.exists(test_path):
-        print(f"Testing Groq detection for '+' in {test_path}...")
-        res = get_location_from_groq(test_path, "+")
-        print(f"Result: {res}")
+        print(f"Skipping Groq test — Groq removed.")
     else:
         print(f"Test file not found at {test_path}")

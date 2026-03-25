@@ -40,6 +40,11 @@ _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 _KB: dict | None = None
 
 
+# Enable visual debugging for input detection
+from src import detector
+detector.set_debug_dir(Path(__file__).parent.parent / "output" / "debug_detection")
+
+
 def _kb() -> dict:
     global _KB
     if _KB is None:
@@ -202,7 +207,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         # Autofocus fields are already focused — no click needed, just clear + paste
         if _is_autofocus(field_target):
             return {**action, "x": None, "y": None, "_needs_click": False}
-        # Ask Groq Vision where to click to focus the actual input box
+        # Locate target input box
         result = find_input_field(_screenshot(), field_target)
         if result:
             return {**action, "x": result[0], "y": result[1], "_needs_click": True}
