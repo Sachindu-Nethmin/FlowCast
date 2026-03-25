@@ -546,6 +546,81 @@ def _groq_vision_model() -> str:
     return _load_icon_data().get("groq_vision_model", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 
+def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -> tuple[int, int] | None:
+    """Find the + connector button below a named flow node using OCR anchor + template match.
+
+    Finds the anchor node via OCR, then searches for the + icon in the region
+    directly below it inside the canvas area.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # Find anchor node position
+    anchor_pos = None
+    for bbox, text, conf in results:
+        if text.strip().lower() == anchor_text.lower():
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            anchor_pos = (
+                int((min(xs) + max(xs)) / 2 / scale),
+                int((min(ys) + max(ys)) / 2 / scale),
+            )
+            break
+
+    if anchor_pos is None:
+        print(f"[detector] Anchor '{anchor_text}' not found via OCR")
+        return None
+
+    ax, ay = anchor_pos
+    print(f"[detector] Anchor '{anchor_text}' at ({ax}, {ay}), searching for + below")
+
+    # Search region: below anchor, within canvas (x > 400)
+    icon_path = Path(__file__).parent.parent / "kb" / "icons" / "plus.png"
+    if not icon_path.exists():
+        return None
+
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
+    screen_bgr = cv2.cvtColor(np.array(screen_small.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+    # Crop to region below anchor node (±200px wide, 20–200px below)
+    x1 = max(400, ax - 200)
+    x2 = min(w_l, ax + 200)
+    y1 = ay + 20
+    y2 = min(h_l, ay + 300)
+    region = screen_bgr[y1:y2, x1:x2]
+    if region.size == 0:
+        return None
+
+    icon_img = Image.open(icon_path).convert("RGB")
+    tmpl = cv2.cvtColor(np.array(icon_img), cv2.COLOR_RGB2BGR)
+    th, tw = tmpl.shape[:2]
+
+    best_val, best_loc, best_tw, best_th = -1.0, (0, 0), tw, th
+    for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25):
+        tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
+        if tw_s > region.shape[1] or th_s > region.shape[0]:
+            continue
+        tmpl_r = cv2.resize(tmpl, (tw_s, th_s))
+        res = cv2.matchTemplate(region, tmpl_r, cv2.TM_CCOEFF_NORMED)
+        _, val, _, loc = cv2.minMaxLoc(res)
+        if val > best_val:
+            best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
+
+    if best_val < 0.4:
+        print(f"[detector] + below '{anchor_text}' not found (confidence={best_val:.2f})")
+        return None
+
+    cx = x1 + best_loc[0] + best_tw // 2
+    cy = y1 + best_loc[1] + best_th // 2
+    print(f"[detector] + below '{anchor_text}' found at ({cx}, {cy}) confidence={best_val:.2f}")
+    return (cx, cy)
+
+
 def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     """Find the green play/run button in the toolbar using HSV color detection.
 
@@ -622,36 +697,48 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
     h_l = int(screenshot.height / scale)
     screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
 
-    screen_gray = cv2.cvtColor(np.array(screen_small.convert("RGB")), cv2.COLOR_RGB2GRAY)
+    screen_arr = np.array(screen_small.convert("RGB"))
+    screen_gray = cv2.cvtColor(screen_arr, cv2.COLOR_RGB2GRAY)
+    screen_bgr  = cv2.cvtColor(screen_arr, cv2.COLOR_RGB2BGR)
 
     # Restrict search area to canvas zone if requested
     x_offset, y_offset = 0, 0
     if canvas_only:
         x_offset = 400
         screen_gray = screen_gray[:, x_offset:]
+        screen_bgr  = screen_bgr[:, x_offset:]
 
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
 
     for icon_path in icon_paths:
-        icon_img = Image.open(icon_path)
+        icon_img  = Image.open(icon_path)
         has_alpha = icon_img.mode == "RGBA"
-        tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
-        # Use alpha channel as mask so transparent pixels don't affect the match
-        tmpl_mask = np.array(icon_img.split()[-1]) if has_alpha else None
+
+        if has_alpha:
+            # Transparent icon: grayscale + alpha mask (only glyph pixels match)
+            tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+            tmpl_mask = np.array(icon_img.split()[-1])
+            screen_match = screen_gray
+        else:
+            # Opaque icon: full color matching preserves distinctive colors (e.g. blue +)
+            tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2BGR)
+            tmpl_mask = None
+            screen_match = screen_bgr
+
         th, tw = tmpl_gray.shape[:2]
 
         for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5):
             tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
             if tw_s < 8 or th_s < 8:
                 continue
-            if tw_s > screen_gray.shape[1] or th_s > screen_gray.shape[0]:
+            if tw_s > screen_match.shape[1] or th_s > screen_match.shape[0]:
                 continue
             tmpl_r = cv2.resize(tmpl_gray, (tw_s, th_s))
             if tmpl_mask is not None:
                 mask_r = cv2.resize(tmpl_mask, (tw_s, th_s))
-                res = cv2.matchTemplate(screen_gray, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
+                res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
             else:
-                res = cv2.matchTemplate(screen_gray, tmpl_r, cv2.TM_CCOEFF_NORMED)
+                res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
             _, val, _, loc = cv2.minMaxLoc(res)
             if val > best_val:
                 best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
@@ -2416,6 +2503,13 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
     if icon_entry and icon_entry.get("position_hint", ""):
         hint_lower = icon_entry["position_hint"].lower()
         canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
+
+    # For canvas + button: anchor to Start node for reliable position
+    if target.strip() == "+" and canvas_only:
+        result = _find_plus_below_node(screenshot, anchor_text="Start")
+        if result:
+            return result
+        print(f"[detector] Anchor-based + detection failed, falling back to template match...")
 
     if skip_ocr:
         print(f"[detector] '{target}' — skipping OCR, using template match first")

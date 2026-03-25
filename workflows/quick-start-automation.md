@@ -6,8 +6,12 @@
 3. Set **Integration Name** to `Integration`.
 =======
 2. Select **Create New Integration**.
+<<<<<<< HEAD
 3. Enter the integration name (for example, `MyAutomation`).
 >>>>>>> f89df14 (ffmpeg)
+=======
+3. Enter the integration name (for example, `Integration`).
+>>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
 4. Select **Browse**.
 5. Select the project location and select **Open**.
 6. Select **Create Integration**.

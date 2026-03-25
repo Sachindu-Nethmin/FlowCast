@@ -874,9 +874,12 @@ def fire(action: dict[str, Any]) -> None:
 =======
         pyautogui.moveTo(x, y, duration=0.3)
         time.sleep(0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
+<<<<<<< HEAD
 =======
         pyautogui.moveTo(x, y, duration=0.3)
 >>>>>>> 7d1f240 (improved text files)
+=======
+>>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
         pyautogui.click(x, y)
 
     elif kind == "type":
