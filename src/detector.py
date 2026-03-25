@@ -35,7 +35,15 @@ def _scale(screenshot: Image.Image) -> float:
 
 def _fuzzy(detected: str, target: str) -> bool:
     d, t = detected.lower().strip(), target.lower().strip()
-    return d == t or t in d or (d in t and len(d) > 2)
+    if d == t:
+        return True
+    # Require word-boundary match so "automation" in "myautomation" does NOT match
+    if re.search(r'\b' + re.escape(t) + r'\b', d):
+        return True
+    # OCR may only capture part of a multi-word target — allow detected ⊂ target
+    if d in t and len(d) > 2:
+        return True
+    return False
 
 
 def _is_blue_background(arr: np.ndarray, bbox) -> bool:
@@ -64,13 +72,16 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
 
 
 def _alpha_target(target: str) -> str:
-    """Return the longest purely-alpha word from target for focused OCR matching.
+    """Return the longest word that contains English letters, ignoring pure symbols.
 
-    e.g. '+ Add Resources' → 'Resources'
-         '+ Add Resouses'  → 'Resouses'
+    e.g. '+ Add Automation'  → 'Automation'
+         '+ Add Resources'   → 'Resources'
+         '+ WSO2 Integrator' → 'Integrator'
     """
-    words = [w for w in target.split() if w.isalpha()]
-    return max(words, key=len) if words else target
+    words = [w for w in target.split() if re.search(r'[a-zA-Z]', w)]
+    if not words:
+        return target
+    return max(words, key=lambda w: sum(c.isalpha() for c in w))
 
 
 def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
@@ -124,13 +135,18 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     # Uses similarity matching so typos (e.g. "Resouses" → "Resources") still match
     from difflib import SequenceMatcher
 
-    real_words = [w for w in words if w.isalpha()]
+    real_words = [w for w in words if re.search(r'[a-zA-Z]', w)]
     if real_words:
-        keyword = max(real_words, key=len)
+        keyword = max(real_words, key=lambda w: sum(c.isalpha() for c in w))
         kw_candidates: list[tuple[int, int, float, bool]] = []
         for bbox, text, conf in results:
             for ocr_word in text.lower().split():
                 if not ocr_word.isalpha():
+                    continue
+                # Reject words significantly longer than the keyword —
+                # prevents "myautomation" (len 12) matching "automation" (len 10).
+                # Allow ±1 char for OCR typos (e.g. "Automatoin" still passes).
+                if len(ocr_word) > len(keyword) + 1:
                     continue
                 similarity = SequenceMatcher(None, keyword, ocr_word).ratio()
                 if similarity >= 0.75:
@@ -228,7 +244,9 @@ def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[
         icon_b64 = icon_entry.get("icon_b64")
         prompt = icon_entry["groq_prompt"]
 
-        if icon_b64:
+        # Groq Vision only accepts raster images (PNG/JPEG) — skip SVG data URIs
+        is_raster_b64 = icon_b64 and not icon_b64.startswith("data:image/svg")
+        if is_raster_b64:
             # Send the icon image first so Groq knows exactly what to look for
             content.append({"type": "image_url", "image_url": {"url": icon_b64}})
             content.append({"type": "text", "text": f"This is the icon I am looking for: '{target}'."})
@@ -265,12 +283,17 @@ def _find_groq(screenshot: Image.Image, target: str, hint: str | None) -> tuple[
     scale = _scale(screenshot)
     lx, ly = int(px / scale), int(py / scale)
 
-    # Validate: if icon entry specifies canvas position, reject toolbar-zone results (y < 100)
+    # Validate canvas-positioned elements: reject toolbar zone (y<100) and left sidebar (x<400)
     if icon_entry and icon_entry.get("position_hint", ""):
         hint_lower = icon_entry["position_hint"].lower()
-        if any(kw in hint_lower for kw in ("canvas", "flow", "resource flow")) and ly < 100:
-            print(f"[detector] Groq returned toolbar-zone y={ly} for canvas element '{target}' — rejecting")
-            return None
+        is_canvas = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
+        if is_canvas:
+            if ly < 100:
+                print(f"[detector] Groq returned toolbar-zone y={ly} for canvas element '{target}' — rejecting")
+                return None
+            if lx < 400:
+                print(f"[detector] Groq returned left-sidebar x={lx} for canvas element '{target}' — rejecting")
+                return None
 
     return (lx, ly)
 
@@ -404,4 +427,53 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
         print(f"[detector] Groq Vision found '{target}' at {result}")
         return result
 
-    raise ElementNotFoundError(f"Cannot find element: '{target}'")
+def get_location_from_groq(image_path: str, target: str) -> tuple[int, int] | None:
+    """Find the specific location of a target object within a local image file using Groq Vision.
+
+    This is useful for 'registering' new icons or finding their centers accurately.
+    """
+    from groq import Groq
+
+    if not os.path.exists(image_path):
+        print(f"[detector] Error: Image file not found at '{image_path}'")
+        return None
+
+    with open(image_path, "rb") as f:
+        img_data = f.read()
+        img_b64 = f"data:image/png;base64,{base64.b64encode(img_data).decode()}"
+
+    prompt = (
+        f"In this image, find the '{target}'. "
+        "Reply with ONLY the pixel coordinates of its center as: x,y (integers). Nothing else."
+    )
+
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    resp = client.chat.completions.create(
+        model=_groq_vision_model(),
+        messages=[{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": img_b64}},
+            {"type": "text", "text": prompt},
+        ]}],
+        temperature=0,
+    )
+
+    raw = resp.choices[0].message.content.strip()
+    m = re.search(r'(\d+)\s*,\s*(\d+)', raw)
+    if not m:
+        print(f"[detector] Groq failed to find '{target}' in '{image_path}': {raw!r}")
+        return None
+
+    px, py = int(m.group(1)), int(m.group(2))
+    print(f"[detector] Groq found '{target}' at ({px}, {py}) in file '{image_path}'")
+    return (px, py)
+
+
+if __name__ == "__main__":
+    # Test block for provided icon
+    test_path = "/Users/sachindu/Desktop/Repos/wso2/FlowCast/kb/icons/plus.png"
+    if os.path.exists(test_path):
+        print(f"Testing Groq detection for '+' in {test_path}...")
+        res = get_location_from_groq(test_path, "+")
+        print(f"Result: {res}")
+    else:
+        print(f"Test file not found at {test_path}")
