@@ -53,11 +53,11 @@ def start(name: str, output_dir: Path) -> None:
     vf = f"crop=in_w:in_h-{MENU_BAR_H}:0:{MENU_BAR_H},fps={FPS},scale={WIDTH}:-2:flags=lanczos"
 
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-loglevel", "error",
         "-f", "avfoundation",
-        "-capture_cursor", "1",          # macOS composites the real hardware cursor
+        "-capture_cursor", "1",
         "-framerate", str(FPS),
-        "-pixel_format", "uyvy422",      # avfoundation native format — avoids fallback warning
+        "-pixel_format", "bgr0",
         "-i", f"{idx}:none",
         "-vf", vf,
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
@@ -67,7 +67,7 @@ def start(name: str, output_dir: Path) -> None:
     _proc = subprocess.Popen(
         cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=_stderr_tmp,
     )
-    time.sleep(0.8)
+    time.sleep(1.2)  # Give avfoundation more time to initialize
     if _proc.poll() is not None:
         _stderr_tmp.seek(0)
         err = _stderr_tmp.read().decode(errors="replace")
