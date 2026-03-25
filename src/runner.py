@@ -250,6 +250,7 @@ def fire(action: dict[str, Any]) -> None:
     elif kind == "click":
         _trigger_pre_move()
         pyautogui.moveTo(x, y, duration=0.3)
+        time.sleep(0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
         pyautogui.click(x, y)
 
     elif kind == "type":
