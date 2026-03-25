@@ -547,6 +547,9 @@
     "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
     "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> f89df14 (ffmpeg)
     "Automation": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'Automation' in the center of the screen. Has a blue icon or blue-highlighted background. Do NOT match text in the file tree or breadcrumbs.",
     "HTTP Service": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'HTTP Service' in the center of the screen.",
     "API": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'API' in the center of the screen.",
