@@ -48,6 +48,7 @@
 6. Select **HTTP**.
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 1. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
 2. Set the **Connection Name** to `externalApi` and select **Save Connection**.
 3. Select **externalApi**.
@@ -77,6 +78,10 @@
 =======
 =======
 >>>>>>> 59739ff (1.0)
+=======
+=======
+>>>>>>> 4d665b4 (1.1)
+>>>>>>> 37cea1a (1.1)
 
 ## Step 4: Configure HTTP
 
@@ -92,8 +97,11 @@
 9. Set the **return expression** to `response`.
 10. Select **Save**.
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
 =======
+=======
+>>>>>>> 37cea1a (1.1)
 =======
 1. In the HTTP service design view, add a **GET** resource.
 2. Set the resource path to `/greeting` and save.
@@ -119,4 +127,9 @@
 12. Add a **Return** node.
 13. Set the return expression to `response`.
 >>>>>>> b856107 (1.0)
+<<<<<<< HEAD
 >>>>>>> 59739ff (1.0)
+=======
+=======
+>>>>>>> 4d665b4 (1.1)
+>>>>>>> 37cea1a (1.1)

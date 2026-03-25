@@ -92,8 +92,13 @@ _run({'action': 'hotkey', 'keys': ['command', 's']})
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Add Connection'})
 _run({'action': 'click', 'target': 'HTTP'})
+
+# ──────────────────────────────────────────────────────────
+# Step 4: Configure HTTP
+# ──────────────────────────────────────────────────────────
+_run({'action': 'type', 'field_target': 'Url', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})
 _run({'action': 'type', 'field_target': 'Connection Name', 'value': 'externalApi'})
-_run({'action': 'hotkey', 'keys': ['command', 's']})
+_run({'action': 'click', 'target': 'Save Connection'})
 _run({'action': 'click', 'target': 'get'})
 _run({'action': 'type', 'field_target': 'Path', 'value': '/'})
 _run({'action': 'type', 'field_target': 'Response Variable', 'value': 'response'})

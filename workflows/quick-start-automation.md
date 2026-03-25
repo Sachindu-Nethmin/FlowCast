@@ -28,10 +28,16 @@
 2. Select **Automation** artifact.
 3. Select **Create** to create an automation. This directs you to the automation diagram view.
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
 =======
 <<<<<<< HEAD
 >>>>>>> 2ff3c0d (ffmpeg)
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> 4d665b4 (1.1)
+>>>>>>> 37cea1a (1.1)
 
 ## Step 3: Add logic
 

@@ -396,6 +396,9 @@
         }
       ]
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4d665b4 (1.1)
     },
 <<<<<<< HEAD
     "open_project_choice": {
@@ -510,8 +513,11 @@
 >>>>>>> 9e44480 (Light (#6))
         }
       ]
+<<<<<<< HEAD
 =======
 >>>>>>> 7d1f240 (improved text files)
+=======
+>>>>>>> 4d665b4 (1.1)
     }
   },
   "element_hints": {
@@ -595,18 +601,26 @@
     "Save": "Primary submit/save button in dialogs such as connection dialog, action dialog, and resource dialog.",
     "get": "Action option in the connection action picker. Represents the HTTP GET action to call.",
 <<<<<<< HEAD
+<<<<<<< HEAD
     "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
     "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
 =======
     "Response Variable": "Text input field in the action configuration dialog for naming the result variable e.g. response.",
     "Response Type": "Dropdown in the action configuration dialog for setting the response data type e.g. json.",
 >>>>>>> 7d1f240 (improved text files)
+=======
+    "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
+    "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
+>>>>>>> 4d665b4 (1.1)
     "json": "Option in the Response Type dropdown inside action configuration dialog.",
     "Return": "Node type button in the flow editor toolbar or add-node menu. Adds a return/response node to the flow.",
     "Type:": "Inline dropdown at the top of the creation form showing current project type (WSO2: BI or WSO2: MI) with a chevron icon.",
     "WSO2: BI": "Option in the Type: dropdown selector at the top of the creation form. Selects Ballerina Integration type.",
     "WSO2: MI": "Option in the Type: dropdown selector at the top of the creation form. Selects Micro Integrator type.",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4d665b4 (1.1)
     "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button.",
 <<<<<<< HEAD
     "Url": {
@@ -656,12 +670,20 @@
     "Path*": "Same as 'Path' field.",
     "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
 =======
 =======
     "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button."
 >>>>>>> 7d1f240 (improved text files)
 >>>>>>> ee262bc (improved text files)
+=======
+=======
+    "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button."
+>>>>>>> 7d1f240 (improved text files)
+=======
+>>>>>>> 4d665b4 (1.1)
+>>>>>>> 37cea1a (1.1)
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
@@ -788,6 +810,9 @@
       }
     ]
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4d665b4 (1.1)
   },
   "smart_inputs": [
     "Path",
@@ -801,7 +826,10 @@
     "Url",
     "Url*"
   ]
+<<<<<<< HEAD
 =======
   }
 >>>>>>> 7d1f240 (improved text files)
+=======
+>>>>>>> 4d665b4 (1.1)
 }

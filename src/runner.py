@@ -784,10 +784,14 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         if _is_autofocus(field_target):
             return {**action, "x": None, "y": None, "_needs_click": False}
 <<<<<<< HEAD
+<<<<<<< HEAD
         # Locate target input box
 =======
         # Ask Groq Vision where to click to focus the actual input box
 >>>>>>> 7d1f240 (improved text files)
+=======
+        # Locate target input box
+>>>>>>> 4d665b4 (1.1)
         result = find_input_field(_screenshot(), field_target)
         if result:
             return {**action, "x": result[0], "y": result[1], "_needs_click": True}

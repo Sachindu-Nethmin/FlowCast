@@ -129,6 +129,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         # ── Type: "Set [the] [base] **X** to `Y`"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:
@@ -165,14 +166,19 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 =======
         # ── Type: "Set [the] **X** to `Y`" — always checked, even if line has clicks too
         m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
+=======
+        # ── Type: "Set [the] [base] **X** to `Y`"
+        m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
+>>>>>>> 4d665b4 (1.1)
         if m:
+            field_name = (m.group(1).strip() + " " + m.group(2).strip()).strip()
             line_actions.insert(0, {
                 "action":       "type",
-                "field_target": _normalise_field(m.group(1)),
-                "value":        m.group(2),
+                "field_target": _normalise_field(field_name),
+                "value":        m.group(3),
             })
-
-        # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
+        
+        # ── Type: "Set [the] X to `Y`" (non-bold field name)
         elif not line_actions:
 >>>>>>> 6e2f95f (add image indentification)
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
