@@ -211,6 +211,7 @@ def stop() -> Path:
     # Optimize: Remove idle time (static frames) from the clip
     path = trim(path)
 
+<<<<<<< HEAD
 =======
         _proc.wait(timeout=10)
     path = _mov_path
@@ -231,11 +232,16 @@ def stop() -> Path:
         raise RuntimeError(f"Recording produced no output: {path}")
 
 >>>>>>> f89df14 (ffmpeg)
+=======
+>>>>>>> 096c2df (Clip idie)
     print(f"[recorder] Saved → {path.name}")
     return path
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 096c2df (Clip idie)
 def trim(mov_path: Path) -> Path:
     """Remove near-identical frames (idle time) using ffmpeg mpdecimate.
     

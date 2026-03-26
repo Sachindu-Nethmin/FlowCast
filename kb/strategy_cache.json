@@ -12,11 +12,15 @@
       "fail_counts": {},
       "last_seen": "2026-03-25T09:52:41.063003+00:00"
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 096c2df (Clip idie)
     },
     "+ add artifact": {
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-03-26T13:34:15.828078+00:00"
+<<<<<<< HEAD
     },
     "+": {
       "winner": "ocr_exact",
@@ -27,7 +31,12 @@
 =======
 =======
 >>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
+<<<<<<< HEAD
 >>>>>>> bed3164 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
+=======
+=======
+>>>>>>> 096c2df (Clip idie)
+>>>>>>> 51c18ba (Clip idie)
     }
   }
 }
