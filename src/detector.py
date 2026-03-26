@@ -74,6 +74,46 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     return blue_ratio > 0.15
 
 
+def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
+    """Detect if the element is inside a WSO2 'ButtonCard' container.
+    
+    Identifies rectangles with ~4px border-radius and specific aspect ratios (1:1 or 4:1).
+    """
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(blurred, 30, 150)
+    
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    pt = (int(np.mean(xs)), int(np.mean(ys)))
+    
+    contours, hierarchy = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None: return False
+    
+    for i, cnt in enumerate(contours):
+        # 1. Geometry: Perimeter and Area
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+        
+        # 2. Rectangularity: Approx size for cards in WSO2 UI
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w < 100 or h < 40: continue
+        
+        aspect_ratio = w / float(h)
+        # Large Card (e.g. Automation) is typically wide (~4:1)
+        # Small Card (Square) is ~1:1
+        is_card_shape = (0.8 < aspect_ratio < 1.2) or (2.5 < aspect_ratio < 6.0)
+        
+        if is_card_shape:
+            # 3. Containment Check
+            if x < pt[0] < x + w and y < pt[1] < y + h:
+                # 4. Complexity Check: Buttons/Cards usually have internal icons/text (children)
+                has_child = hierarchy[0][i][2] != -1
+                return True if has_child else False
+    return False
+
+
 def _alpha_target(target: str) -> str:
     """Return the longest word that contains English letters, ignoring pure symbols.
 
@@ -91,28 +131,47 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     arr = np.array(screenshot)
     results = _ocr().readtext(arr)
     scale = _scale(screenshot)
+    h, w = arr.shape[:2]
 
-    # For multi-word targets, also try without non-alpha tokens (e.g. strip leading "+")
+    # For 'Automation', we know it's a card in the central workspace.
     clean_target = _alpha_target(target)
-
-    # Collect all fuzzy matches, scoring blue-background ones higher
-    # Try both original target and cleaned target (non-alpha tokens stripped)
-    candidates: list[tuple[int, int, float, bool]] = []  # (cx, cy, conf, is_blue)
+    candidates: list[dict] = []
+    
     for bbox, text, conf in results:
         if _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target)):
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
-            cx = int((min(xs) + max(xs)) / 2 / scale)
-            cy = int((min(ys) + max(ys)) / 2 / scale)
-            candidates.append((cx, cy, conf, _is_blue_background(arr, bbox)))
+            cx_img = int((min(xs) + max(xs)) / 2)
+            cy_img = int((min(ys) + max(ys)) / 2)
+            
+            # Centrality: 20-80% width is the 'workspace' area
+            in_workspace = (0.2 * w < cx_img < 0.8 * w)
+            dist_from_v_center = abs(cy_img - h/2) / (h/2)
+            centrality_score = (15 if in_workspace else 0) + (10 * (1 - dist_from_v_center))
+            
+            # Card Check: Professional UI cards have higher score
+            is_card = _is_contained_in_card(arr, bbox)
+            card_score = 30 if is_card else 0
+            
+            # Blue Check: Highlighter for active elements
+            is_blue = _is_blue_background(arr, bbox)
+            blue_score = 10 if is_blue else 0
+            
+            total_score = centrality_score + card_score + blue_score + (conf * 5)
+            
+            candidates.append({
+                "pos": (int(cx_img / scale), int(cy_img / scale)),
+                "score": total_score,
+                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score}"
+            })
 
     if candidates:
-        # Prefer blue background, then highest confidence
-        candidates.sort(key=lambda c: (c[3], c[2]), reverse=True)
-        cx, cy, conf, is_blue = candidates[0]
+        # Heavily prioritize cards in the workspace
+        candidates.sort(key=lambda c: c["score"], reverse=True)
+        best = candidates[0]
         if len(candidates) > 1:
-            print(f"[detector] OCR: {len(candidates)} matches for '{target}', picked {'blue' if is_blue else 'highest-conf'} at ({cx}, {cy})")
-        return (cx, cy)
+            print(f"[detector] OCR matching '{target}': Picked score {best['score']:.1f} at {best['pos']} ({best['debug']})")
+        return best["pos"]
 
     # Multi-word merge: try adjacent OCR boxes using cleaned target
     merge_target = clean_target if clean_target != target else target
@@ -220,7 +279,7 @@ def _kb_entry(label: str) -> dict | None:
     return None
 
 
-def _kb_hint(target: str) -> str | None:
+def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -> tuple[int, int] | None:
     """Find the + connector button below a named flow node using OCR anchor + template match.
 
     Finds the anchor node via OCR, then searches for the + icon in the region
