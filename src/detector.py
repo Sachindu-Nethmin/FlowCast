@@ -124,6 +124,11 @@ def _alpha_target(target: str) -> str:
     words = [w for w in target.split() if re.search(r'[a-zA-Z]', w)]
     if not words:
         return target
+    # Prefer non-generic words if possible. 'Service' is too common.
+    # If the target starts with 'HTTP', that's a very strong keyword.
+    for w in words:
+        if len(w) >= 3 and w.lower() not in ("add", "new", "service"):
+            return w
     return max(words, key=lambda w: sum(c.isalpha() for c in w))
 
 
@@ -157,12 +162,20 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             is_blue = _is_blue_background(arr, bbox)
             blue_score = 10 if is_blue else 0
             
-            total_score = centrality_score + card_score + blue_score + (conf * 5)
+            # 4. Exact Match Bonus: Favor complete strings over partials
+            is_exact = (text.strip().lower() == target.lower())
+            exact_score = 50 if is_exact else 0
             
+            total_score = centrality_score + card_score + blue_score + exact_score + (conf * 5)
             candidates.append({
                 "pos": (int(cx_img / scale), int(cy_img / scale)),
                 "score": total_score,
-                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score}"
+                "bbox": bbox,
+                "text": text,
+                "is_card": is_card,
+                "is_blue": is_blue,
+                "is_exact": is_exact,
+                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} text='{text}'"
             })
 
     if candidates:
