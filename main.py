@@ -194,6 +194,11 @@ def main() -> None:
     out_dir = OUTPUT_DIR / slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Regenerate the script and full video from all parsed steps so every step's code
+    # is present even when only one step was executed this run.
+    full_script = _build_full_script(steps, out_dir)
+    full_mov    = _build_full_video(out_dir)
+
     print(f"\n{'='*60}")
     print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
     print(f"  Output: {out_dir}")
@@ -207,14 +212,6 @@ def main() -> None:
         if result:
             gif, _ = result
             saved_gifs.append(gif)
-
-    # Always regenerate full video from all existing step MOVs (including any
-    # recorded in previous runs so individual --step runs accumulate correctly).
-    full_mov = _build_full_video(out_dir)
-
-    # Always regenerate the script from all parsed steps so every step's code
-    # is present even when only one step was executed this run.
-    full_script = _build_full_script(steps, out_dir)
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")

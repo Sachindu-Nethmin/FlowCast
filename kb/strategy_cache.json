@@ -5,6 +5,11 @@
       "winner": "groq_vision",
       "fail_counts": {},
       "last_seen": "2026-03-25T09:52:41.063003+00:00"
+    },
+    "+": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T06:08:06.516849+00:00"
     }
   }
 }

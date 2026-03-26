@@ -413,12 +413,42 @@
           "anchor_label": "Path segment",
           "type": "smart_input",
           "requires_set_button": true
+        },
+        {
+          "label": "Result",
+          "anchor_label": "Response Variable",
+          "type": "text",
+          "note": "Label often says 'Result' or 'Response Variable'"
+        },
+        {
+          "label": "Target Type",
+          "anchor_label": "T",
+          "type": "select",
+          "note": "The 'T' icon represents Text mode. Offset to the right to click the dropdown."
+        }
+      ]
+    },
+    "connection_dialog": {
+      "name": "New Connection Dialog",
+      "trigger": "Clicking a connection type (e.g. HTTP) in picker",
+      "fields": [
+        {
+          "label": "Base URL",
+          "type": "text",
+          "placeholder": "Enter base URL",
+          "required": true
+        },
+        {
+          "label": "Connection Name",
+          "type": "text",
+          "placeholder": "Enter connection name",
+          "required": true
         }
       ]
     }
   },
   "element_hints": {
-    "Create": "Purple gradient button inside leftmost card on welcome screen, or primary submit button on creation form",
+    "Create": "Purple gradient button inside leftmost card on welcome screen (alias for 'Create New Integration'), or primary submit button on creation forms.",
     "Explore": "Cyan gradient button inside center card on welcome screen",
     "Import": "Pink gradient button inside rightmost card on welcome screen",
     "Browse": "Small secondary button to the right of any path/directory input field",
@@ -467,6 +497,8 @@
     "Save": "Primary submit/save button in dialogs such as connection dialog, action dialog, and resource dialog.",
     "get": "Action option in the connection action picker. Represents the HTTP GET action to call.",
     "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
+    "Result": "Alias for Response Variable in action configuration dialog. Text box to the right of 'Result' or 'Response Variable'.",
+    "Target Type": "Data type selector (json/xml/etc) in the action configuration dialog. Look for the blue 'T' icon as an anchor.",
     "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
     "json": "Option in the Response Type dropdown inside action configuration dialog.",
     "Return": "Node type button in the flow editor toolbar or add-node menu. Adds a return/response node to the flow.",

@@ -1,8 +1,8 @@
 ## Step 1: Create the project
 
 1. Open WSO2 Integrator.
-2. Select **Create New Integration**.
-3. Enter the integration name (for example, `Integration`).
+2. Select **Create**.
+3. Set the **Integration Name** to `Integration`.
 4. Select **Browse**.
 5. Select the project location and select **Open**.
 6. Select **Create Integration**.

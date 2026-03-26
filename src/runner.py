@@ -104,8 +104,11 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
     return healer.heal(ctx)  # raises HealingAbortedError or ElementNotFoundError on total failure
 
 
-def _find_set_button() -> tuple[int, int] | None:
-    """Use OpenCV template matching to find the Set button on screen."""
+def _find_set_button(near_x: int | None = None, near_y: int | None = None) -> tuple[int, int] | None:
+    """Use OpenCV template matching to find the Set button on screen.
+    
+    If near_x/near_y provided, filters for matches near those coordinates.
+    """
     import cv2
     from pathlib import Path as _Path
 
@@ -116,23 +119,44 @@ def _find_set_button() -> tuple[int, int] | None:
     screenshot = pyautogui.screenshot()
     screen_arr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
     tmpl = cv2.cvtColor(cv2.imread(str(icon_path)), cv2.COLOR_BGR2GRAY)
+    
+    # Left panel avoidance (ignore left 20% for "Set" buttons)
+    left_boundary = int(screenshot.width * 0.2)
 
-    best_val, best_loc = -1.0, (0, 0)
+    best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
     th, tw = tmpl.shape[:2]
-    for s in (1.0, 0.75, 1.25):
+    
+    # Scale search to handle different OS scaling / app zoom levels
+    for s in (0.75, 0.85, 1.0, 1.15, 1.25):
         tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
         t_resized = cv2.resize(tmpl, (tw_s, th_s))
         res = cv2.matchTemplate(screen_arr, t_resized, cv2.TM_CCOEFF_NORMED)
-        _, val, _, loc = cv2.minMaxLoc(res)
-        if val > best_val:
-            best_val, best_loc = val, loc
-            best_tw, best_th = tw_s, th_s
+        
+        # We might have multiple set buttons — find all above threshold and pick nearest
+        locs = np.where(res >= 0.65)
+        for loc_y, loc_x in zip(*locs):
+            val = res[loc_y, loc_x]
+            cx = loc_x + tw_s // 2
+            cy = loc_y + th_s // 2
+            
+            # Left panel avoidance
+            if cx < left_boundary:
+                continue
+                
+            # If coordinates provided, require proximity (within ~150px horizontally, ~100px vertically)
+            if near_x is not None and near_y is not None:
+                dx, dy = abs(cx - near_x), abs(cy - near_y)
+                if dx > 150 or dy > 100:
+                    continue
+            
+            if val > best_val:
+                best_val, best_loc = val, (cx, cy)
+                best_tw, best_th = tw_s, th_s
 
     if best_val < 0.6:
         return None
 
-    cx = best_loc[0] + best_tw // 2
-    cy = best_loc[1] + best_th // 2
+    cx, cy = best_loc
     print(f"[runner] Set button found at ({cx}, {cy}) confidence={best_val:.2f}")
     return (cx, cy)
 
@@ -264,19 +288,22 @@ def fire(action: dict[str, Any]) -> None:
         pyautogui.click(x, y)
 
     elif kind == "type":
-        if action.get("_needs_click") and x is not None and y is not None:
-            _trigger_pre_move()
-            pyautogui.moveTo(x, y, duration=0.2)
-            pyautogui.click(x, y)
-            wait_ui_change(timeout=2.0)
-        # If a "Set" button is visible and required, click it to activate the input field first
+        # If a "Set" button is visible and required, click it FIRST to activate the input field
         if action.get("requires_set_button"):
-            set_pos = _find_set_button()
+            set_pos = _find_set_button(near_x=x, near_y=y)
             if set_pos:
                 _trigger_pre_move()
                 pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
                 pyautogui.click(set_pos[0], set_pos[1])
                 wait_ui_change(timeout=2.0)
+        
+        # Then click the target input field (always, to ensure focus before typing)
+        if action.get("_needs_click") and x is not None and y is not None:
+            _trigger_pre_move()
+            pyautogui.moveTo(x, y, duration=0.2)
+            pyautogui.click(x, y)
+            wait_ui_change(timeout=2.0)
+            
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)

@@ -25,6 +25,7 @@ _FIELD_ALIASES: dict[str, str] = {
     "response type":     "Response Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
+    "url":               "Url",
 }
 
 
@@ -61,7 +62,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         if not line:
             continue
 
-        # ── Open app ──────────────────────────────────────────────────────────
+        # ── Step 0: Open app ──────────────────────────────────────────────────
         if re.search(r'\bOpen\s+WSO2\s+Integrator\b', line, re.IGNORECASE):
             actions.append({
                 "action":   "open_app",
@@ -74,86 +75,68 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         if re.match(r'Keep\b', line, re.IGNORECASE):
             continue
 
-        line_actions: list[dict[str, Any]] = []
+        # ── Step 1: Collect ALL actions in this line ──────────────────────────
+        line_actions: list[tuple[int, dict[str, Any]]] = []  # (start_index, action)
 
-        # ── Click: "Select **X**" ─────────────────────────────────────────────
-        # Handles multiple selects in one sentence ("… and select **Open**")
+        # A) "Select **X**"
         for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
-            line_actions.append({"action": "click", "target": m.group(1).strip()})
+            line_actions.append((m.start(), {"action": "click", "target": m.group(1).strip()}))
 
-        # ── Click: "Add [a [new]] **X**" ──────────────────────────────────────
-        if not line_actions:
-            for m in re.finditer(r'\bAdd(?:\s+(?:a\s+)?(?:new\s+)?)?\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
-                line_actions.append({"action": "click", "target": m.group(1).strip()})
+        # B) "Add [a [new]] **X**"
+        for m in re.finditer(r'\bAdd(?:\s+(?:a\s+)?(?:new\s+)?)?\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
+            line_actions.append((m.start(), {"action": "click", "target": m.group(1).strip()}))
 
-        # ── Click: "Add the `X` action" ───────────────────────────────────────
-        if not line_actions:
-            m = re.search(r'\bAdd\s+the\s+`([^`]+)`\s+action\b', line, re.IGNORECASE)
-            if m:
-                line_actions.append({"action": "click", "target": m.group(1).strip()})
-
-        # ── Type: "Set [the] [base] **X** to `Y`"
-        m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
-        if m:
+        # C) "Set [the] [base] **X** to `Y`"
+        for m in re.finditer(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE):
             field_name = (m.group(1).strip() + " " + m.group(2).strip()).strip()
-            line_actions.insert(0, {
+            line_actions.append((m.start(), {
                 "action":       "type",
                 "field_target": _normalise_field(field_name),
                 "value":        m.group(3),
-            })
-        
-        # ── Type: "Set [the] X to `Y`" (non-bold field name)
-        elif not line_actions:
-            m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
-            if m:
-                line_actions.append({
+            }))
+
+        # D) "Set [the] X to `Y`" (non-bold field name)
+        for m in re.finditer(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE):
+            # Check if this overlaps with a bold match (already added)
+            exists = any(abs(pos - m.start()) < 5 for pos, _ in line_actions)
+            if not exists:
+                line_actions.append((m.start(), {
                     "action":       "type",
                     "field_target": _normalise_field(m.group(1)),
                     "value":        m.group(2),
-                })
+                }))
 
-        # ── Type: "Enter the X (for example, `Y`)" ───────────────────────────
+        # E) "Name the connection `X`"
+        for m in re.finditer(r'[Nn]ame\s+the\s+connection\s+`([^`]+)`', line, re.IGNORECASE):
+            line_actions.append((m.start(), {
+                "action":       "type",
+                "field_target": "Connection Name",
+                "value":        m.group(1),
+            }))
+
+        # F) "Store … variable named `X` … type `Y`"
+        for m in re.finditer(r'[Ss]tore.*?variable.*?named\s+`([^`]+)`.*?type\s+`([^`]+)`', line, re.DOTALL | re.IGNORECASE):
+            line_actions.append((m.start(), {
+                "action":       "type",
+                "field_target": "Response Variable",
+                "value":        m.group(1),
+            }))
+            line_actions.append((m.start() + 1, {
+                "action":       "select",
+                "field_target": "Response Type",
+                "value":        m.group(2),
+            }))
+
+        # G) "Select … node" or "Select … card" (fallback)
         if not line_actions:
-            m = re.search(
-                r'[Ee]nter\s+(?:the\s+)?([^(`]+?)\s+\(for example,?\s+`([^`]+)`\)',
-                line,
-            )
+            m = re.search(r'select\s+(?:the\s+)?(.*?)\s+(?:node|card|option)', line, re.IGNORECASE)
             if m:
-                line_actions.append({
-                    "action":       "type",
-                    "field_target": _normalise_field(m.group(1)),
-                    "value":        m.group(2),
-                })
+                line_actions.append((m.start(), {"action": "click", "target": m.group(1).strip()}))
 
-        # ── Type: "Name the connection `X`" ──────────────────────────────────
-        if not line_actions:
-            m = re.search(r'[Nn]ame\s+the\s+connection\s+`([^`]+)`', line)
-            if m:
-                line_actions.append({
-                    "action":       "type",
-                    "field_target": "Connection Name",
-                    "value":        m.group(1),
-                })
-
-        # ── Type + Select: "Store … variable named `X` … type `Y`" ──────────
-        if not line_actions:
-            m = re.search(
-                r'[Ss]tore.*?variable.*?named\s+`([^`]+)`.*?type\s+`([^`]+)`',
-                line, re.DOTALL,
-            )
-            if m:
-                line_actions.append({
-                    "action":       "type",
-                    "field_target": "Response Variable",
-                    "value":        m.group(1),
-                })
-                line_actions.append({
-                    "action":       "select",
-                    "field_target": "Response Type",
-                    "value":        m.group(2),
-                })
-
-        actions.extend(line_actions)
+        # Sort actions found in this line by their appearance order
+        line_actions.sort(key=lambda x: x[0])
+        for _, action in line_actions:
+            actions.append(action)
 
         # ── Suffix: "and save" → hotkey ───────────────────────────────────────
         if re.search(r'\band\s+save\b', line, re.IGNORECASE):

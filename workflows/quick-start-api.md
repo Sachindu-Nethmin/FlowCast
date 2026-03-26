@@ -30,11 +30,11 @@
 1. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
 2. Set the **Connection Name** to `externalApi` and select **Save Connection**.
 3. Select **externalApi**.
-4. Select **GET**.
-4. Set **Path** to `/`.
-5. Set **Result** to `response` and set **Target Type** to `json`.
-6. Select **Save**.
-7. Select **+** inside the resource flow.
-8. Select **Return** node.
-9. Set the **return expression** to `response`.
-10. Select **Save**.
+4. Select **Get**.
+5. Set **Path** to `/`.
+6. Set **Result** to `response` and set **Target Type** to `json`.
+7. Select **Save**.
+8. Select **+** inside the resource flow.
+9. Select **Return** node.
+10. Set the **return expression** to `response`.
+11. Select **Save**.

@@ -182,6 +182,17 @@
       "groq_prompt": "Find the green Run (play) button in the toolbar at the top of WSO2 Integrator. It is a green triangular play icon. Return center pixel coordinates as x,y.",
       "prefer_template": true,
       "match_threshold": 0.5
+    },
+    {
+      "id": "type-icon",
+      "element_label": "T",
+      "screen": "Action configuration dialog / Smart input",
+      "position_hint": "inside the smart input field, leftmost mode toggle button (blue background)",
+      "action": "Indicates Text mode for an input field. Also used as an anchor for Type related fields.",
+      "icon_file": "type.png",
+      "groq_prompt": "Find the small blue square button with a white serif 'T' in it. It represents the 'Text' mode toggle for an input field. Return its center pixel coordinates as x,y.",
+      "prefer_template": true,
+      "match_threshold": 0.7
     }
   ]
 }
