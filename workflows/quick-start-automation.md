@@ -2,6 +2,7 @@
 
 1. Open WSO2 Integrator.
 <<<<<<< HEAD
+<<<<<<< HEAD
 2. Select **Create**.
 3. Set **Integration Name** to `Integration`.
 =======
@@ -12,6 +13,10 @@
 =======
 3. Enter the integration name (for example, `Integration`).
 >>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
+=======
+2. Select **Create**.
+3. Set **Integration Name** to `Integration`.
+>>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
 4. Select **Browse**.
 5. Select the project location and select **Open**.
 6. Select **Create Integration**.

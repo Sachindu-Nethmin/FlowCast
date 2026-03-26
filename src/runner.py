@@ -740,6 +740,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
@@ -755,6 +756,10 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 >>>>>>> ee262bc (improved text files)
 =======
 >>>>>>> 59739ff (1.0)
+=======
+=======
+>>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
+>>>>>>> e68c878 (feat: implement static source clickability verifier and fix detection issues)
         
 >>>>>>> 9e44480 (Light (#6))
         # Verify clickability via WSO2 Integrator React source code
@@ -899,10 +904,15 @@ def fire(action: dict[str, Any]) -> None:
             wait_ui_change(timeout=2.0)
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 =======
 >>>>>>> 7edd6ac (add image indentification)
+=======
+=======
+>>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
+>>>>>>> e68c878 (feat: implement static source clickability verifier and fix detection issues)
             
 >>>>>>> 9e44480 (Light (#6))
             # If a "Set" button is visible, click it to activate the input field
@@ -917,6 +927,7 @@ def fire(action: dict[str, Any]) -> None:
                 else:
                     print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
 
+<<<<<<< HEAD
 =======
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
@@ -931,6 +942,8 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.click(set_pos[0], set_pos[1])
             wait_ui_change(timeout=2.0)
 >>>>>>> 6e2f95f (add image indentification)
+=======
+>>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)
