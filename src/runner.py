@@ -865,6 +865,7 @@ def fire(action: dict[str, Any]) -> None:
 >>>>>>> 6e2f95f (add image indentification)
         _trigger_pre_move()
 <<<<<<< HEAD
+<<<<<<< HEAD
         pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
         pyautogui.click(x, y)
 
@@ -881,6 +882,8 @@ def fire(action: dict[str, Any]) -> None:
         # ───────────────────────────────────────────────────────────────
 
 =======
+=======
+>>>>>>> 9e3aefa (Fix Light theme)
         pyautogui.moveTo(x, y, duration=0.3)
         time.sleep(0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
 <<<<<<< HEAD
@@ -889,6 +892,9 @@ def fire(action: dict[str, Any]) -> None:
 >>>>>>> 7d1f240 (improved text files)
 =======
 >>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
+=======
+        pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
+>>>>>>> d8927dc (Fix Light theme)
         pyautogui.click(x, y)
 
     elif kind == "type":
