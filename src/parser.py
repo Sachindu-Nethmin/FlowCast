@@ -25,6 +25,7 @@ _FIELD_ALIASES: dict[str, str] = {
     "response type":     "Response Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
+<<<<<<< HEAD
     "service base path": "Service Base Path",
     # SAP connector fields
     "auth":              "Auth",
@@ -35,6 +36,8 @@ _FIELD_ALIASES: dict[str, str] = {
     "salesorganization": "SalesOrganization",
     "distributionchannel": "DistributionChannel",
     "organizationdivision": "OrganizationDivision",
+=======
+>>>>>>> 9e44480 (Light (#6))
 }
 
 
@@ -59,8 +62,11 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
       • "Name the connection `X`"            → type Connection Name=X
       • "Store … variable named `X` … type `Y`" → type Response Variable=X
                                                    + select Response Type=Y
+<<<<<<< HEAD
       • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
       • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
+=======
+>>>>>>> 9e44480 (Light (#6))
       Suffix (added after the line's primary action):
       • "and save" anywhere in line          → hotkey command+s
     """
@@ -165,6 +171,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                     "value":        m.group(2),
                 })
 
+<<<<<<< HEAD
         # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
         if not line_actions:
             # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
@@ -185,6 +192,8 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                         "value":        m.group(1).strip(),
                     })
 
+=======
+>>>>>>> 9e44480 (Light (#6))
         actions.extend(line_actions)
 
         # ── Suffix: "and save" → hotkey ───────────────────────────────────────
@@ -199,7 +208,10 @@ class Step:
     title: str
     gif_filename: str
     actions: list[dict[str, Any]]
+<<<<<<< HEAD
     raw_instructions: str = ""
+=======
+>>>>>>> 9e44480 (Light (#6))
 
 
 def _title_to_slug(title: str) -> str:
@@ -231,11 +243,15 @@ def parse_markdown(path: str | Path) -> list[Step]:
     for title, gif_filename, instructions in raw_steps:
         print(f"[parser] Parsing step: {title}")
         actions = _parse_instructions(instructions)
+<<<<<<< HEAD
         steps.append(Step(
             title=title,
             gif_filename=gif_filename,
             actions=actions,
             raw_instructions=instructions
         ))
+=======
+        steps.append(Step(title=title, gif_filename=gif_filename, actions=actions))
+>>>>>>> 9e44480 (Light (#6))
         print(f"[parser]   → {len(actions)} actions")
     return steps

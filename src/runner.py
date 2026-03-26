@@ -10,7 +10,11 @@ import numpy as np
 import pyautogui
 from PIL import Image
 
+<<<<<<< HEAD
 from src.detector import ElementNotFoundError, find_element, find_input_field, is_text_visible_near
+=======
+from src.detector import ElementNotFoundError, find_element, find_input_field
+>>>>>>> 9e44480 (Light (#6))
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.3
@@ -80,6 +84,7 @@ def _activate() -> None:
     time.sleep(0.3)
 
 
+<<<<<<< HEAD
 def detect_theme() -> str:
     """Identify if the target app is in 'light' or 'dark' mode."""
     from src.detector import _is_light_mode
@@ -87,6 +92,8 @@ def detect_theme() -> str:
     return "light" if _is_light_mode(screenshot) else "dark"
 
 
+=======
+>>>>>>> 9e44480 (Light (#6))
 def _find(target: str, hint: str | None = None, action: dict | None = None,
           step_title: str = "", action_index: int = 0) -> tuple[int, int]:
     screenshot = _screenshot()
@@ -144,7 +151,10 @@ def _find_set_button() -> tuple[int, int] | None:
     return (cx, cy)
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9e44480 (Light (#6))
 def _paste(value: str) -> None:
     subprocess.run(["pbcopy"], input=value.encode(), check=True)
     pyautogui.hotkey("command", "v")
@@ -205,6 +215,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "click":
         target = action["target"]
+<<<<<<< HEAD
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
@@ -215,12 +226,19 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             x, y = _find(ocr_label, action=action)
             return {**action, "x": x + offset["x"], "y": y + offset["y"]}
 
+=======
+        
+>>>>>>> 9e44480 (Light (#6))
         # Verify clickability via WSO2 Integrator React source code
         from src.source_verifier import is_clickable
         if not is_clickable(target):
             print(f"[runner] WARNING: Source code check failed. '{target}' is unclickable text (e.g. input label). OpenCV might pick a wild field. Skipping click!")
             return {**action, "x": None, "y": None, "_needs_click": False, "_skip": True}
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> 9e44480 (Light (#6))
         x, y = _find(target, action.get("hint"), action=action)
         return {**action, "x": x, "y": y}
 
@@ -249,6 +267,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             return {**action, "x": x, "y": y}
         return action
 
+<<<<<<< HEAD
     if kind == "search":
         # Find the search input placeholder by field_target label
         from src.detector import find_search_field
@@ -263,6 +282,8 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             print(f"[runner] Could not find search field '{action['field_target']}'")
             return {**action, "x": None, "y": None}
 
+=======
+>>>>>>> 9e44480 (Light (#6))
     return action  # hotkey, wait — no detection needed
 
 
@@ -292,6 +313,7 @@ def fire(action: dict[str, Any]) -> None:
 
     elif kind == "click":
         _trigger_pre_move()
+<<<<<<< HEAD
         pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
         pyautogui.click(x, y)
 
@@ -307,12 +329,23 @@ def fire(action: dict[str, Any]) -> None:
                 return 
         # ───────────────────────────────────────────────────────────────
 
+=======
+        pyautogui.moveTo(x, y, duration=0.3)
+        time.sleep(0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
+        pyautogui.click(x, y)
+
+    elif kind == "type":
+>>>>>>> 9e44480 (Light (#6))
         if action.get("_needs_click") and x is not None and y is not None:
             _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
             wait_ui_change(timeout=2.0)
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> 9e44480 (Light (#6))
             # If a "Set" button is visible, click it to activate the input field
             set_pos = _find_set_button()
             if set_pos:
@@ -330,6 +363,7 @@ def fire(action: dict[str, Any]) -> None:
         time.sleep(0.1)
         _paste(action["value"])
 
+<<<<<<< HEAD
         # ── Verify the typed text is actually visible in the field ──────────
         # If the first token of the value is not visible near (x, y), the click
         # may not have focused the field.  Reset focus by clicking another field,
@@ -378,6 +412,20 @@ def fire(action: dict[str, Any]) -> None:
         except ElementNotFoundError:
             print(f"[runner] Select option '{action['value']}' not found after opening dropdown")
 
+=======
+    elif kind == "select":
+        _trigger_pre_move()
+        pyautogui.moveTo(x, y, duration=0.2)
+        pyautogui.click(x, y)
+        time.sleep(0.4)
+        # Option will be found live during fire since dropdown just opened
+        try:
+            ox, oy = find_element(pyautogui.screenshot(), action["value"])
+            pyautogui.click(ox, oy)
+        except ElementNotFoundError:
+            print(f"[runner] Select option '{action['value']}' not found after opening dropdown")
+
+>>>>>>> 9e44480 (Light (#6))
     elif kind == "hotkey":
         _trigger_pre_move()
         pyautogui.hotkey(*action["keys"])
@@ -389,6 +437,7 @@ def fire(action: dict[str, Any]) -> None:
         else:
             pyautogui.scroll(clicks)
 
+<<<<<<< HEAD
     elif kind == "search":
         _trigger_pre_move()
         if x is not None and y is not None:
@@ -411,6 +460,8 @@ def fire(action: dict[str, Any]) -> None:
         wait_ui_change(timeout=3.0)
         print(f"[runner] Searched for '{action['value']}' in '{action.get('field_target', 'Search')}'")
 
+=======
+>>>>>>> 9e44480 (Light (#6))
     elif kind == "wait":
         time.sleep(action.get("seconds", 1.0))
 

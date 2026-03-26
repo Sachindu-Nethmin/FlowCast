@@ -9,10 +9,16 @@
 
 ## Step 2: Add an automation artifact
 
+<<<<<<< HEAD
 1. Select **Integration**.
 2. In the design view, select **+ Add Artifact**.
 3. Select **Automation** artifact.
 4. Select **Create** to create an automation. This directs you to the automation diagram view.
+=======
+1. In the design view, select **+ Add Artifact**.
+2. Select **Automation** artifact.
+3. Select **Create** to create an automation. This directs you to the automation diagram view.
+>>>>>>> 9e44480 (Light (#6))
 
 ## Step 3: Add logic
 

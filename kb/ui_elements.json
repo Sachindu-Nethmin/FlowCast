@@ -396,6 +396,7 @@
         }
       ]
     },
+<<<<<<< HEAD
     "open_project_choice": {
       "name": "Open Project - Choice Screen",
       "trigger": "Clicking 'Open' on welcome screen",
@@ -478,6 +479,8 @@
         { "label": "Organization", "type": "dropdown", "id": "repo-init-org", "required": true, "hint": "Git organization/workspace selector for new repositories" }
       ]
     },
+=======
+>>>>>>> 9e44480 (Light (#6))
     "action_config": {
       "name": "Action Configuration Dialog",
       "trigger": "Clicking a node in the flow canvas",
@@ -486,16 +489,24 @@
           "label": "Url",
           "anchor_label": "URL of the target service",
           "type": "smart_input",
+<<<<<<< HEAD
           "exact_height": 32,
           "search_region": { "height": 160 },
           "click_offset": { "x": 0, "y": 60 },
+=======
+          "search_region": { "height": 160 },
+>>>>>>> 9e44480 (Light (#6))
           "note": "Has 'Text/Expression' toggle. Anchored to sub-label below it."
         },
         {
           "label": "Path",
           "anchor_label": "Path segment",
+<<<<<<< HEAD
           "type": "smart_input",
           "exact_height": 32
+=======
+          "type": "smart_input"
+>>>>>>> 9e44480 (Light (#6))
         }
       ]
     }
@@ -543,6 +554,7 @@
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
     "Design from scratch": "Option in the Service contract dropdown inside HTTP Service creation form.",
     "GET": "Resource type button or badge in the HTTP service design view. Represents an HTTP GET method resource.",
+<<<<<<< HEAD
     "Call Function": "Card/option in the node panel inside the automation diagram view. Labeled 'Call Function'. Located in the center grid of the panel.",
     "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
     "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
@@ -558,6 +570,8 @@
       "search_region": { "height": 120, "x_offset_left": 50, "x_offset_right": 1000 },
       "note": "In Light Mode, the field border might be faint. Using lower Canny thresholds."
     },
+=======
+>>>>>>> 9e44480 (Light (#6))
     "+": "Small circular plus button inside the resource flow in design view. Adds a new node to the integration flow.",
     "HTTP": "Connection type card in the connection picker dialog. Click to create a new HTTP connection.",
     "Base URL": "Text input field in the new HTTP connection dialog. Enter the full external base URL here.",
@@ -572,6 +586,7 @@
     "WSO2: BI": "Option in the Type: dropdown selector at the top of the creation form. Selects Ballerina Integration type.",
     "WSO2: MI": "Option in the Type: dropdown selector at the top of the creation form. Selects Micro Integrator type.",
     "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button.",
+<<<<<<< HEAD
     "Url": {
       "label": "Url",
       "anchor_label": "URL of the target service",
@@ -611,14 +626,25 @@
       "skip_primary_detection": true,
       "note": "Smart input in Return node. Use 'fx' icon as anchor — small clean bbox, right beside the Expression input."
     }
+=======
+    "Url": "Smart input field in action configuration. Features a 'Text/Expression' toggle. The input box is the large rectangular area BELOW the 'URL of the target service' sub-label.",
+    "Url*": "Same as 'Url' field. The asterisk indicates it is required.",
+    "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
+    "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
+    "Path*": "Same as 'Path' field.",
+    "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
+>>>>>>> 9e44480 (Light (#6))
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
     "fields": {
       "Integration Name": "Enter an integration name",
       "Package Name": "Enter a package name",
+<<<<<<< HEAD
       "Project Name": "Enter a project name",
       "Library Name": "Enter a library name",
+=======
+>>>>>>> 9e44480 (Light (#6))
       "Select Path": "Enter path or browse to select a folder...",
       "Workspace Name": "Enter workspace name",
       "Package Version": "0.1.0",
@@ -630,9 +656,13 @@
       "Response Variable": "Enter variable name",
       "Group Id": "com.microintegrator.projects",
       "Version": "1.0.0",
+<<<<<<< HEAD
       "Folder Name": "Enter folder name",
       "Url": "Enter URL",
       "Path": "/directory-path"
+=======
+      "Folder Name": "Enter folder name"
+>>>>>>> 9e44480 (Light (#6))
     }
   },
   "autofocus_fields": {
@@ -718,7 +748,10 @@
     "Path",
     "Response Variable",
     "Return expression",
+<<<<<<< HEAD
     "Expression",
+=======
+>>>>>>> 9e44480 (Light (#6))
     "Body",
     "Url",
     "Url*"

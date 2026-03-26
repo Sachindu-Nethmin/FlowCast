@@ -40,7 +40,11 @@ def _slug(text: str) -> str:
 
 # ── Per-step recording ────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 def _run_step(step_index: int, step: Step, out_dir: Path, theme: str, is_last_step: bool = False) -> tuple[Path, Path] | None:
+=======
+def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] | None:
+>>>>>>> 9e44480 (Light (#6))
     """Record one step. Returns (gif_path, mov_path) or None on failure."""
     print(f"\n── Step {step_index}: {step.title} ──")
     print(f"   {len(step.actions)} actions → {step.gif_filename}")
@@ -75,6 +79,7 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str, is_last_st
                 runner.fire(resolved)
                 runner.wait_ui_change()
                 runner.wait_ui_settle()
+<<<<<<< HEAD
 
                 # If this is the last action of the last step, add extra time to show output
                 if is_last_step and i == len(step.actions) - 1:
@@ -108,12 +113,42 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str, is_last_st
         print(f"   MOV saved → {step_mov.name}")
         return gif, step_mov
 
+=======
+            except Exception as e:
+                runner.set_pre_move_callback(None)
+                if recorder._proc is not None:
+                    recorder.stop()
+                print(f"[ERROR] Action {i+1} failed: {e}", file=sys.stderr)
+                return None
+            # Only stop if recording was actually started by the callback
+            if recorder._proc is not None:
+                clips.append(recorder.stop())
+
+        if not clips:
+            print(f"[WARN] No clips recorded for step {step_index}")
+            return None
+
+        # Combine clips → step MOV (kept permanently) → GIF
+        combined_tmp = tmp_dir / "combined.mov"
+        recorder.combine(clips, combined_tmp)
+
+        step_mov = out_dir / f"step-{step_index:02d}-{_slug(step.title)}.mov"
+        shutil.move(str(combined_tmp), str(step_mov))
+
+        gif = out_dir / step.gif_filename
+        recorder.to_gif(step_mov, gif)
+        print(f"   GIF saved → {gif}")
+        print(f"   MOV saved → {step_mov.name}")
+        return gif, step_mov
+
+>>>>>>> 9e44480 (Light (#6))
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 # ── Full-video assembly ───────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 def _build_full_video(out_dir: Path, theme: str) -> Path | None:
     """Combine all existing step MOVs (sorted by step number) into full.mov."""
     step_movs = sorted(out_dir.glob(f"step-*-{theme}.mov"))
@@ -121,6 +156,15 @@ def _build_full_video(out_dir: Path, theme: str) -> Path | None:
         return None
 
     full_mov = out_dir / f"full-{theme}.mov"
+=======
+def _build_full_video(out_dir: Path) -> Path | None:
+    """Combine all existing step MOVs (sorted by step number) into full.mov."""
+    step_movs = sorted(out_dir.glob("step-*.mov"))
+    if not step_movs:
+        return None
+
+    full_mov = out_dir / "full.mov"
+>>>>>>> 9e44480 (Light (#6))
     recorder.combine(step_movs, full_mov, keep_inputs=True)
     print(f"   Full video → {full_mov}")
     return full_mov
@@ -128,6 +172,7 @@ def _build_full_video(out_dir: Path, theme: str) -> Path | None:
 
 # ── Python script generation ──────────────────────────────────────────────────
 
+<<<<<<< HEAD
 def _build_themed_markdown(steps: list[Step], out_dir: Path, slug: str) -> Path:
     """Generate a markdown file with <ThemedImage> components linking light/dark GIFs."""
     lines = []
@@ -162,6 +207,9 @@ def _build_themed_markdown(steps: list[Step], out_dir: Path, slug: str) -> Path:
 
 
 def _build_full_script(steps: list[Step], out_dir: Path, theme: str) -> Path:
+=======
+def _build_full_script(steps: list[Step], out_dir: Path) -> Path:
+>>>>>>> 9e44480 (Light (#6))
     """Write a runnable full_script.py containing all steps' actions."""
     lines = [
         "#!/usr/bin/env python3",
@@ -200,7 +248,11 @@ def _build_full_script(steps: list[Step], out_dir: Path, theme: str) -> Path:
             lines.append(f"_run({action!r})")
         lines.append("")
 
+<<<<<<< HEAD
     script = out_dir / f"full_script-{theme}.py"
+=======
+    script = out_dir / "full_script.py"
+>>>>>>> 9e44480 (Light (#6))
     script.write_text("\n".join(lines))
     print(f"   Script saved → {script}")
     return script
@@ -231,11 +283,14 @@ def main() -> None:
 
     steps   = parse_markdown(md_path)
     slug    = _slug(md_path.stem)
+<<<<<<< HEAD
     
     # Identify theme before creating output directory
     theme = runner.detect_theme()
     print(f"  Theme identified: {theme.upper()}")
     
+=======
+>>>>>>> 9e44480 (Light (#6))
     out_dir = OUTPUT_DIR / slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -248,14 +303,19 @@ def main() -> None:
     for idx, step in enumerate(steps, 1):
         if only_step is not None and idx != only_step:
             continue
+<<<<<<< HEAD
         is_last = (idx == len(steps))
         result = _run_step(idx, step, out_dir, theme, is_last_step=is_last)
+=======
+        result = _run_step(idx, step, out_dir)
+>>>>>>> 9e44480 (Light (#6))
         if result:
             gif, _ = result
             saved_gifs.append(gif)
 
     # Always regenerate full video from all existing step MOVs (including any
     # recorded in previous runs so individual --step runs accumulate correctly).
+<<<<<<< HEAD
     full_mov = _build_full_video(out_dir, theme)
 
     # Always regenerate the script from all parsed steps so every step's code
@@ -264,6 +324,13 @@ def main() -> None:
 
     # Generate the final themed markdown file (index.md)
     themed_md = _build_themed_markdown(steps, out_dir, slug)
+=======
+    full_mov = _build_full_video(out_dir)
+
+    # Always regenerate the script from all parsed steps so every step's code
+    # is present even when only one step was executed this run.
+    full_script = _build_full_script(steps, out_dir)
+>>>>>>> 9e44480 (Light (#6))
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")

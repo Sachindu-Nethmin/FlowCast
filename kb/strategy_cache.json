@@ -1,10 +1,27 @@
 {
   "version": 1,
   "entries": {
+<<<<<<< HEAD
     "execute cell": {
       "winner": "ocr_corrected",
       "fail_counts": {},
       "last_seen": "2026-03-31T08:48:44.765002+00:00"
+=======
+    "println": {
+      "winner": "groq_vision",
+      "fail_counts": {},
+      "last_seen": "2026-03-25T09:52:41.063003+00:00"
+    },
+    "+ add artifact": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T13:34:15.828078+00:00"
+    },
+    "+": {
+      "winner": "ocr_exact",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T15:46:27.319050+00:00"
+>>>>>>> 9e44480 (Light (#6))
     }
   }
 }

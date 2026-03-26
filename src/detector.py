@@ -1,24 +1,37 @@
+<<<<<<< HEAD
+=======
+from __future__ import annotations
+
+>>>>>>> 9e44480 (Light (#6))
 import base64
 import io
 import json
 import os
 import re
+<<<<<<< HEAD
 import shutil
 import subprocess
 import time
+=======
+>>>>>>> 9e44480 (Light (#6))
 from pathlib import Path
 
 import cv2
 import easyocr
 import numpy as np
 import pyautogui
+<<<<<<< HEAD
 from PIL import Image, ImageChops, ImageStat
+=======
+from PIL import Image
+>>>>>>> 9e44480 (Light (#6))
 
 
 class ElementNotFoundError(Exception):
     pass
 
 
+<<<<<<< HEAD
 # ── Source-derived field dimensions ───────────────────────────────────────────
 # Confirmed from product-integrator/wi/wi-webviews/src/components/DirectorySelector/DirectorySelector.tsx
 #   `height: 28px;`  (Input and BrowseButton components)
@@ -29,6 +42,8 @@ _FIELD_HEIGHT_PX = 28
 _DESCRIPTION_ZONE_PX = 48
 # ──────────────────────────────────────────────────────────────────────────────
 
+=======
+>>>>>>> 9e44480 (Light (#6))
 _ocr_reader = None
 
 
@@ -47,15 +62,22 @@ def _scale(screenshot: Image.Image) -> float:
 
 
 def _fuzzy(detected: str, target: str) -> bool:
+<<<<<<< HEAD
     """Case-sensitive fuzzy match between OCR-detected text and a target label."""
     d, t = detected.strip(), target.strip()
     if d == t:
         return True
 
+=======
+    d, t = detected.lower().strip(), target.lower().strip()
+    if d == t:
+        return True
+>>>>>>> 9e44480 (Light (#6))
     # Require word-boundary match so "automation" in "myautomation" does NOT match
     t_clean = re.sub(r'[^\w\s]', '', t).strip()
     d_clean = re.sub(r'[^\w\s]', '', d).strip()
     if not t_clean: return False
+<<<<<<< HEAD
 
     # Direct containment check for cleaned versions
     if t_clean == d_clean:
@@ -89,11 +111,18 @@ def _fuzzy(detected: str, target: str) -> bool:
     # OCR may only capture part of a multi-word target — allow detected ⊂ target
     # But ONLY if it's a significant portion (e.g. "integrator" in "wso2 integrator")
     if d in t and len(d) > 4:
+=======
+    if t_clean in d_clean:
+        return True
+    # OCR may only capture part of a multi-word target — allow detected ⊂ target
+    if d in t and len(d) > 2:
+>>>>>>> 9e44480 (Light (#6))
         return True
 
     return False
 
 
+<<<<<<< HEAD
 def _merge_ocr_results(results: list) -> list:
     """Combine horizontally aligned and nearby OCR text blocks.
     
@@ -161,6 +190,8 @@ def _is_light_mode(screenshot: Image.Image) -> bool:
     return is_light
 
 
+=======
+>>>>>>> 9e44480 (Light (#6))
 def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     """Return True if the region around a bounding box has a blue-ish background.
 
@@ -180,6 +211,7 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     if region.size == 0:
         return False
     hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+<<<<<<< HEAD
     
     # In Light Mode, blue buttons might be lighter/less saturated.
     # We relax the Saturation and Value floors slightly if needed.
@@ -189,6 +221,10 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     
     # Blue hue in OpenCV HSV: ~100–135 (of 180)
     mask = cv2.inRange(hsv, np.array([100, s_floor, v_floor]), np.array([135, 255, 255]))
+=======
+    # Blue hue in OpenCV HSV: ~100–135 (of 180)
+    mask = cv2.inRange(hsv, np.array([100, 80, 80]), np.array([135, 255, 255]))
+>>>>>>> 9e44480 (Light (#6))
     blue_ratio = float(mask.sum()) / (255.0 * mask.size)
     return blue_ratio > 0.15
 
@@ -283,6 +319,7 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             
             # 4. Exact Match Bonus: Favor complete strings over partials
             is_exact = (text.strip().lower() == target.lower())
+<<<<<<< HEAD
             is_case_match = (text.strip() == target)
             exact_score = 50 if is_exact else 0
             case_bonus = 20 if is_case_match else 0
@@ -291,6 +328,11 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             sidebar_penalty = -50 if min(xs) < (w * 0.25) else 0
             
             total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
+=======
+            exact_score = 50 if is_exact else 0
+            
+            total_score = centrality_score + card_score + blue_score + exact_score + (conf * 5)
+>>>>>>> 9e44480 (Light (#6))
             candidates.append({
                 "pos": (int(cx_img / scale), int(cy_img / scale)),
                 "score": total_score,
@@ -409,6 +451,7 @@ def _kb_entry(label: str) -> dict | None:
                 
     # Fallback to element_hints if no proper field definition found
     hints = data.get("element_hints", {})
+<<<<<<< HEAD
     for hint_label, val in hints.items():
         if hint_label.lower().strip() == l_target:
             if isinstance(val, dict):
@@ -420,6 +463,12 @@ def _kb_entry(label: str) -> dict | None:
     if label in fp:
         return {"label": label, "placeholder": fp[label]}
 
+=======
+    for hint_label, hint_text in hints.items():
+        if hint_label.lower().strip() == l_target:
+            return {"label": hint_label, "hint": hint_text}
+            
+>>>>>>> 9e44480 (Light (#6))
     return None
 
 
@@ -455,11 +504,15 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     print(f"[detector] Anchor '{anchor_text}' at ({ax}, {ay}), searching for + below")
 
     # Search region: below anchor, within canvas (x > 400)
+<<<<<<< HEAD
     is_light = _is_light_mode(screenshot)
     theme_suffix = "_light" if is_light else ""
     icon_path = Path(__file__).parent.parent / "kb" / "icons" / f"plus{theme_suffix}.png"
     if not icon_path.exists():
         icon_path = Path(__file__).parent.parent / "kb" / "icons" / "plus.png"
+=======
+    icon_path = Path(__file__).parent.parent / "kb" / "icons" / "plus.png"
+>>>>>>> 9e44480 (Light (#6))
     if not icon_path.exists():
         return None
 
@@ -468,7 +521,11 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
     screen_bgr = cv2.cvtColor(np.array(screen_small.convert("RGB")), cv2.COLOR_RGB2BGR)
 
+<<<<<<< HEAD
     # Crop to region below anchor node (±200px wide, 20–300px below)
+=======
+    # Crop to region below anchor node (±200px wide, 20–200px below)
+>>>>>>> 9e44480 (Light (#6))
     x1 = max(400, ax - 200)
     x2 = min(w_l, ax + 200)
     y1 = ay + 20
@@ -482,9 +539,13 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     th, tw = tmpl.shape[:2]
 
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), tw, th
+<<<<<<< HEAD
     # Use expanded scales for Retina-to-logical consistency
     factors = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.4, 1.6)
     for s in factors:
+=======
+    for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25):
+>>>>>>> 9e44480 (Light (#6))
         tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
         if tw_s > region.shape[1] or th_s > region.shape[0]:
             continue
@@ -500,7 +561,11 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
 
     cx = x1 + best_loc[0] + best_tw // 2
     cy = y1 + best_loc[1] + best_th // 2
+<<<<<<< HEAD
     print(f"[detector] + found below '{anchor_text}' at ({cx}, {cy}) (confidence={best_val:.2f})")
+=======
+    print(f"[detector] + below '{anchor_text}' found at ({cx}, {cy}) confidence={best_val:.2f}")
+>>>>>>> 9e44480 (Light (#6))
     return (cx, cy)
 
 
@@ -525,6 +590,7 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
     # Green hue range in HSV (covers VS Code run-button greens)
+<<<<<<< HEAD
     is_light = _is_light_mode(screenshot)
     s_floor = 50 if is_light else 60
     v_floor = 50 if is_light else 60
@@ -900,10 +966,204 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                     print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
                     continue
                 label_candidates.append((bbox, text, conf, True))
+=======
+    lower = np.array([60, 60, 60])
+    upper = np.array([165, 255, 255])
+    green_mask = cv2.inRange(hsv_full, lower, upper)
+    # Restrict to toolbar areas only
+    mask = cv2.bitwise_and(green_mask, search_mask)
+
+    # Find contours of green regions
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    # Pick the largest green blob
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < 4:  # too small — noise
+        return None
+
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        return None
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection")
+    return (cx, cy)
+
+
+def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False) -> tuple[int, int] | None:
+    """OpenCV multi-scale template matching against the icon file in kb/icons/.
+
+    Returns logical (x, y) of the best match center, or None if no confident match.
+    """
+    import cv2
+
+    icon_entry = _icon_entry_for(target)
+    if not icon_entry or not icon_entry.get("icon_file"):
+        return None
+
+    icons_dir = Path(__file__).parent.parent / "kb" / "icons"
+    icon_file = icon_entry["icon_file"]
+    stem = Path(icon_file).stem
+
+    # Collect all size variants (e.g. play_green_16.png, play_green_18.png …)
+    # plus the base file. More variants = better chance of matching screen size.
+    candidate_paths = sorted(icons_dir.glob(f"{stem}_*.png")) + \
+                      [icons_dir / Path(icon_file).with_suffix(".png"),
+                       icons_dir / icon_file]
+    icon_paths = [p for p in dict.fromkeys(candidate_paths) if p.exists()]
+    if not icon_paths:
+        return None
+
+    scale = _scale(screenshot)
+    # Work in logical-pixel space: downsample Retina screenshots
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
+
+    screen_arr = np.array(screen_small.convert("RGB"))
+    screen_gray = cv2.cvtColor(screen_arr, cv2.COLOR_RGB2GRAY)
+    screen_bgr  = cv2.cvtColor(screen_arr, cv2.COLOR_RGB2BGR)
+
+    # Restrict search area to canvas zone if requested
+    x_offset, y_offset = 0, 0
+    if canvas_only:
+        x_offset = 400
+        screen_gray = screen_gray[:, x_offset:]
+        screen_bgr  = screen_bgr[:, x_offset:]
+
+    best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
+
+    for icon_path in icon_paths:
+        icon_img  = Image.open(icon_path)
+        has_alpha = icon_img.mode == "RGBA"
+
+        if has_alpha:
+            # Transparent icon: grayscale + alpha mask (only glyph pixels match)
+            tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+            tmpl_mask = np.array(icon_img.split()[-1])
+            screen_match = screen_gray
+        else:
+            # Opaque icon: full color matching preserves distinctive colors (e.g. blue +)
+            tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2BGR)
+            tmpl_mask = None
+            screen_match = screen_bgr
+
+        th, tw = tmpl_gray.shape[:2]
+
+        for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5):
+            tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
+            if tw_s < 8 or th_s < 8:
+                continue
+            if tw_s > screen_match.shape[1] or th_s > screen_match.shape[0]:
+                continue
+            tmpl_r = cv2.resize(tmpl_gray, (tw_s, th_s))
+            if tmpl_mask is not None:
+                mask_r = cv2.resize(tmpl_mask, (tw_s, th_s))
+                res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
+            else:
+                res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
+            _, val, _, loc = cv2.minMaxLoc(res)
+            if val > best_val:
+                best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
+
+    threshold = icon_entry.get("match_threshold", 0.55) if icon_entry else 0.55
+    if best_val < threshold:
+        print(f"[detector] Template match for '{target}' confidence={best_val:.2f} — below threshold")
+        return None
+
+    cx = best_loc[0] + best_tw // 2 + x_offset
+    cy = best_loc[1] + best_th // 2 + y_offset
+    print(f"[detector] Template match '{target}' at ({cx}, {cy}) confidence={best_val:.2f}")
+    return (cx, cy)
+
+
+def _icon_entry_for(target: str) -> dict | None:
+    t = target.lower().strip()
+    for entry in _load_icon_prompts():
+        label = entry.get("element_label", "").lower()
+        if label == t:
+            return entry
+        # Only fuzzy-match labels that are 3+ chars to prevent short symbols
+        # like "+" matching unrelated targets such as "+ Add Resources"
+        if len(label) >= 3 and (label in t or t in label):
+            return entry
+    return None
+
+
+def _kb_hint(target: str) -> str | None:
+    hints = _load_kb_hints()
+    t = target.lower().strip()
+    # Exact match first
+    if t in hints:
+        return hints[t]
+    # Fuzzy: hint key contained in target or target contained in hint key
+    for key, val in hints.items():
+        if key in t or t in key:
+            return val
+    # Word-level: any word from target matches a hint key word
+    target_words = set(w for w in t.split() if w.isalpha() and len(w) > 3)
+    for key, val in hints.items():
+        key_words = set(w for w in key.split() if w.isalpha() and len(w) > 3)
+        if target_words & key_words:
+            return val
+    return None
+
+
+# ── Groq Vision ───────────────────────────────────────────────────────────────
+
+# (Groq Vision functions removed)
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+_DEBUG_SAVE_DIR: Path | None = None
+
+
+def set_debug_dir(path: str | Path | None) -> None:
+    global _DEBUG_SAVE_DIR
+    if path is None:
+        _DEBUG_SAVE_DIR = None
+    else:
+        _DEBUG_SAVE_DIR = Path(path)
+        _DEBUG_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Locate an input field using its label position as an anchor.
+
+    No external API calls — works entirely locally.
+    Strategy:
+      1. Find the field label via OCR → defines the search region below it.
+      2. OpenCV contour detection in that region — find the widest input-shaped rect.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    label_candidates = []
+    
+    # Check for direct matches
+    for bbox, text, conf in results:
+        if _fuzzy(text, field_label):
+            label_candidates.append((bbox, text, conf))
+    
+    # Try anchor_label from KB if no direct matches or if it is more reliable
+    kb = _kb_entry(field_label)
+    if kb and "anchor_label" in kb:
+        anchor = kb["anchor_label"]
+        for bbox, text, conf in results:
+            if _fuzzy(text, anchor):
+                label_candidates.append((bbox, text, conf))
+>>>>>>> 9e44480 (Light (#6))
 
     if not label_candidates:
         return None
         
+<<<<<<< HEAD
     # Preference: 
     # 1. PRIMARY EXACT CASE MATCH (e.g. "Url") comes first
     # 2. PRIMARY EXACT INSENSITIVE MATCH comes second
@@ -934,16 +1194,28 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     label_candidates.sort(key=_cand_sort)
 
     for cand_bbox, cand_text, cand_conf, is_anchor in label_candidates:
+=======
+    # Preference: Prefer labels that are NOT on a blue background (likely links)
+    label_candidates.sort(key=lambda c: (_is_blue_background(arr, c[0]), -c[2]))
+
+    for cand_bbox, cand_text, cand_conf in label_candidates:
+>>>>>>> 9e44480 (Light (#6))
         lx1 = min(p[0] for p in cand_bbox)
         ly1 = min(p[1] for p in cand_bbox)
         lx2 = max(p[0] for p in cand_bbox)
         ly2 = max(p[1] for p in cand_bbox)
 
         # Regions relative to THIS candidate
+<<<<<<< HEAD
         # Increased search area (1000px deep) to capture fields with very long descriptions (e.g. Target Type)
         sy2_buffer = 1000
         dx_buffer_left = 60
         dx_buffer_right = 800
+=======
+        sy2_buffer = 100
+        dx_buffer_left = 100
+        dx_buffer_right = 2000
+>>>>>>> 9e44480 (Light (#6))
         
         kb = _kb_entry(field_label)
         if kb and "search_region" in kb:
@@ -952,10 +1224,14 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             dx_buffer_left = sr.get("x_offset_left", dx_buffer_left)
             dx_buffer_right = sr.get("x_offset_right", dx_buffer_right)
 
+<<<<<<< HEAD
         # DIRECT SEARCH: Look immediately below the label (no description skipping)
         search_start_y = ly2 + 2
 
         rs_below = (max(0, lx1 - dx_buffer_left), search_start_y, min(arr.shape[1], lx1 + dx_buffer_right), min(arr.shape[0], search_start_y + sy2_buffer))
+=======
+        rs_below = (max(0, lx1 - dx_buffer_left), ly2 + 2, min(arr.shape[1], lx1 + dx_buffer_right), min(arr.shape[0], ly2 + sy2_buffer))
+>>>>>>> 9e44480 (Light (#6))
         rs_right = (lx2 + 5, ly1 - 10, min(arr.shape[1], lx2 + 1200), ly2 + 10)
 
         best: tuple[int, int, int, int] | None = None
@@ -966,6 +1242,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             region = arr[sy1:sy2, sx1:sx2]
             if region.size == 0: continue
             gray = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+<<<<<<< HEAD
             
             # Light Mode contour robustness: lower thresholds for subtler edges
             is_light = _is_light_mode(screenshot)
@@ -1074,11 +1351,36 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
             for thresh_val, mode in [(30, cv2.THRESH_BINARY), (60, cv2.THRESH_BINARY),
                                      (180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
+=======
+            edges = cv2.Canny(gray, 30, 100)
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                x, y, w, h = cv2.boundingRect(cnt)
+                if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
+                    # Preference Logic: PROXIMITY to label
+                    # 1. Prefer vertically CLOSEST boxes (within 5px fuzzy zone)
+                    # 2. Prefer WIDEST boxes among those at similar height
+                    if best is None or y < best[1] - 5 or (abs(y - best[1]) <= 5 and w > best[2]):
+                        best = (x, y, w, h)
+                        best_region_origin = (sx1, sy1)
+            if best:
+                break # Exit the region loop if a best candidate is found in this branch
+
+        # ── Branch B: Threshold scan (fallback for THIS candidate) ─────────────
+        if best: break # If best was found in Branch A, skip Branch B for this candidate
+
+        for sx1, sy1, sx2, sy2 in [rs_below, rs_right]:
+            region = arr[sy1:sy2, sx1:sx2]
+            if region.size == 0: continue
+            gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
+            for thresh_val, mode in [(180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
+>>>>>>> 9e44480 (Light (#6))
                 _, thresh = cv2.threshold(gray_region, thresh_val, 255, mode)
                 contours2, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 best2 = None
                 for cnt in contours2:
                     x, y, w, h = cv2.boundingRect(cnt)
+<<<<<<< HEAD
                     if h < 30:
                         continue
                     if not (150 < w < 2000 and h < 80 and w > h * 1.5):
@@ -1110,6 +1412,17 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 break
         if best:
             break
+=======
+                    if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
+                        if best2 is None or y < best2[1] - 5 or (abs(y - best2[1]) <= 5 and w > best2[2]):
+                            best2 = (x, y, w, h)
+                if best2:
+                    best = (x, y, w, h)
+                    best_region_origin = (sx1, sy1)
+                    break
+            if best: break
+        if best: break
+>>>>>>> 9e44480 (Light (#6))
 
     if _DEBUG_SAVE_DIR:
         # Save a "scan" image with all labels found, highlighting matches
@@ -1124,12 +1437,23 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             draw.rectangle([lx1, ly1, lx2, ly2], outline="#CCCCCC", width=1)
             
         # Draw target/anchor labels in Red
+<<<<<<< HEAD
         for cand_bbox, cand_text, _, _is_anc in label_candidates:
             lx1, ly1, lx2, ly2 = min(p[0] for p in cand_bbox), min(p[1] for p in cand_bbox), max(p[0] for p in cand_bbox), max(p[1] for p in cand_bbox)
             draw.rectangle([lx1, ly1, lx2, ly2], outline="red", width=3)
             # Draw the actual search regions used (rs_below and rs_right)
             draw.rectangle([rs_below[0], rs_below[1], rs_below[2], rs_below[3]], outline="green", width=2)
             draw.rectangle([rs_right[0], rs_right[1], rs_right[2], rs_right[3]], outline="green", width=1)
+=======
+        for cand_bbox, cand_text, _ in label_candidates:
+            lx1, ly1, lx2, ly2 = min(p[0] for p in cand_bbox), min(p[1] for p in cand_bbox), max(p[0] for p in cand_bbox), max(p[1] for p in cand_bbox)
+            draw.rectangle([lx1, ly1, lx2, ly2], outline="red", width=3)
+            # Draw the search region in green
+            sy2_buf = 100
+            if kb and "search_region" in kb:
+                sy2_buf = kb["search_region"].get("height", sy2_buf)
+            draw.rectangle([lx1 - 100, ly2 + 2, lx1 + 2000, ly2 + sy2_buf], outline="green", width=2)
+>>>>>>> 9e44480 (Light (#6))
 
         # Draw the selected field in Cyan if found
         if best:
@@ -1212,6 +1536,7 @@ def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index
     return None
 
 
+<<<<<<< HEAD
 def is_text_visible_near(screenshot: Image.Image, text: str, cx: int, cy: int, radius: int = 250) -> bool:
     """Return True if *text* (or a fuzzy match) is visible within *radius* logical pixels of (cx, cy).
 
@@ -1356,10 +1681,16 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
 def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
     """Find where to click to focus a named input field."""
     # Try direct visual detection first (label + contour)
+=======
+def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Find where to click to focus a named input field."""
+    # Try direct visual detection first
+>>>>>>> 9e44480 (Light (#6))
     result = _find_input_by_visual(screenshot, field_label)
     if result:
         return result
 
+<<<<<<< HEAD
     # Fall back to description-anchor method: locate the field's helper text and
     # click just below its last line — most reliable when a description is present.
     result = _find_input_below_description(screenshot, field_label)
@@ -1501,3 +1832,71 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> t
 
     print(f"[detector] Search field '{field_label}' not found")
     return None
+=======
+    # Try indexed fallback if metadata exists
+    kb = _kb_entry(field_label)
+    if kb and "field_index" in kb and "anchor_label" in kb:
+        print(f"[detector] Direct visual failed for '{field_label}', trying indexed search using anchor '{kb['anchor_label']}'...")
+        result = _find_input_by_index(screenshot, kb["anchor_label"], kb["field_index"])
+        if result:
+            return result
+
+    print(f"[detector] Visual detection failed for '{field_label}'.")
+    return None
+
+
+def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+    # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
+    # For all other targets, try OCR first and fall back to template match then Groq Vision.
+    icon_entry = _icon_entry_for(target)
+    # Skip OCR for short symbols or entries that explicitly prefer template matching
+    skip_ocr = (len(target.strip()) <= 2 and icon_entry is not None) or \
+               (icon_entry is not None and icon_entry.get("prefer_template", False))
+    canvas_only = False
+    if icon_entry and icon_entry.get("position_hint", ""):
+        hint_lower = icon_entry["position_hint"].lower()
+        canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
+
+    # For canvas + button: anchor to Start node for reliable position
+    if target.strip() == "+" and canvas_only:
+        result = _find_plus_below_node(screenshot, anchor_text="Start")
+        if result:
+            return result
+        print(f"[detector] Anchor-based + detection failed, falling back to template match...")
+
+    if skip_ocr:
+        print(f"[detector] '{target}' — skipping OCR, using template match first")
+    else:
+        result = _find_ocr(screenshot, target)
+        if result:
+            print(f"[detector] OCR found '{target}' at {result}")
+            return result
+        print(f"[detector] OCR failed for '{target}', trying template match...")
+
+    # For green play icons: HSV color detection avoids transparent-PNG false positives
+    if icon_entry and "play_green" in icon_entry.get("icon_file", ""):
+        result = _find_green_play_button(screenshot)
+        if result:
+            return result
+        print(f"[detector] HSV color detection failed for '{target}', trying template match...")
+
+    # Template matching: exact pixel comparison against the known icon file
+    result = _find_template(screenshot, target, canvas_only=canvas_only)
+    if result:
+        print(f"[detector] Template match found '{target}' at {result}")
+        return result
+
+    raise ElementNotFoundError(f"Could not find '{target}' via OCR or template match.")
+
+
+# (Groq functions removed)
+
+
+if __name__ == "__main__":
+    # Test block for provided icon
+    test_path = "/Users/sachindu/Desktop/Repos/wso2/FlowCast/kb/icons/plus.png"
+    if os.path.exists(test_path):
+        print(f"Skipping Groq test — Groq removed.")
+    else:
+        print(f"Test file not found at {test_path}")
+>>>>>>> 9e44480 (Light (#6))
