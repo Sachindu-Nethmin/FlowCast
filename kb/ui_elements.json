@@ -1,0 +1,588 @@
+{
+  "screens": {
+    "welcome": {
+      "name": "Welcome Screen",
+      "trigger": "App launch / 'Open Welcome Page' command",
+      "elements": [
+        { "label": "Configure", "type": "icon_button", "icon": "settings-gear", "position": "top-right", "action": "Opens extension settings" },
+        { "label": "Create", "type": "button", "position": "leftmost card 'Create New Project'", "action": "Go to project creation form", "hint": "Purple gradient button inside leftmost card on welcome screen" },
+        { "label": "Explore", "type": "button", "position": "center card 'Explore Samples'", "action": "Go to samples browser", "hint": "Cyan gradient button inside center card on welcome screen" },
+        { "label": "Import", "type": "button", "position": "rightmost card 'Import External Integration'", "action": "Go to import wizard", "hint": "Pink gradient button inside rightmost card on welcome screen" },
+        { "label": "Open", "type": "link", "position": "bottom section after 'Already have a project?' text", "action": "Open existing project", "hint": "Blue link text after 'Already have a project?'" },
+        { "label": "View all", "type": "link", "position": "next to 'Recent projects' header", "action": "Show all recent projects", "hint": "Shows count e.g. 'View all (11)'" }
+      ],
+      "fields": []
+    },
+    "bi_creation": {
+      "name": "Create BI Integration Screen",
+      "trigger": "Clicking 'Create' on welcome screen",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "icon": "bi-arrow-back", "position": "top-left", "action": "Return to welcome screen" },
+        { "label": "Create Integration", "type": "button", "style": "primary", "position": "bottom-right submit", "action": "Create the project", "hint": "Primary colored button at bottom right. Label changes to 'Create Workspace' when workspace mode is on." },
+        { "label": "Create Workspace", "type": "button", "style": "primary", "position": "bottom-right submit (workspace mode)", "action": "Create the workspace project" },
+        { "label": "Project Structure", "type": "collapsible_section", "position": "optional config area, first collapsible", "action": "Expand/collapse workspace options" },
+        { "label": "Package Information", "type": "collapsible_section", "position": "optional config area, second collapsible", "action": "Expand/collapse package fields" }
+      ],
+      "fields": [
+        {
+          "label": "Integration Name",
+          "type": "text",
+          "placeholder": "Enter an integration name",
+          "default_value": null,
+          "autofocus": true,
+          "required": true,
+          "tab_order": 1,
+          "screen_position": "First field at top of form",
+          "can_type_without_click": true,
+          "note": "AUTO-FOCUSED on screen load — user can type immediately without clicking",
+          "auto_populates": ["Package Name"],
+          "validation": "min 2 chars",
+          "helper_text": null,
+          "conditional": false
+        },
+        {
+          "label": "Package Name",
+          "type": "text",
+          "placeholder": null,
+          "default_value": null,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 2,
+          "screen_position": "Second field, below Integration Name",
+          "can_type_without_click": false,
+          "note": "Auto-populated from Integration Name. Pattern: lowercase a-z, 0-9, underscore, dot only. No consecutive underscores or dots.",
+          "auto_populated_from": "Integration Name",
+          "validation": "/^[a-z0-9_.]+$/",
+          "helper_text": "This will be used as the Ballerina package name for the integration.",
+          "conditional": false
+        },
+        {
+          "label": "Select Path",
+          "type": "directory_selector",
+          "placeholder": "Enter path or browse to select a folder...",
+          "default_value": "workspace root (auto-populated on mount)",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 3,
+          "screen_position": "Third field group with Browse button alongside",
+          "can_type_without_click": false,
+          "note": "Auto-populated with workspace root path on mount. Has 'Browse' button to the right.",
+          "browse_button": "Browse",
+          "conditional": false
+        },
+        {
+          "label": "Create a new folder using",
+          "type": "checkbox",
+          "placeholder": null,
+          "default_value": true,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 4,
+          "screen_position": "Below Select Path field",
+          "can_type_without_click": false,
+          "note": "Checked by default. Label says 'Create a new folder using the [workspace name | package name]'",
+          "conditional": false
+        },
+        {
+          "label": "Create as workspace",
+          "type": "checkbox",
+          "placeholder": null,
+          "default_value": false,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 5,
+          "screen_position": "Inside expanded 'Project Structure' collapsible section",
+          "can_type_without_click": false,
+          "note": "Must first click 'Project Structure' header to expand. Only visible if workspace is supported.",
+          "helper_text": "Include this integration in a new workspace for multi-project management.",
+          "conditional": true,
+          "condition": "Project Structure section is expanded"
+        },
+        {
+          "label": "Workspace Name",
+          "type": "text",
+          "placeholder": "Enter workspace name",
+          "default_value": null,
+          "autofocus": false,
+          "required": true,
+          "tab_order": 6,
+          "screen_position": "Inside Project Structure section, appears below 'Create as workspace' checkbox when checked",
+          "can_type_without_click": false,
+          "note": "Only appears when 'Create as workspace' is checked",
+          "conditional": true,
+          "condition": "Create as workspace checkbox is checked"
+        },
+        {
+          "label": "Standard Integration (Default)",
+          "type": "radio",
+          "placeholder": null,
+          "default_value": "selected",
+          "autofocus": false,
+          "required": false,
+          "tab_order": 7,
+          "screen_position": "Inside Project Structure section, first radio option",
+          "can_type_without_click": false,
+          "helper_text": "A deployable project that can be built, tested, and deployed as an integration.",
+          "conditional": true,
+          "condition": "Create as workspace checkbox is checked"
+        },
+        {
+          "label": "Library Project",
+          "type": "radio",
+          "placeholder": null,
+          "default_value": null,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 8,
+          "screen_position": "Inside Project Structure section, second radio option",
+          "can_type_without_click": false,
+          "helper_text": "Shared logic and utilities that can be reused across multiple projects in the workspace.",
+          "conditional": true,
+          "condition": "Create as workspace checkbox is checked"
+        },
+        {
+          "label": "Organization Name",
+          "type": "text",
+          "placeholder": null,
+          "default_value": null,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 9,
+          "screen_position": "Inside expanded 'Package Information' collapsible section, first field",
+          "can_type_without_click": false,
+          "note": "Must first click 'Package Information' header to expand",
+          "helper_text": "The organization that owns this Ballerina package.",
+          "conditional": true,
+          "condition": "Package Information section is expanded"
+        },
+        {
+          "label": "Package Version",
+          "type": "text",
+          "placeholder": "0.1.0",
+          "default_value": null,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 10,
+          "screen_position": "Inside 'Package Information' section, below Organization Name",
+          "can_type_without_click": false,
+          "helper_text": "Version of the Ballerina package.",
+          "conditional": true,
+          "condition": "Package Information section is expanded"
+        }
+      ]
+    },
+    "mi_creation": {
+      "name": "Create MI Integration Screen",
+      "trigger": "Selecting 'WSO2: MI' from Type dropdown on creation view",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "position": "top-left", "action": "Return to welcome screen" },
+        { "label": "Create Integration", "type": "button", "style": "primary", "position": "bottom-right", "action": "Create MI project. Shows 'Creating' with spinner while saving." }
+      ],
+      "fields": [
+        {
+          "label": "Integration Name",
+          "type": "text",
+          "placeholder": null,
+          "default_value": null,
+          "autofocus": false,
+          "required": true,
+          "tab_order": 1,
+          "screen_position": "First field in form",
+          "can_type_without_click": false,
+          "note": "No autoFocus. Must click to focus. Validation: alphanumeric, hyphens, underscores only. Auto-populates Artifact Id.",
+          "auto_populates": ["Artifact Id"],
+          "validation": "/^[a-zA-Z0-9_-]([a-zA-Z0-9_-]*\\.?[a-zA-Z0-9_-])*$/i"
+        },
+        {
+          "label": "WSO2 Integrator: MI runtime version",
+          "type": "dropdown",
+          "placeholder": null,
+          "default_value": "latest supported version (auto-filled from API)",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 2,
+          "screen_position": "Second field, runtime selector",
+          "can_type_without_click": false,
+          "note": "Pre-filled with latest supported MI version. Options fetched from API.",
+          "options_source": "Dynamic API call: getSupportedMIVersionsHigherThan('')"
+        },
+        {
+          "label": "Select Integration Path",
+          "type": "location_selector",
+          "placeholder": null,
+          "default_value": "workspace root (auto-populated)",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 3,
+          "screen_position": "Third field with 'Select Path' button",
+          "can_type_without_click": false,
+          "browse_button": "Select Path"
+        },
+        {
+          "label": "Group Id",
+          "type": "text",
+          "placeholder": null,
+          "default_value": "com.microintegrator.projects",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 4,
+          "screen_position": "Advanced options section, first field",
+          "can_type_without_click": false,
+          "note": "Pre-filled with 'com.microintegrator.projects'. Inside collapsible Advanced Options.",
+          "validation": "/^[a-zA-Z0-9_-]([a-zA-Z0-9_-]*\\.?[a-zA-Z0-9_-])*$/",
+          "conditional": true,
+          "condition": "Advanced Options section expanded"
+        },
+        {
+          "label": "Artifact Id",
+          "type": "text",
+          "placeholder": null,
+          "default_value": "auto-populated from Integration Name",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 5,
+          "screen_position": "Advanced options section, second field",
+          "can_type_without_click": false,
+          "note": "Auto-populated and kept in sync with Integration Name via react-hook-form watch().",
+          "auto_populated_from": "Integration Name",
+          "validation": "/^[a-zA-Z0-9_-]?([a-zA-Z0-9_-]*\\.?[a-zA-Z0-9_-])*$/",
+          "conditional": true,
+          "condition": "Advanced Options section expanded"
+        },
+        {
+          "label": "Version",
+          "type": "text",
+          "placeholder": null,
+          "default_value": "1.0.0",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 6,
+          "screen_position": "Advanced options section, third field",
+          "can_type_without_click": false,
+          "note": "Pre-filled with '1.0.0'.",
+          "validation": "/^[a-zA-Z0-9.]*$/",
+          "conditional": true,
+          "condition": "Advanced Options section expanded"
+        }
+      ]
+    },
+    "import_step1": {
+      "name": "Import Integration - Step 1: Select Source Project",
+      "trigger": "Clicking 'Import' on welcome screen",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "position": "top-left", "action": "Return to welcome screen" },
+        { "label": "MuleSoft", "type": "platform_card", "position": "platform selection grid", "action": "Select MuleSoft as source" },
+        { "label": "TIBCO", "type": "platform_card", "position": "platform selection grid", "action": "Select TIBCO as source" },
+        { "label": "Start Migration", "type": "button", "style": "primary", "position": "bottom-left action button", "action": "Begin migration process" },
+        { "label": "Back", "type": "button", "style": "secondary", "position": "bottom-right action button", "action": "Go back" }
+      ],
+      "fields": [
+        {
+          "label": "Project Folder",
+          "type": "directory_selector",
+          "placeholder": "Enter path or browse to select your project folder...",
+          "default_value": null,
+          "autofocus": false,
+          "required": true,
+          "tab_order": 2,
+          "screen_position": "Below platform selection cards, only visible after selecting a platform",
+          "can_type_without_click": false,
+          "note": "Only appears after selecting a platform card. Has 'Browse' button.",
+          "browse_button": "Browse",
+          "conditional": true,
+          "condition": "A platform card (e.g. MuleSoft) is selected"
+        },
+        {
+          "label": "Dynamic Parameters",
+          "type": "varies (text/checkbox/dropdown)",
+          "placeholder": "Enter [param label]",
+          "default_value": "from parameter definition",
+          "autofocus": false,
+          "required": false,
+          "tab_order": 3,
+          "screen_position": "Below project folder selector",
+          "can_type_without_click": false,
+          "note": "Dynamic fields based on selected platform's configuration parameters.",
+          "conditional": true,
+          "condition": "A platform card is selected"
+        }
+      ]
+    },
+    "configure_project_single": {
+      "name": "Configure Project (Single - Post Migration)",
+      "trigger": "Clicking 'Next' after successful migration (single project)",
+      "note": "Reuses the same ProjectFormFields as bi_creation screen",
+      "fields": [
+        {
+          "label": "Integration Name",
+          "type": "text",
+          "placeholder": "Enter an integration name",
+          "default_value": null,
+          "autofocus": true,
+          "required": true,
+          "tab_order": 1,
+          "screen_position": "First field",
+          "can_type_without_click": true,
+          "note": "AUTO-FOCUSED — same behavior as BI creation form"
+        },
+        {
+          "label": "Package Name",
+          "type": "text",
+          "placeholder": null,
+          "default_value": "auto-populated from Integration Name",
+          "autofocus": false,
+          "required": false,
+          "tab_order": 2,
+          "screen_position": "Second field",
+          "can_type_without_click": false,
+          "auto_populated_from": "Integration Name"
+        },
+        {
+          "label": "Select Path",
+          "type": "directory_selector",
+          "placeholder": "Enter path or browse to select a folder...",
+          "default_value": "workspace root",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 3,
+          "screen_position": "Third field with Browse button",
+          "can_type_without_click": false,
+          "browse_button": "Browse"
+        }
+      ]
+    },
+    "configure_project_multi": {
+      "name": "Configure Project (Multi - Post Migration)",
+      "trigger": "Clicking 'Next' after successful migration (multiple projects)",
+      "fields": [
+        {
+          "label": "Select Path",
+          "type": "directory_selector",
+          "placeholder": "Enter path or browse to select a folder...",
+          "default_value": "workspace root (auto-populated)",
+          "autofocus": false,
+          "required": true,
+          "tab_order": 1,
+          "screen_position": "First field with Browse button",
+          "can_type_without_click": false,
+          "browse_button": "Browse"
+        },
+        {
+          "label": "Create a new folder for the packages",
+          "type": "checkbox",
+          "placeholder": null,
+          "default_value": true,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 2,
+          "screen_position": "Below Select Path",
+          "can_type_without_click": false,
+          "note": "Checked by default"
+        },
+        {
+          "label": "Folder Name",
+          "type": "text",
+          "placeholder": "Enter folder name",
+          "default_value": null,
+          "autofocus": true,
+          "required": true,
+          "tab_order": 3,
+          "screen_position": "Below checkbox, only visible when checkbox is checked",
+          "can_type_without_click": true,
+          "note": "AUTO-FOCUSED when it appears (after checkbox is checked). User can type immediately.",
+          "helper_text": "This folder will contain all migrated packages from this integration.",
+          "conditional": true,
+          "condition": "'Create a new folder for the packages' checkbox is checked"
+        }
+      ]
+    },
+    "action_config": {
+      "name": "Action Configuration Dialog",
+      "trigger": "Clicking a node in the flow canvas",
+      "fields": [
+        {
+          "label": "Url",
+          "anchor_label": "URL of the target service",
+          "type": "smart_input",
+          "search_region": { "height": 160 },
+          "note": "Has 'Text/Expression' toggle. Anchored to sub-label below it."
+        },
+        {
+          "label": "Path",
+          "anchor_label": "Path segment",
+          "type": "smart_input"
+        }
+      ]
+    }
+  },
+  "element_hints": {
+    "Create": "Purple gradient button inside leftmost card on welcome screen, or primary submit button on creation form",
+    "Explore": "Cyan gradient button inside center card on welcome screen",
+    "Import": "Pink gradient button inside rightmost card on welcome screen",
+    "Browse": "Small secondary button to the right of any path/directory input field",
+    "Back": "Icon button at top-left of any non-welcome screen (arrow icon) OR secondary button at bottom of forms",
+    "Create Integration": "Primary colored submit button at bottom-right of the BI creation form",
+    "Create Workspace": "Same position as 'Create Integration', shown when workspace mode enabled",
+    "Start Migration": "Primary button at bottom of import form step 1",
+    "Next": "Primary button at bottom of migration status screen",
+    "Create and Open Project": "Primary button at bottom of configure project screen",
+    "Download": "Button at bottom of each sample card in the samples grid",
+    "Configure": "Settings gear icon button at top-right of welcome screen",
+    "Open": "Blue link text after 'Already have a project?' on welcome screen",
+    "View all": "Blue link text next to 'Recent projects' header",
+    "Integration Name": "First text input field, auto-focused on BI creation and configure project screens. Click to focus on MI form.",
+    "Package Name": "Second text input, auto-populated from Integration Name. Below Integration Name.",
+    "Select Path": "Directory selector label above the path input + Browse button combo. Has placeholder 'Enter path or browse to select a folder...'",
+    "Project Structure": "Collapsible section header with folder icon, in optional config area. Click to expand.",
+    "Package Information": "Collapsible section header with package icon, below Project Structure. Click to expand.",
+    "Create as workspace": "Checkbox inside expanded Project Structure section",
+    "Workspace Name": "Text field with placeholder 'Enter workspace name', appears after checking 'Create as workspace'",
+    "Standard Integration (Default)": "First radio button in Project Type selector inside Project Structure section",
+    "Library Project": "Second radio button in Project Type selector inside Project Structure section",
+    "Organization Name": "Text field inside Package Information section, no placeholder",
+    "Package Version": "Text field inside Package Information section, placeholder '0.1.0'",
+    "WSO2 Integrator: MI runtime version": "Dropdown in MI creation form, auto-filled with latest version",
+    "Group Id": "Text field in MI Advanced Options, default 'com.microintegrator.projects'",
+    "Artifact Id": "Text field in MI Advanced Options, auto-populated from Integration Name",
+    "Version": "Text field in MI Advanced Options, default '1.0.0'",
+    "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
+    "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
+    "Automation": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'Automation' in the center of the screen. Has a blue icon or blue-highlighted background. Do NOT match text in the file tree or breadcrumbs.",
+    "HTTP Service": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'HTTP Service' in the center of the screen.",
+    "API": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'API' in the center of the screen.",
+    "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
+    "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
+    "Resource Path": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens.",
+    "Service Base Path": "Text input field in the HTTP Service creation form. Has a pre-filled '/'. Click the input to focus it, select all to remove '/', then paste the new value.",
+    "Listener port": "Text input field in HTTP Service creation form for the port number e.g. 9090.",
+    "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
+    "Design from scratch": "Option in the Service contract dropdown inside HTTP Service creation form.",
+    "GET": "Resource type button or badge in the HTTP service design view. Represents an HTTP GET method resource.",
+    "+": "Small circular plus button inside the resource flow in design view. Adds a new node to the integration flow.",
+    "HTTP": "Connection type card in the connection picker dialog. Click to create a new HTTP connection.",
+    "Base URL": "Text input field in the new HTTP connection dialog. Enter the full external base URL here.",
+    "Connection Name": "Text input field in the connection dialog for naming the connection e.g. externalApi.",
+    "Save": "Primary submit/save button in dialogs such as connection dialog, action dialog, and resource dialog.",
+    "get": "Action option in the connection action picker. Represents the HTTP GET action to call.",
+    "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
+    "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
+    "json": "Option in the Response Type dropdown inside action configuration dialog.",
+    "Return": "Node type button in the flow editor toolbar or add-node menu. Adds a return/response node to the flow.",
+    "Type:": "Inline dropdown at the top of the creation form showing current project type (WSO2: BI or WSO2: MI) with a chevron icon.",
+    "WSO2: BI": "Option in the Type: dropdown selector at the top of the creation form. Selects Ballerina Integration type.",
+    "WSO2: MI": "Option in the Type: dropdown selector at the top of the creation form. Selects Micro Integrator type.",
+    "Select Integration Path": "Directory selector in the MI creation form (same as Select Path on BI form). Has a 'Select Path' browse button.",
+    "Url": "Smart input field in action configuration. Features a 'Text/Expression' toggle. The input box is the large rectangular area BELOW the 'URL of the target service' sub-label.",
+    "Url*": "Same as 'Url' field. The asterisk indicates it is required.",
+    "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
+    "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
+    "Path*": "Same as 'Path' field.",
+    "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
+  },
+  "field_placeholders": {
+    "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
+    "fields": {
+      "Integration Name": "Enter an integration name",
+      "Package Name": "Enter a package name",
+      "Select Path": "Enter path or browse to select a folder...",
+      "Workspace Name": "Enter workspace name",
+      "Package Version": "0.1.0",
+      "Service Base Path": "/",
+      "Resource Path": "/path",
+      "Listener port": "8080",
+      "Base URL": "Enter base URL",
+      "Connection Name": "Enter connection name",
+      "Response Variable": "Enter variable name",
+      "Group Id": "com.microintegrator.projects",
+      "Version": "1.0.0",
+      "Folder Name": "Enter folder name"
+    }
+  },
+  "autofocus_fields": {
+    "description": "Fields that receive focus automatically — user can type without clicking",
+    "fields": [
+      {
+        "label": "Integration Name",
+        "screens": ["bi_creation", "configure_project_single"],
+        "note": "First field on screen, gets focus on page load. Type immediately."
+      },
+      {
+        "label": "Folder Name",
+        "screens": ["configure_project_multi"],
+        "note": "Gets focus when it appears (checkbox checked). Type immediately after checking the checkbox."
+      },
+      {
+        "label": "Service Base Path",
+        "screens": ["http_service_creation"],
+        "note": "Already focused when the form opens. Select all (Cmd+A) to clear pre-filled '/' then paste value."
+      },
+      {
+        "label": "Resource Path",
+        "screens": ["add_resource_dialog"],
+        "note": "Auto-focused when Add Resource dialog opens. Select all to clear pre-filled '/path' then paste value."
+      }
+    ]
+  },
+  "auto_populated_fields": {
+    "description": "Fields that get values filled automatically from other fields or API",
+    "fields": [
+      {
+        "label": "Package Name",
+        "source": "Integration Name",
+        "screen": "bi_creation",
+        "behavior": "Updates live as user types in Integration Name. Lowercased, sanitized.",
+        "can_override": true
+      },
+      {
+        "label": "Artifact Id",
+        "source": "Integration Name",
+        "screen": "mi_creation",
+        "behavior": "Mirrors Integration Name, kept in sync via react-hook-form watch()",
+        "can_override": true
+      },
+      {
+        "label": "Select Path",
+        "source": "VS Code workspace root",
+        "screens": ["bi_creation", "configure_project_single", "configure_project_multi"],
+        "behavior": "Pre-filled on mount with current workspace path. Can be changed via Browse or manual typing.",
+        "can_override": true
+      },
+      {
+        "label": "Select Integration Path",
+        "source": "VS Code workspace root",
+        "screens": ["mi_creation"],
+        "behavior": "Pre-filled with current workspace path on mount. MI form uses this label instead of 'Select Path'.",
+        "can_override": true
+      },
+      {
+        "label": "WSO2 Integrator: MI runtime version",
+        "source": "API call",
+        "screen": "mi_creation",
+        "behavior": "Pre-filled with latest supported MI version from API",
+        "can_override": true
+      },
+      {
+        "label": "Group Id",
+        "source": "hardcoded default",
+        "screen": "mi_creation",
+        "behavior": "Always starts as 'com.microintegrator.projects'",
+        "can_override": true
+      },
+      {
+        "label": "Version",
+        "source": "hardcoded default",
+        "screen": "mi_creation",
+        "behavior": "Always starts as '1.0.0'",
+        "can_override": true
+      }
+    ]
+  },
+  "smart_inputs": [
+    "Path",
+    "Response Variable",
+    "Return expression",
+    "Body",
+    "Url",
+    "Url*"
+  ]
+}

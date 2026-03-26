@@ -1,140 +1,229 @@
 #!/usr/bin/env python3
 """
-FlowCast — Convert human instructions to GIFs.
+FlowCast — Convert WSO2 Integrator documentation steps into GIF recordings.
 
 Usage:
-  uv run python main.py path/to/workflow.md
-  uv run python main.py path/to/workflow.md --step N
-  uv run python main.py path/to/workflow.md output/my_dir
+  uv run python main.py workflow.md
+  uv run python main.py workflow.md --step 2
+
+Outputs (inside output/recordings/<workflow-slug>/):
+  step-01-<slug>.gif        — per-step animated GIF
+  step-01-<slug>.mov        — per-step video (kept permanently)
+  full.mov                  — all recorded steps concatenated in order
+  full_script.py            — runnable Python script for all steps
 """
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from src import runner, recorder
-from src.doc_parser import parse_doc
-from src.nl_parser import parse_text_with_meta
+from src import healer, recorder, runner
+from src.healer import HealingAbortedError
+from src.parser import Step, parse_markdown
+from src.runner import ElementNotFoundError
 
 OUTPUT_DIR = Path("output") / "recordings"
 
 
-def _run_step(
-    step_index: int,
-    instructions: str,
-    gif_filename: str,
-    gif_output_dir: Path,
-    app_name: str,
-    title: str = "",
-) -> Path | None:
-    gif_stem = Path(gif_filename).stem
+def _slug(text: str) -> str:
+    return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
-    print(f"\n{'=' * 60}")
-    print(f"  Step {step_index}: {gif_filename}")
-    print(f"{'=' * 60}")
-    print(f"\n[doc] Instructions:\n{instructions[:300]}{'...' if len(instructions) > 300 else ''}\n")
 
-    instructions_filled = instructions.replace("{project_name}", title if title else "Guide")
-    prefixed = f"app: {app_name}\n\n{instructions_filled}" if app_name else instructions_filled
-    actions, _ = parse_text_with_meta(prefixed)
+# ── Per-step recording ────────────────────────────────────────────────────────
 
-    if not actions:
-        print(f"[doc] No actions parsed for {gif_filename} — skipping")
-        return None
+def _run_step(step_index: int, step: Step, out_dir: Path) -> tuple[Path, Path] | None:
+    """Record one step. Returns (gif_path, mov_path) or None on failure."""
+    print(f"\n── Step {step_index}: {step.title} ──")
+    print(f"   {len(step.actions)} actions → {step.gif_filename}")
 
-    if app_name:
-        runner.set_target_app(app_name)
-
-    tmp_dir = Path(tempfile.mkdtemp(prefix=f"rec_{gif_stem}_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix=f"fc_{step_index}_"))
     clips: list[Path] = []
+    healer.reset_session()
 
     try:
-        for i, action in enumerate(actions):
-            print(f"\n── Action {i + 1}/{len(actions)}: {action['action']} ──")
+        for i, action in enumerate(step.actions):
+            kind   = action["action"]
+            target = action.get("target") or action.get("field_target", "")
+            print(f"   [resolve {i+1}/{len(step.actions)}] {kind}: {target}")
 
             try:
-                resolved = runner.resolve_action(action)
-            except runner.ElementNotFoundError as e:
-                print(f"[WARNING] Element not found: {e}", file=sys.stderr)
+                resolved = runner.resolve(action)
+            except ElementNotFoundError as e:
+                print(f"[ERROR] Cannot find element: {e}", file=sys.stderr)
                 return None
 
-            recorder.start(f"clip_{i:03d}", output_dir=tmp_dir, raw=True)
+            if resolved.get("_skip"):
+                print(f"   [skip  {i+1}] auto-populated field")
+                continue
+            if resolved["action"] == "wait":
+                runner.fire(resolved)
+                continue
+
+            print(f"   [fire  {i+1}/{len(step.actions)}] {kind}: {target}")
+            clip_name = f"clip_{i:03d}"
+            runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
             try:
-                runner.fire_action(resolved)
+                runner.fire(resolved)
+                runner.wait_ui_change()
                 runner.wait_ui_settle()
             except Exception as e:
-                recorder.stop()
-                print(f"[WARNING] Error on action {i + 1}: {e}", file=sys.stderr)
+                runner.set_pre_move_callback(None)
+                if recorder._proc is not None:
+                    recorder.stop()
+                print(f"[ERROR] Action {i+1} failed: {e}", file=sys.stderr)
                 return None
-            clips.append(recorder.stop())
+            # Only stop if recording was actually started by the callback
+            if recorder._proc is not None:
+                clips.append(recorder.stop())
 
-        print(f"\n  Combining {len(clips)} clip(s) → {gif_output_dir / gif_filename}")
-        gif_path = recorder.combine(clips, gif_output_dir / gif_filename)
+        if not clips:
+            print(f"[WARN] No clips recorded for step {step_index}")
+            return None
+
+        # Combine clips → step MOV (kept permanently) → GIF
+        combined_tmp = tmp_dir / "combined.mov"
+        recorder.combine(clips, combined_tmp)
+
+        step_mov = out_dir / f"step-{step_index:02d}-{_slug(step.title)}.mov"
+        shutil.move(str(combined_tmp), str(step_mov))
+
+        gif = out_dir / step.gif_filename
+        recorder.to_gif(step_mov, gif)
+        print(f"   GIF saved → {gif}")
+        print(f"   MOV saved → {step_mov.name}")
+        return gif, step_mov
+
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    print(f"[doc] GIF saved → {gif_path}")
-    return gif_path
 
+# ── Full-video assembly ───────────────────────────────────────────────────────
+
+def _build_full_video(out_dir: Path) -> Path | None:
+    """Combine all existing step MOVs (sorted by step number) into full.mov."""
+    step_movs = sorted(out_dir.glob("step-*.mov"))
+    if not step_movs:
+        return None
+
+    full_mov = out_dir / "full.mov"
+    recorder.combine(step_movs, full_mov, keep_inputs=True)
+    print(f"   Full video → {full_mov}")
+    return full_mov
+
+
+# ── Python script generation ──────────────────────────────────────────────────
+
+def _build_full_script(steps: list[Step], out_dir: Path) -> Path:
+    """Write a runnable full_script.py containing all steps' actions."""
+    lines = [
+        "#!/usr/bin/env python3",
+        '"""Auto-generated by FlowCast — run to replay all steps without recording."""',
+        "from __future__ import annotations",
+        "import sys",
+        "from pathlib import Path",
+        "",
+        "# Allow running from the output directory",
+        "sys.path.insert(0, str(Path(__file__).parent.parent.parent))",
+        "",
+        "from dotenv import load_dotenv",
+        "load_dotenv()",
+        "",
+        "from src import runner",
+        "",
+        "",
+        "def _run(action):",
+        "    resolved = runner.resolve(action)",
+        "    if resolved.get('_skip'):",
+        "        return",
+        "    runner.fire(resolved)",
+        "    if resolved['action'] not in ('open_app', 'wait', 'hotkey'):",
+        "        runner.wait_ui_change()",
+        "    runner.wait_ui_settle()",
+        "",
+        "",
+    ]
+
+    for idx, step in enumerate(steps, 1):
+        sep = "─" * 58
+        lines.append(f"# {sep}")
+        lines.append(f"# Step {idx}: {step.title}")
+        lines.append(f"# {sep}")
+        for action in step.actions:
+            lines.append(f"_run({action!r})")
+        lines.append("")
+
+    script = out_dir / "full_script.py"
+    script.write_text("\n".join(lines))
+    print(f"   Script saved → {script}")
+    return script
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     args = sys.argv[1:]
     if not args:
-        print("Usage: uv run python main.py path/to/workflow.md [output_dir] [--step N]", file=sys.stderr)
+        print("Usage: python main.py workflow.md [--step N]", file=sys.stderr)
         sys.exit(1)
 
     only_step: int | None = None
-    filtered_args = []
+    md_path:   Path | None = None
     i = 0
     while i < len(args):
         if args[i] == "--step" and i + 1 < len(args):
             only_step = int(args[i + 1])
             i += 2
         else:
-            filtered_args.append(args[i])
+            md_path = Path(args[i])
             i += 1
-    args = filtered_args
 
-    doc_path = Path(args[0])
-    if not doc_path.exists():
-        print(f"[ERROR] File not found: {doc_path}", file=sys.stderr)
+    if not md_path or not md_path.exists():
+        print(f"[ERROR] File not found: {md_path}", file=sys.stderr)
         sys.exit(1)
 
-    title, folder_slug, steps, meta = parse_doc(doc_path)
-    gif_output_dir = Path(args[1]) if len(args) >= 2 else OUTPUT_DIR / folder_slug
-    gif_output_dir.mkdir(parents=True, exist_ok=True)
+    steps   = parse_markdown(md_path)
+    slug    = _slug(md_path.stem)
+    out_dir = OUTPUT_DIR / slug
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    app_name = meta.get("app", "")
+    print(f"\n{'='*60}")
+    print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
+    print(f"  Output: {out_dir}")
+    print(f"{'='*60}")
 
-    print("=" * 60)
-    print(f"  FlowCast")
-    print(f"  Workflow: {doc_path.name}  |  Title: {title}")
-    print(f"  Steps: {len(steps)}  |  Output: {gif_output_dir}")
-    print("=" * 60)
-
-    if not steps:
-        print("[ERROR] No GIF references found in the workflow.", file=sys.stderr)
-        sys.exit(1)
-
-    saved = []
-    for i, (instructions, gif_filename) in enumerate(steps, 1):
-        if only_step is not None and i != only_step:
+    saved_gifs: list[Path] = []
+    for idx, step in enumerate(steps, 1):
+        if only_step is not None and idx != only_step:
             continue
-        result = _run_step(i, instructions, gif_filename, gif_output_dir, app_name, title)
+        result = _run_step(idx, step, out_dir)
         if result:
-            saved.append(result)
+            gif, _ = result
+            saved_gifs.append(gif)
 
-    print("\n" + "=" * 60)
-    print(f"  Done — {len(saved)}/{len(steps)} GIFs recorded")
-    for p in saved:
+    # Always regenerate full video from all existing step MOVs (including any
+    # recorded in previous runs so individual --step runs accumulate correctly).
+    full_mov = _build_full_video(out_dir)
+
+    # Always regenerate the script from all parsed steps so every step's code
+    # is present even when only one step was executed this run.
+    full_script = _build_full_script(steps, out_dir)
+
+    print(f"\n{'='*60}")
+    print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")
+    for p in saved_gifs:
         print(f"    {p}")
-    print("=" * 60)
+    if full_mov:
+        print(f"  Full video  → {full_mov}")
+    print(f"  Full script → {full_script}")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

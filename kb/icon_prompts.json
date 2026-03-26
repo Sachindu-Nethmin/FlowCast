@@ -1,0 +1,187 @@
+{
+  "_description": "Icon KB for Groq Vision fallback. Each entry has a groq_prompt (text description) and icon_b64 (the actual icon as base64 image). Detector sends icon image + screenshot to Groq when OCR fails.",
+  "groq_vision_model": "meta-llama/llama-4-scout-17b-16e-instruct",
+  "icons": [
+    {
+      "id": "resource-flow-plus",
+      "element_label": "+",
+      "screen": "HTTP Service design view or Automation diagram view",
+      "position_hint": "inside the flow diagram canvas (right portion of screen, x > 400), NOT in the left sidebar or toolbar",
+      "action": "Add a new node to the integration flow",
+      "icon_file": "plus.png",
+      "icon_b64": "data:image/png;base64,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",
+      "groq_prompt": "Find the small circular plus (+) button inside the integration flow diagram canvas in WSO2 Integrator. The canvas occupies the RIGHT portion of the screen \u2014 the button x-coordinate MUST be greater than 400 pixels. Do NOT pick anything from the left sidebar, file explorer, or activity bar (x < 400). The button is connected to a flow node (Start node or other node) in the diagram. It looks like a circle with a white + symbol inside, on a blue/teal or dark background. It is located vertically in the MIDDLE of the screen (y > 150). Do NOT return toolbar icons (y < 100). Return center pixel coordinates as x,y."
+    },
+    {
+      "id": "settings-gear",
+      "element_label": "Configure",
+      "screen": "Welcome Screen",
+      "position_hint": "top-right corner",
+      "action": "Opens extension settings",
+      "icon_file": "settings-gear.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTkuODUgOC43NWw0LjE1LjgzdjQuODRsLTQuMTUuODMgMi4zNSAzLjUyLTMuNDMgMy40My0zLjUyLTIuMzUtLjgzIDQuMTVIOS41OGwtLjgzLTQuMTUtMy41MiAyLjM1LTMuNDMtMy40MyAyLjM1LTMuNTJMMCAxNC40MlY5LjU4bDQuMTUtLjgzTDEuOCA1LjIzIDUuMjMgMS44bDMuNTIgMi4zNUw5LjU4IDBoNC44NGwuODMgNC4xNSAzLjUyLTIuMzUgMy40MyAzLjQzLTIuMzUgMy41MnptLTEuNTcgNS4wN2w0LS44MXYtMmwtNC0uODEtLjU0LTEuMyAyLjI5LTMuNDMtMS40My0xLjQzLTMuNDMgMi4yOS0xLjMtLjU0LS44MS00aC0ybC0uODEgNC0xLjMuNTQtMy40My0yLjI5LTEuNDMgMS40M0w2LjM4IDguOWwtLjU0IDEuMy00IC44MXYybDQgLjgxLjU0IDEuMy0yLjI5IDMuNDMgMS40MyAxLjQzIDMuNDMtMi4yOSAxLjMuNTQuODEgNGgybC44MS00IDEuMy0uNTQgMy40MyAyLjI5IDEuNDMtMS40My0yLjI5LTMuNDMuNTQtMS4zem0tOC4xODYtNC42NzJBMy40MyAzLjQzIDAgMDExMiA4LjU3IDMuNDQgMy40NCAwIDAxMTUuNDMgMTJhMy40MyAzLjQzIDAgMTEtNS4zMzYtMi44NTJ6bS45NTYgNC4yNzRjLjI4MS4xODguNjEyLjI4OC45NS4yODhBMS43IDEuNyAwIDAwMTMuNzEgMTJhMS43MSAxLjcxIDAgMTAtMi42NiAxLjQyMnoiLz48L3N2Zz4=",
+      "groq_prompt": "Find the gear/cog settings icon button in the top-right corner of the screen. It looks like a circular gear with teeth around the edge. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "bi-arrow-back",
+      "element_label": "Back",
+      "screen": "All non-welcome screens (Creation, Samples, Import)",
+      "position_hint": "top-left corner, before the screen title",
+      "action": "Navigate back to welcome screen",
+      "icon_file": "arrow-left.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNyAzLjA5M2wtNSA1VjguOGw1IDUgLjcwNy0uNzA3LTQuMTQ2LTQuMTQ3SDE0di0xSDMuNTZMNy43MDggMy44IDcgMy4wOTN6Ii8+PC9zdmc+",
+      "groq_prompt": "Find the back arrow icon button in the top-left corner of the screen. It looks like a left-pointing arrow (\u2190). It appears before the page title text. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "bi-plus-fill",
+      "element_label": "Create New Project card icon",
+      "screen": "Welcome Screen",
+      "position_hint": "inside leftmost action card, circular gradient purple badge",
+      "action": "Visual indicator on Create New Project card",
+      "icon_file": null,
+      "icon_b64": null,
+      "groq_prompt": "Find the plus (+) icon inside a circular purple gradient badge on the leftmost card of the welcome screen. The card is titled 'Create New Project'. Return the center pixel coordinates of the plus icon as x,y."
+    },
+    {
+      "id": "bi-bookmark",
+      "element_label": "Explore Samples card icon",
+      "screen": "Welcome Screen",
+      "position_hint": "inside center action card, circular gradient cyan badge",
+      "action": "Visual indicator on Explore Samples card",
+      "icon_file": null,
+      "icon_b64": null,
+      "groq_prompt": "Find the bookmark icon inside a circular cyan/teal gradient badge on the center card of the welcome screen. The card is titled 'Explore Samples'. Return the center pixel coordinates of the bookmark icon as x,y."
+    },
+    {
+      "id": "bi-convert",
+      "element_label": "Import External Integration card icon",
+      "screen": "Welcome Screen",
+      "position_hint": "inside rightmost action card, circular gradient pink badge",
+      "action": "Visual indicator on Import External Integration card",
+      "icon_file": null,
+      "icon_b64": null,
+      "groq_prompt": "Find the convert/transfer arrows icon inside a circular pink/magenta gradient badge on the rightmost card of the welcome screen. The card is titled 'Import External Integration'. Return the center pixel coordinates of that icon as x,y."
+    },
+    {
+      "id": "bi-import",
+      "element_label": "Migration platform card icon",
+      "screen": "Import Integration - Step 1",
+      "position_hint": "inside each platform selection card (MuleSoft, TIBCO)",
+      "action": "Visual indicator on migration platform cards",
+      "icon_file": null,
+      "icon_b64": null,
+      "groq_prompt": "Find the import/download arrow icon on one of the platform selection cards (e.g. MuleSoft or TIBCO). It looks like an arrow pointing downward into a tray or box. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "chevron-down",
+      "element_label": "Expanded section indicator",
+      "screen": "BI Creation form (collapsible sections), Migration Progress (logs)",
+      "position_hint": "right side of a collapsible section header row",
+      "action": "Collapse expanded section",
+      "icon_file": "chevron-down.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNy45NzYgMTAuMDcybDQuMzU3LTQuMzU3LjYyLjYxOEw4LjI4NCAxMWgtLjYxOEwzIDYuMzMzbC42MTktLjYxOCA0LjM1NyA0LjM1N3oiLz48L3N2Zz4=",
+      "groq_prompt": "Find the downward-pointing chevron arrow (\u2228) on the right side of a collapsible section header. It indicates the section is currently expanded. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "chevron-right",
+      "element_label": "Collapsed section indicator",
+      "screen": "BI Creation form, Migration Progress",
+      "position_hint": "right side of a collapsible section header row",
+      "action": "Expand collapsed section",
+      "icon_file": "chevron-right.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTAuMDcyIDguMDI0TDUuNzE1IDMuNjY3bC42MTgtLjYyTDExIDcuNzE2di42MThMNi4zMzMgMTNsLS42MTgtLjYxOSA0LjM1Ny00LjM1N3oiLz48L3N2Zz4=",
+      "groq_prompt": "Find the right-pointing chevron arrow (\u203a) on the right side of a collapsible section header. It indicates the section is currently collapsed. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "folder",
+      "element_label": "Project Structure section icon",
+      "screen": "BI Creation form",
+      "position_hint": "left side of the 'Project Structure' collapsible section header",
+      "action": "Visual indicator for project structure section",
+      "icon_file": "folder.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGQ9Ik0xNC41IDNINy43MWwtLjg1LS44NUw2LjUxIDJoLTVsLS41LjV2MTFsLjUuNWgxM2wuNS0uNXYtMTBMMTQuNSAzem0tLjUxIDguNDlWMTNoLTEyVjdoNC40OWwuMzUtLjE1Ljg2LS44NkgxNHYxLjVsLS4wMSA0em0wLTYuNDloLTYuNWwtLjM1LjE1LS44Ni44Nkgydi0zaDQuMjlsLjg1Ljg1LjM2LjE1SDE0bC0uMDEuOTl6Ii8+PC9zdmc+",
+      "groq_prompt": "Find the folder icon on the left side of the 'Project Structure' collapsible section header in the project creation form. It looks like a yellow or gray folder. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "package",
+      "element_label": "Package Information section icon",
+      "screen": "BI Creation form",
+      "position_hint": "left side of the 'Package Information' collapsible section header",
+      "action": "Visual indicator for package information section",
+      "icon_file": "package.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNOC42MSAzbDUuNzQgMS41M0wxNSA1djYuNzRsLS4zNy40OC02LjEzIDEuNjktNi4xNC0xLjY5LS4zNi0uNDhWNWwuNjEtLjQ3TDguMzQgM2guMjd6bS0uMDkgMWwtNCAxIC41NS4yIDMuNDMuOSAzLS44MS45NS0uMjktMy45My0xek0zIDExLjM2bDUgMS4zN1Y3TDMgNS42NnY1Ljd6TTkgN3Y1LjczbDUtMS4zN1Y1LjYzbC0yLjAyLjU1M1Y4Ljc1bC0xIC4yNlY2LjQ1N0w5IDd6Ii8+PC9zdmc+",
+      "groq_prompt": "Find the package/box icon on the left side of the 'Package Information' collapsible section header in the project creation form. It looks like a small box or package. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "file-text",
+      "element_label": "View Full Report",
+      "screen": "Migration Progress / Coverage Summary",
+      "position_hint": "inside report action buttons below coverage summary",
+      "action": "Open the migration coverage report",
+      "icon_file": "file-text.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTMuNzEgNC4yOWwtMy0zTDEwIDFINEwzIDJ2MTJsMSAxaDlsMS0xVjVsLS4yOS0uNzF6TTEzIDE0SDRWMmg1djRoNHY4em0tMy05VjJsMyAzaC0zeiIvPjwvc3ZnPg==",
+      "groq_prompt": "Find the document/file with lines icon on a button labeled 'View Full Report' or 'View Aggregate Report'. It looks like a page with horizontal lines on it. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "save",
+      "element_label": "Save Report",
+      "screen": "Migration Progress / Coverage Summary",
+      "position_hint": "inside report action buttons next to View Report button",
+      "action": "Save the migration report to disk",
+      "icon_file": "save.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iY3VycmVudENvbG9yIiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNMTMuMzUzIDEuMTQ2bDEuNSAxLjVMMTUgM3YxMS41bC0uNS41aC0xM2wtLjUtLjV2LTEzbC41LS41SDEzbC4zNTMuMTQ2ek0yIDJ2MTJoMTJWMy4yMDhMMTIuNzkzIDJIMTF2NEg0VjJIMnptNiAwdjNoMlYySDh6Ii8+PC9zdmc+",
+      "groq_prompt": "Find the save/floppy-disk icon on a button labeled 'Save Report' or 'Save Reports'. It looks like a floppy disk (square with a small square inside). Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "integrator-icon",
+      "element_label": "WSO2 Integrator Activity Bar icon",
+      "screen": "VS Code Activity Bar (left sidebar)",
+      "position_hint": "VS Code left activity bar, custom WSO2 icon",
+      "action": "Open WSO2 Integrator explorer panel",
+      "icon_file": "integrator-icon.svg",
+      "icon_b64": "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48c3ZnIGlkPSJMYXllcl8xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMTUuODYzMDEgMTE1LjU0MjAxIiA+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiNkOWQ5ZDk7fS5jbHMtMntmaWxsOiMwMDA7ZmlsbC1vcGFjaXR5OjB9PC9zdHlsZT48L2RlZnM+PGVsbGlwc2UgY2xhc3M9ImNscy0yIiBjeD0iNTcuOTMxNSIgY3k9IjU3Ljc3MTAxIiByeD0iNDYuNTM3ODEiIHJ5PSI0Ny4wMzQ1OSIvPjxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTU3LjkzMTUsMEMyNS45MzYyOSwwLDAsMjUuODY1NTksMCw1Ny43NzEwMXMyNS45MzYyOSw1Ny43NzEsNTcuOTMxNSw1Ny43NzFjMzEuOTkzMzEsMCw1Ny45MzE1LTI1Ljg2NTU5LDU3LjkzMTUtNTcuNzcxUzg5LjkyNDgyLDAsNTcuOTMxNSwwWk01Ny45MzE1LDEwNC44MDU2Yy0yNS43MDEyNywwLTQ2LjUzNzgxLTIxLjA1ODE5LTQ2LjUzNzgxLTQ3LjAzNDU5UzMyLjIzMDIzLDEwLjczNjQyLDU3LjkzMTUsMTAuNzM2NDJzNDYuNTM3ODEsMjEuMDU4MTgsNDYuNTM3ODEsNDcuMDM0NTktMjAuODM2NTQsNDcuMDM0NTktNDYuNTM3ODEsNDcuMDM0NTlaIi8+PHBhdGggY2xhc3M9ImNscy0xIiBkPSJNMTA0LjMxNDU2LDU0LjEwNjIybC0xNi44NjQxMy4wNDAxMy04LjQwNzIxLDE1LjEyOTE4LTIwLjk3OTg0LTUxLjE0NDU4LTE4Ljg3NDIzLDQyLjAxMzE5LTI3LjczODEtLjA1OTIzYy4xMTA4MiwyLjMxMzg5LjM5MTcsNC41ODM4NC44MjM1Myw2Ljc5ODM4bDMxLjMwNzM0LjA2Njg4LDE0LjE5NjczLTMxLjYwMzUyLDIwLjMzOTc2LDQ5LjU4MTYsMTMuMzM1MDEtMjMuOTk0OTgsMTIuOTAxMjYtLjAzMDU3Yy4wNjY4OC0xLjAzNTYyLjExNDY0LTIuMDc4ODguMTE0NjQtMy4xMzE2OSwwLTEuMjM0MzQtLjA2MzA2LTIuNDUzMzgtLjE1NDc2LTMuNjY0NzlaIi8+PC9zdmc+",
+      "groq_prompt": "Find the WSO2 Integrator icon in the VS Code left activity bar (the narrow vertical icon strip on the far left). It is a custom circular logo. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "download-spinner",
+      "element_label": "Download progress indicator",
+      "screen": "Samples View (during download), Import (pulling tools)",
+      "position_hint": "animated circular loading icon",
+      "action": "Shows download in progress",
+      "icon_file": "download-spinner.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij4KICA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiM4ODgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLXdpZHRoPSIyIj4KICAgIDxwYXRoIGQ9Ik0xMiAzYzQuOTcgMCA5IDQuMDMgOSA5YzAgNC45NyAtNC4wMyA5IC05IDkiLz4KICAgIDxwYXRoIGQ9Ik0xMiAyMWMtNC45NyAwIC05IC00LjAzIC05IC05YzAgLTQuOTcgNC4wMyAtOSA5IC05Ii8+CiAgICA8cGF0aCBkPSJNMTIgOHY3LjUiLz4KICAgIDxwYXRoIGQ9Ik0xMiAxNS41bDMuNSAtMy41TTEyIDE1LjVsLTMuNSAtMy41Ii8+CiAgPC9nPgo8L3N2Zz4K",
+      "groq_prompt": "Find the circular download/loading spinner icon on screen. It looks like a circle with a downward arrow inside it. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "beta-badge",
+      "element_label": "Beta badge",
+      "screen": "Import Integration platform cards",
+      "position_hint": "small pill/badge on platform cards marked as beta",
+      "action": "Visual indicator only",
+      "icon_file": "beta-badge.svg",
+      "icon_b64": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCA0MCAxNiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iMTYiIHJ4PSI4IiBmaWxsPSIjNEE5MEUyIiBvcGFjaXR5PSIwLjUiLz4KICA8dGV4dCB4PSI1MCUiIHk9IjU1JSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiIGZvbnQtc2l6ZT0iMTIiIGZvbnQtZmFtaWx5PSJSb2JvdG8sc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjUwMCI+QmV0YTwvdGV4dD4KPC9zdmc+Cg==",
+      "groq_prompt": "Find the small blue pill-shaped badge with the text 'Beta' on one of the platform cards. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "wso2-logo",
+      "element_label": "WSO2 Integrator Logo",
+      "screen": "Welcome Screen header",
+      "position_hint": "top of welcome screen, main logo/wordmark",
+      "action": "Visual branding only",
+      "icon_file": "wso2-integrator-logo.png",
+      "icon_b64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHQAAAB0CAMAAABjROYVAAAC9FBMVEUAAAD///////////+/v7/MzMzV1dXb29vf39/j4+Pm5ubR0dHV1dXY2Njb29vd3d3f39/S0tLV1dXX19fZ2dnb29vc3Nze3t7V1dXW1tbY2NjZ2dnb29vc3Nzd3d3W1tbX19fa2trb29vc3NzW1tbX19fY2NjZ2dna2trb29vb29vW1tbX19fY2NjZ2dna2trb29vb29vX19fY2NjZ2dnZ2dna2trb29vb29vX19fY2NjZ2dnZ2dna2trb29vX19fY2NjY2NjZ2dna2tra2trb29vX19fY2NjZ2dna2tra2trb29vY2NjY2NjZ2dnZ2dna2trY2NjY2NjZ2dnZ2dna2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dnZ2dnX19fa2tra2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjY2NjZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjY2NjZ2dna2tra2trY2NjZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dna2tra2trY2NjZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dna2trZ2dnZ2dna2trY2NjZ2dnZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dna2trZ2dna2trZ2dnZ2dnZ2dnY2NjZ2dnZ2dnZ2dnZ2dnZ2dna2trY2NjZ2dnZ2dna2trZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnY2NjZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dna2trZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnY2NjY2NjZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dkRrr7AAAAA+3RSTlMAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hKS0xNTk9QUVNVVldYWltcXV5f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",
+      "groq_prompt": "Find the WSO2 Integrator logo/wordmark at the top of the welcome screen. Return its center pixel coordinates as x,y."
+    },
+    {
+      "id": "run-button",
+      "element_label": "Run",
+      "screen": "Integration editor toolbar",
+      "position_hint": "toolbar at the top of the screen",
+      "action": "Runs the integration",
+      "icon_file": "play_green_icon.png",
+      "groq_prompt": "Find the green Run (play) button in the toolbar at the top of WSO2 Integrator. It is a green triangular play icon. Return center pixel coordinates as x,y.",
+      "prefer_template": true,
+      "match_threshold": 0.5
+    }
+  ]
+}
