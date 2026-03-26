@@ -117,8 +117,50 @@ def stop() -> Path:
     if not path.exists() or path.stat().st_size == 0:
         raise RuntimeError(f"Recording produced no output: {path}")
 
+    # Optimize: Remove idle time (static frames) from the clip
+    path = trim(path)
+
     print(f"[recorder] Saved → {path.name}")
     return path
+
+
+def trim(mov_path: Path) -> Path:
+    """Remove near-identical frames (idle time) using ffmpeg mpdecimate.
+    
+    This effectively speeds up periods of inactivity while preserving real motion.
+    """
+    if not mov_path.exists() or mov_path.stat().st_size == 0:
+        return mov_path
+
+    # We use a temporary file for the trimmed version
+    trimmed_path = mov_path.parent / f"{mov_path.stem}_trimmed{mov_path.suffix}"
+
+    # mpdecimate: drops frames that don't change much from the previous one.
+    # setpts: re-timestamps the remaining frames to be contiguous at the target FPS.
+    # This prevents the video from 'stalling' during playback and keeps it concise.
+    vf = f"mpdecimate,setpts=N/{FPS}/TB"
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(mov_path),
+        "-vf", vf,
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+        str(trimmed_path),
+    ]
+
+    try:
+        # Run ffmpeg to perform the decimation
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        # If successful, replace the original with the trimmed version
+        mov_path.unlink()
+        trimmed_path.rename(mov_path)
+    except Exception as e:
+        # Fallback: if trimming fails for any reason, keep the original recording
+        print(f"[recorder] Trimming failed for {mov_path.name}: {e}")
+        if trimmed_path.exists():
+            trimmed_path.unlink()
+
+    return mov_path
 
 
 def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:

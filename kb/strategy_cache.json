@@ -5,6 +5,11 @@
       "winner": "groq_vision",
       "fail_counts": {},
       "last_seen": "2026-03-25T09:52:41.063003+00:00"
+    },
+    "+ add artifact": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T13:34:15.828078+00:00"
     }
   }
 }
