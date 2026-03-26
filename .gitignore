@@ -6,4 +6,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+<<<<<<< HEAD
+=======
+output/recordings/
+>>>>>>> bebf0b3 (chore: ignore product-integrator source code directory)
 product-integrator/
