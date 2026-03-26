@@ -197,6 +197,13 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "click":
         target = action["target"]
+        
+        # Verify clickability via WSO2 Integrator React source code
+        from src.source_verifier import is_clickable
+        if not is_clickable(target):
+            print(f"[runner] WARNING: Source code check failed. '{target}' is unclickable text (e.g. input label). OpenCV might pick a wild field. Skipping click!")
+            return {**action, "x": None, "y": None, "_needs_click": False, "_skip": True}
+            
         x, y = _find(target, action.get("hint"), action=action)
         return {**action, "x": x, "y": y}
 
@@ -264,13 +271,19 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
             wait_ui_change(timeout=2.0)
-        # If a "Set" button is visible, click it to activate the input field first
-        set_pos = _find_set_button()
-        if set_pos:
-            _trigger_pre_move()
-            pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
-            pyautogui.click(set_pos[0], set_pos[1])
-            wait_ui_change(timeout=2.0)
+            
+            # If a "Set" button is visible, click it to activate the input field
+            set_pos = _find_set_button()
+            if set_pos:
+                # Prevent wild set clicks by enforcing proximity to the clicked field
+                import math
+                if math.hypot(set_pos[0] - x, set_pos[1] - y) < 800:
+                    pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
+                    pyautogui.click(set_pos[0], set_pos[1])
+                    wait_ui_change(timeout=2.0)
+                else:
+                    print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
+
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)
