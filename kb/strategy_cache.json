@@ -21,14 +21,20 @@
       "fail_counts": {},
       "last_seen": "2026-03-26T13:34:15.828078+00:00"
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4ae97b6 (Light)
     },
     "+": {
       "winner": "ocr_exact",
       "fail_counts": {},
       "last_seen": "2026-03-26T15:46:27.319050+00:00"
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
 =======
+=======
+>>>>>>> 713c991 (Light)
 =======
 >>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
 <<<<<<< HEAD
@@ -36,7 +42,12 @@
 =======
 =======
 >>>>>>> 096c2df (Clip idie)
+<<<<<<< HEAD
 >>>>>>> 51c18ba (Clip idie)
+=======
+=======
+>>>>>>> 4ae97b6 (Light)
+>>>>>>> 713c991 (Light)
     }
   }
 }

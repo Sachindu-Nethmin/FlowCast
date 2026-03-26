@@ -2,6 +2,7 @@
 
 1. Open WSO2 Integrator.
 <<<<<<< HEAD
+<<<<<<< HEAD
 2. Select **Create**.
 3. Set **Integration Name** to `Hello_World_API`.
 =======
@@ -12,6 +13,10 @@
 =======
 3. Enter the integration name (for example, `Hello_World_API`).
 >>>>>>> b856107 (1.0)
+=======
+2. Select **Create**.
+3. Set **Integration Name** to `Hello_World_API`.
+>>>>>>> 4ae97b6 (Light)
 4. Select **Browse**.
 5. Select the project location and select **Open**.
 6. Select **Create Integration**.

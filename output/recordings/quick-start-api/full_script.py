@@ -28,6 +28,9 @@ def _run(action):
 # ──────────────────────────────────────────────────────────
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4ae97b6 (Light)
 _run({'action': 'click', 'target': 'Create'})
 _run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
 =======
@@ -99,9 +102,16 @@ _run({'action': 'click', 'target': 'HTTP'})
 _run({'action': 'type', 'field_target': 'Url', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})
 _run({'action': 'type', 'field_target': 'Connection Name', 'value': 'externalApi'})
 _run({'action': 'click', 'target': 'Save Connection'})
-_run({'action': 'click', 'target': 'get'})
+_run({'action': 'click', 'target': 'externalApi'})
+_run({'action': 'click', 'target': 'GET'})
 _run({'action': 'type', 'field_target': 'Path', 'value': '/'})
-_run({'action': 'type', 'field_target': 'Response Variable', 'value': 'response'})
-_run({'action': 'select', 'field_target': 'Response Type', 'value': 'json'})
+_run({'action': 'type', 'field_target': 'Result', 'value': 'response'})
+_run({'action': 'click', 'target': 'Save'})
+_run({'action': 'click', 'target': '+'})
+_run({'action': 'click', 'target': 'Return'})
 _run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
+<<<<<<< HEAD
 >>>>>>> 7d1f240 (improved text files)
+=======
+_run({'action': 'click', 'target': 'Save'})
+>>>>>>> 4ae97b6 (Light)
