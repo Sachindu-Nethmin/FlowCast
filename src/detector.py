@@ -195,7 +195,7 @@ def _load_icon_prompts() -> list:
     return _load_icon_data().get("icons", [])
 
 
-def _kb_entry(label: str) -> dict | None:
+def get_kb_entry(label: str) -> dict | None:
     """Find a field entry in kb/ui_elements.json by label.
 
     Searches across all screens in the knowledge base.
@@ -501,7 +501,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             label_candidates.append((bbox, text, conf))
     
     # Try anchor_label from KB if no direct matches or if it is more reliable
-    kb = _kb_entry(field_label)
+    kb = get_kb_entry(field_label)
     if kb and "anchor_label" in kb:
         anchor = kb["anchor_label"]
         for bbox, text, conf in results:
@@ -525,7 +525,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
         dx_buffer_left = 100
         dx_buffer_right = 2000
         
-        kb = _kb_entry(field_label)
+        kb = get_kb_entry(field_label)
         if kb and "search_region" in kb:
             sr = kb["search_region"]
             sy2_buffer = sr.get("height", sy2_buffer)
@@ -691,7 +691,7 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
         return result
 
     # Try indexed fallback if metadata exists
-    kb = _kb_entry(field_label)
+    kb = get_kb_entry(field_label)
     if kb and "field_index" in kb and "anchor_label" in kb:
         print(f"[detector] Direct visual failed for '{field_label}', trying indexed search using anchor '{kb['anchor_label']}'...")
         result = _find_input_by_index(screenshot, kb["anchor_label"], kb["field_index"])

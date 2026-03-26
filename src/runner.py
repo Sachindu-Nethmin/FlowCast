@@ -156,14 +156,16 @@ def wait_ui_change(timeout: float = 5.0) -> bool:
     Use this after firing an action to confirm the UI has actually responded
     before moving on to detect/fire the next action.
     """
+    print(f"[runner] Waiting for UI change (timeout={timeout}s)...", end="", flush=True)
     baseline = pyautogui.screenshot()
     deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(0.1)
         curr = pyautogui.screenshot()
         if _ui_changed(baseline, curr):
+            print(" detected.")
             return True
-    print("[runner] wait_ui_change: no change detected within timeout")
+    print(" timeout.")
     return False
 
 
@@ -202,17 +204,20 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "type":
         field_target = action["field_target"]
+        kb = detector.get_kb_entry(field_target) or {}
+        requires_set = kb.get("requires_set_button", False)
+
         if _is_auto_populated(field_target):
             return {**action, "_skip": True}
         # Autofocus fields are already focused — no click needed, just clear + paste
         if _is_autofocus(field_target):
-            return {**action, "x": None, "y": None, "_needs_click": False}
+            return {**action, "x": None, "y": None, "_needs_click": False, "requires_set_button": requires_set}
         # Locate target input box
         result = find_input_field(_screenshot(), field_target)
         if result:
-            return {**action, "x": result[0], "y": result[1], "_needs_click": True}
+            return {**action, "x": result[0], "y": result[1], "_needs_click": True, "requires_set_button": requires_set}
         print(f"[runner] Could not locate input for '{field_target}' — will type into focused element")
-        return {**action, "x": None, "y": None, "_needs_click": False}
+        return {**action, "x": None, "y": None, "_needs_click": False, "requires_set_button": requires_set}
 
     if kind == "select":
         x, y = _find(action["field_target"])
@@ -264,13 +269,14 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
             wait_ui_change(timeout=2.0)
-        # If a "Set" button is visible, click it to activate the input field first
-        set_pos = _find_set_button()
-        if set_pos:
-            _trigger_pre_move()
-            pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
-            pyautogui.click(set_pos[0], set_pos[1])
-            wait_ui_change(timeout=2.0)
+        # If a "Set" button is visible and required, click it to activate the input field first
+        if action.get("requires_set_button"):
+            set_pos = _find_set_button()
+            if set_pos:
+                _trigger_pre_move()
+                pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
+                pyautogui.click(set_pos[0], set_pos[1])
+                wait_ui_change(timeout=2.0)
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
         time.sleep(0.1)
