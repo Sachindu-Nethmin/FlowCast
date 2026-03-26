@@ -1,15 +1,18 @@
-from __future__ import annotations
-
 import base64
 import io
 import json
 import os
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
 
+import cv2
+import easyocr
 import numpy as np
 import pyautogui
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 
 class ElementNotFoundError(Exception):
@@ -49,6 +52,18 @@ def _fuzzy(detected: str, target: str) -> bool:
     return False
 
 
+def _is_light_mode(screenshot: Image.Image) -> bool:
+    """Return True if the screenshot appears to be from a Light Theme.
+    
+    Calculates the average luminance of the image.
+    """
+    gray = screenshot.convert("L")
+    stat = ImageStat.Stat(gray)
+    luminance = stat.mean[0]
+    is_light = luminance > 120  # Threshold for 'light' theme
+    return is_light
+
+
 def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     """Return True if the region around a bounding box has a blue-ish background.
 
@@ -68,8 +83,15 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
     if region.size == 0:
         return False
     hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+    
+    # In Light Mode, blue buttons might be lighter/less saturated.
+    # We relax the Saturation and Value floors slightly if needed.
+    is_light = _is_light_mode(Image.fromarray(arr))
+    s_floor = 60 if is_light else 80
+    v_floor = 60 if is_light else 80
+    
     # Blue hue in OpenCV HSV: ~100–135 (of 180)
-    mask = cv2.inRange(hsv, np.array([100, 80, 80]), np.array([135, 255, 255]))
+    mask = cv2.inRange(hsv, np.array([100, s_floor, v_floor]), np.array([135, 255, 255]))
     blue_ratio = float(mask.sum()) / (255.0 * mask.size)
     return blue_ratio > 0.15
 
@@ -285,9 +307,11 @@ def _kb_entry(label: str) -> dict | None:
                 
     # Fallback to element_hints if no proper field definition found
     hints = data.get("element_hints", {})
-    for hint_label, hint_text in hints.items():
+    for hint_label, val in hints.items():
         if hint_label.lower().strip() == l_target:
-            return {"label": hint_label, "hint": hint_text}
+            if isinstance(val, dict):
+                return {**val, "label": hint_label}
+            return {"label": hint_label, "hint": val}
             
     return None
 
@@ -324,7 +348,11 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     print(f"[detector] Anchor '{anchor_text}' at ({ax}, {ay}), searching for + below")
 
     # Search region: below anchor, within canvas (x > 400)
-    icon_path = Path(__file__).parent.parent / "kb" / "icons" / "plus.png"
+    is_light = _is_light_mode(screenshot)
+    theme_suffix = "_light" if is_light else ""
+    icon_path = Path(__file__).parent.parent / "kb" / "icons" / f"plus{theme_suffix}.png"
+    if not icon_path.exists():
+        icon_path = Path(__file__).parent.parent / "kb" / "icons" / "plus.png"
     if not icon_path.exists():
         return None
 
@@ -333,7 +361,7 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     screen_small = screenshot.resize((w_l, h_l), Image.LANCZOS)
     screen_bgr = cv2.cvtColor(np.array(screen_small.convert("RGB")), cv2.COLOR_RGB2BGR)
 
-    # Crop to region below anchor node (±200px wide, 20–200px below)
+    # Crop to region below anchor node (±200px wide, 20–300px below)
     x1 = max(400, ax - 200)
     x2 = min(w_l, ax + 200)
     y1 = ay + 20
@@ -347,7 +375,9 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     th, tw = tmpl.shape[:2]
 
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), tw, th
-    for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25):
+    # Use expanded scales for Retina-to-logical consistency
+    factors = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.4, 1.6)
+    for s in factors:
         tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
         if tw_s > region.shape[1] or th_s > region.shape[0]:
             continue
@@ -363,7 +393,7 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
 
     cx = x1 + best_loc[0] + best_tw // 2
     cy = y1 + best_loc[1] + best_th // 2
-    print(f"[detector] + below '{anchor_text}' found at ({cx}, {cy}) confidence={best_val:.2f}")
+    print(f"[detector] + found below '{anchor_text}' at ({cx}, {cy}) (confidence={best_val:.2f})")
     return (cx, cy)
 
 
@@ -388,7 +418,11 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
     # Green hue range in HSV (covers VS Code run-button greens)
-    lower = np.array([60, 60, 60])
+    is_light = _is_light_mode(screenshot)
+    s_floor = 50 if is_light else 60
+    v_floor = 50 if is_light else 60
+    
+    lower = np.array([60, s_floor, v_floor])
     upper = np.array([165, 255, 255])
     green_mask = cv2.inRange(hsv_full, lower, upper)
     # Restrict to toolbar areas only
@@ -427,12 +461,21 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
     icons_dir = Path(__file__).parent.parent / "kb" / "icons"
     icon_file = icon_entry["icon_file"]
     stem = Path(icon_file).stem
-
-    # Collect all size variants (e.g. play_green_16.png, play_green_18.png …)
-    # plus the base file. More variants = better chance of matching screen size.
-    candidate_paths = sorted(icons_dir.glob(f"{stem}_*.png")) + \
-                      [icons_dir / Path(icon_file).with_suffix(".png"),
+    
+    # Theme-aware matching: if in Light Mode, prefer *_light.png
+    is_light = _is_light_mode(screenshot)
+    theme_suffix = "_light" if is_light else ""
+    
+    # Build list of candidates, prioritized by theme
+    candidate_paths = []
+    if theme_suffix:
+        candidate_paths += sorted(icons_dir.glob(f"{stem}{theme_suffix}_*.png"))
+        candidate_paths += [icons_dir / f"{stem}{theme_suffix}.png"]
+    
+    candidate_paths += sorted(icons_dir.glob(f"{stem}_*.png"))
+    candidate_paths += [icons_dir / Path(icon_file).with_suffix(".png"),
                        icons_dir / icon_file]
+    
     icon_paths = [p for p in dict.fromkeys(candidate_paths) if p.exists()]
     if not icon_paths:
         return None
@@ -473,9 +516,11 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
 
         th, tw = tmpl_gray.shape[:2]
 
-        for s in (0.5, 0.6, 0.75, 0.85, 1.0, 1.15, 1.25, 1.5):
+        # Expanded scale range to handle Retina-to-logical mismatches (e.g. 80px -> 30px)
+        factors = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.4, 1.6)
+        for s in factors:
             tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
-            if tw_s < 8 or th_s < 8:
+            if tw_s < 10 or th_s < 10:
                 continue
             if tw_s > screen_match.shape[1] or th_s > screen_match.shape[0]:
                 continue
@@ -615,7 +660,13 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             region = arr[sy1:sy2, sx1:sx2]
             if region.size == 0: continue
             gray = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
-            edges = cv2.Canny(gray, 30, 100)
+            
+            # Light Mode contour robustness: lower thresholds for subtler edges
+            is_light = _is_light_mode(screenshot)
+            t1 = 20 if is_light else 30
+            t2 = 80 if is_light else 100
+            edges = cv2.Canny(gray, t1, t2)
+            
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)

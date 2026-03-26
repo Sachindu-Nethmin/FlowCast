@@ -458,6 +458,15 @@
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
     "Design from scratch": "Option in the Service contract dropdown inside HTTP Service creation form.",
     "GET": "Resource type button or badge in the HTTP service design view. Represents an HTTP GET method resource.",
+    "Call Function": "Card/option in the node panel inside the automation diagram view. Labeled 'Call Function'. Located in the center grid of the panel.",
+    "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
+    "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
+    "Values": {
+      "label": "Values",
+      "hint": "Text input field inside the Initialize Array action dialog. Found below or to the right of the 'Values' label.",
+      "search_region": { "height": 120, "x_offset_left": 50, "x_offset_right": 1000 },
+      "note": "In Light Mode, the field border might be faint. Using lower Canny thresholds."
+    },
     "+": "Small circular plus button inside the resource flow in design view. Adds a new node to the integration flow.",
     "HTTP": "Connection type card in the connection picker dialog. Click to create a new HTTP connection.",
     "Base URL": "Text input field in the new HTTP connection dialog. Enter the full external base URL here.",

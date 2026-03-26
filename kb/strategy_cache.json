@@ -14,7 +14,17 @@
     "+": {
       "winner": "ocr_exact",
       "fail_counts": {},
-      "last_seen": "2026-03-26T15:46:27.319050+00:00"
+      "last_seen": "2026-03-26T16:14:40.051990+00:00"
+    },
+    "call function": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T16:08:22.525954+00:00"
+    },
+    "initialize array": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-26T16:23:30.266848+00:00"
     }
   }
 }
