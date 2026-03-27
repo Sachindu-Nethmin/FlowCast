@@ -167,6 +167,7 @@ class Step:
     title: str
     gif_filename: str
     actions: list[dict[str, Any]]
+    raw_instructions: str = ""
 
 
 def _title_to_slug(title: str) -> str:
@@ -198,6 +199,11 @@ def parse_markdown(path: str | Path) -> list[Step]:
     for title, gif_filename, instructions in raw_steps:
         print(f"[parser] Parsing step: {title}")
         actions = _parse_instructions(instructions)
-        steps.append(Step(title=title, gif_filename=gif_filename, actions=actions))
+        steps.append(Step(
+            title=title,
+            gif_filename=gif_filename,
+            actions=actions,
+            raw_instructions=instructions
+        ))
         print(f"[parser]   → {len(actions)} actions")
     return steps

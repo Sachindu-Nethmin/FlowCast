@@ -128,6 +128,39 @@ def _build_full_video(out_dir: Path, theme: str) -> Path | None:
 
 # ── Python script generation ──────────────────────────────────────────────────
 
+def _build_themed_markdown(steps: list[Step], out_dir: Path, slug: str) -> Path:
+    """Generate a markdown file with <ThemedImage> components linking light/dark GIFs."""
+    lines = []
+    for idx, step in enumerate(steps, 1):
+        lines.append(f"## Step {idx}: {step.title}")
+        lines.append("")
+        
+        # Add original instructions
+        for instr in step.raw_instructions.splitlines():
+            if instr.strip():
+                lines.append(instr.strip())
+            
+        lines.append("")
+        gif_stem = Path(step.gif_filename).stem
+        
+        themed_img = [
+            "<ThemedImage",
+            f'    alt="{step.title}"',
+            "    sources={{",
+            f"        light: '/img/get-started/{slug}/{gif_stem}-light.gif',",
+            f"        dark: '/img/get-started/{slug}/{gif_stem}-dark.gif',",
+            "    }}",
+            "/>",
+            ""
+        ]
+        lines.extend(themed_img)
+
+    md_file = out_dir / "index.md"
+    md_file.write_text("\n".join(lines))
+    print(f"   Themed Markdown saved → {md_file}")
+    return md_file
+
+
 def _build_full_script(steps: list[Step], out_dir: Path, theme: str) -> Path:
     """Write a runnable full_script.py containing all steps' actions."""
     lines = [
@@ -228,6 +261,9 @@ def main() -> None:
     # Always regenerate the script from all parsed steps so every step's code
     # is present even when only one step was executed this run.
     full_script = _build_full_script(steps, out_dir, theme)
+
+    # Generate the final themed markdown file (index.md)
+    themed_md = _build_themed_markdown(steps, out_dir, slug)
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")
