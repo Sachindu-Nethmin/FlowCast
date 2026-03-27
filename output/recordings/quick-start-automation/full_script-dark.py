@@ -36,7 +36,10 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 # Step 2: Add an automation artifact
 # ──────────────────────────────────────────────────────────
+<<<<<<< HEAD
 _run({'action': 'click', 'target': 'Integration'})
+=======
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 _run({'action': 'click', 'target': '+ Add Artifact'})
 _run({'action': 'click', 'target': 'Automation'})
 _run({'action': 'click', 'target': 'Create'})

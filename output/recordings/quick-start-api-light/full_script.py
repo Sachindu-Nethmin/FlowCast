@@ -27,8 +27,25 @@ def _run(action):
 # Step 1: Create the project
 # ──────────────────────────────────────────────────────────
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
+<<<<<<< HEAD
 _run({'action': 'click', 'target': 'Create'})
 _run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 4ae97b6 (Light)
+_run({'action': 'click', 'target': 'Create'})
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
+=======
+_run({'action': 'click', 'target': 'Create New Integration'})
+<<<<<<< HEAD
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'HelloWorld'})
+>>>>>>> 7d1f240 (improved text files)
+=======
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
+>>>>>>> f89df14 (ffmpeg)
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 _run({'action': 'click', 'target': 'Browse'})
 _run({'action': 'click', 'target': 'Open'})
 _run({'action': 'click', 'target': 'Create Integration'})
@@ -44,10 +61,19 @@ _run({'action': 'click', 'target': 'Create'})
 # ──────────────────────────────────────────────────────────
 # Step 3: Design the integration flow
 # ──────────────────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 _run({'action': 'click', 'target': '+ Add Resouses'})
 _run({'action': 'click', 'target': 'GET'})
 _run({'action': 'type', 'field_target': 'Resource Path', 'value': 'greeting'})
 _run({'action': 'click', 'target': 'Save'})
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Add Connection'})
 _run({'action': 'click', 'target': 'HTTP'})
@@ -67,3 +93,39 @@ _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Return'})
 _run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
 _run({'action': 'click', 'target': 'Save'})
+<<<<<<< HEAD
+=======
+=======
+_run({'action': 'type', 'field_target': 'Resource path', 'value': '/greeting'})
+=======
+_run({'action': 'click', 'target': '+ Add Resouses'})
+_run({'action': 'click', 'target': 'GET'})
+_run({'action': 'type', 'field_target': 'Resource Path', 'value': 'greeting'})
+>>>>>>> b856107 (1.0)
+_run({'action': 'hotkey', 'keys': ['command', 's']})
+=======
+>>>>>>> f89df14 (ffmpeg)
+_run({'action': 'click', 'target': '+'})
+_run({'action': 'click', 'target': 'Add Connection'})
+_run({'action': 'click', 'target': 'HTTP'})
+
+# ──────────────────────────────────────────────────────────
+# Step 4: Configure HTTP
+# ──────────────────────────────────────────────────────────
+_run({'action': 'type', 'field_target': 'Url', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})
+_run({'action': 'type', 'field_target': 'Connection Name', 'value': 'externalApi'})
+_run({'action': 'click', 'target': 'Save Connection'})
+_run({'action': 'click', 'target': 'externalApi'})
+_run({'action': 'click', 'target': 'GET'})
+_run({'action': 'type', 'field_target': 'Path', 'value': '/'})
+_run({'action': 'type', 'field_target': 'Result', 'value': 'response'})
+_run({'action': 'click', 'target': 'Save'})
+_run({'action': 'click', 'target': '+'})
+_run({'action': 'click', 'target': 'Return'})
+_run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
+<<<<<<< HEAD
+>>>>>>> 7d1f240 (improved text files)
+=======
+_run({'action': 'click', 'target': 'Save'})
+>>>>>>> 4ae97b6 (Light)
+>>>>>>> 0f4bdc1 (Add dark and light renaming)

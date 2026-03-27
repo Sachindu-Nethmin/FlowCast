@@ -89,6 +89,9 @@ def _activate() -> None:
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 def detect_theme() -> str:
     """Identify if the target app is in 'light' or 'dark' mode."""
     from src.detector import _is_light_mode
@@ -96,8 +99,11 @@ def detect_theme() -> str:
     return "light" if _is_light_mode(screenshot) else "dark"
 
 
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> 0f4bdc1 (Add dark and light renaming)
 def _find(target: str, hint: str | None = None, action: dict | None = None,
           step_title: str = "", action_index: int = 0) -> tuple[int, int]:
     screenshot = _screenshot()
