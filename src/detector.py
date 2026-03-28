@@ -19,6 +19,16 @@ class ElementNotFoundError(Exception):
     pass
 
 
+# ── Source-derived field dimensions ───────────────────────────────────────────
+# Confirmed from product-integrator/wi/wi-webviews/src/components/DirectorySelector/DirectorySelector.tsx
+#   `height: 28px;`  (Input and BrowseButton components)
+_FIELD_HEIGHT_PX = 28
+
+# Approximate height of a description/helper-text block below a label.
+# From form.styles.ts: font-size:12px + margin-top/bottom ~8px → ~28-35px total.
+_DESCRIPTION_ZONE_PX = 35
+# ──────────────────────────────────────────────────────────────────────────────
+
 _ocr_reader = None
 
 
@@ -37,18 +47,40 @@ def _scale(screenshot: Image.Image) -> float:
 
 
 def _fuzzy(detected: str, target: str) -> bool:
-    d, t = detected.lower().strip(), target.lower().strip()
+    """Case-sensitive fuzzy match between OCR-detected text and a target label."""
+    d, t = detected.strip(), target.strip()
     if d == t:
         return True
+
     # Require word-boundary match so "automation" in "myautomation" does NOT match
     t_clean = re.sub(r'[^\w\s]', '', t).strip()
     d_clean = re.sub(r'[^\w\s]', '', d).strip()
     if not t_clean: return False
-    if t_clean in d_clean:
+
+    # Direct containment check for cleaned versions
+    if t_clean == d_clean:
         return True
+
+    # Word-level matching
+    d_words = d_clean.split()
+    t_words = t_clean.split()
+
+    # If target is short (e.g. "Url"), require it to be a standalone word within detected
+    if len(t_words) == 1 and len(d_words) > 1:
+        if t_words[0] in d_words:
+            return True
+
+    # If detected is a single word, it should match one of the target's words exactly
+    # (prevents "Service" matching "URL of the target service" unless it was intended)
+    if len(d_words) == 1 and len(t_words) > 1:
+        if d_words[0] in t_words and len(d_words[0]) > 3:
+            return True
+
     # OCR may only capture part of a multi-word target — allow detected ⊂ target
-    if d in t and len(d) > 2:
+    # But ONLY if it's a significant portion (e.g. "integrator" in "wso2 integrator")
+    if d in t and len(d) > 4:
         return True
+
     return False
 
 
@@ -186,9 +218,14 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             
             # 4. Exact Match Bonus: Favor complete strings over partials
             is_exact = (text.strip().lower() == target.lower())
+            is_case_match = (text.strip() == target)
             exact_score = 50 if is_exact else 0
+            case_bonus = 20 if is_case_match else 0
             
-            total_score = centrality_score + card_score + blue_score + exact_score + (conf * 5)
+            # Sidebar Suppression: Penalize the leftmost 25% of the screen
+            sidebar_penalty = -50 if min(xs) < (w * 0.25) else 0
+            
+            total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
             candidates.append({
                 "pos": (int(cx_img / scale), int(cy_img / scale)),
                 "score": total_score,
@@ -312,7 +349,12 @@ def _kb_entry(label: str) -> dict | None:
             if isinstance(val, dict):
                 return {**val, "label": hint_label}
             return {"label": hint_label, "hint": val}
-            
+
+    # Check top-level field_placeholders
+    fp = data.get("field_placeholders", {}).get("fields", {})
+    if label in fp:
+        return {"label": label, "placeholder": fp[label]}
+
     return None
 
 
@@ -500,6 +542,10 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
 
     for icon_path in icon_paths:
+        icon_path = _Path(icon_path)
+        if not icon_path.exists() or icon_path.suffix.lower() == ".svg":
+            continue
+        
         icon_img  = Image.open(icon_path)
         has_alpha = icon_img.mode == "RGBA"
 
@@ -596,6 +642,155 @@ def set_debug_dir(path: str | Path | None) -> None:
         _DEBUG_SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _load_screens() -> dict:
+    """Load the screens section from kb/ui_elements.json."""
+    p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+    if not p.exists():
+        return {}
+    return json.loads(p.read_text()).get("screens", {})
+
+
+def _load_field_placeholders() -> dict:
+    """Load field placeholder mappings from kb/ui_elements.json."""
+    p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text())
+    return data.get("field_placeholders", {}).get("fields", {})
+
+
+def identify_screen(screenshot: Image.Image) -> dict | None:
+    """Identify which screen is currently displayed and return its metadata.
+
+    Runs OCR on the screenshot and scores each known screen from the KB by
+    counting how many of its distinctive element labels and field labels are
+    visible.  Returns the best-matching screen dict augmented with a
+    ``screen_key`` field, or None if no screen scores above threshold.
+
+    Return format::
+
+        {
+            "screen_key": "bi_creation",
+            "name": "Create BI Integration Screen",
+            "confidence": 0.75,
+            "matched_elements": ["Back", "Create Integration"],
+            "matched_fields": ["Integration Name", "Package Name", "Select Path"],
+            "fields": [ ... full field defs from KB ... ],
+            "elements": [ ... ]
+        }
+    """
+    arr = np.array(screenshot)
+    results = _ocr().readtext(arr)
+    detected_texts = [text.strip().lower() for _, text, _ in results]
+
+    screens = _load_screens()
+    if not screens:
+        return None
+
+    best_screen = None
+    best_score = 0
+    best_info = {}
+
+    for key, screen in screens.items():
+        matched_elements = []
+        matched_fields = []
+
+        # Score element labels
+        for elem in screen.get("elements", []):
+            label = elem.get("label", "").lower()
+            if not label:
+                continue
+            for dt in detected_texts:
+                if _fuzzy(dt, label):
+                    matched_elements.append(elem["label"])
+                    break
+
+        # Score field labels (heavier weight — fields are more distinctive)
+        for field in screen.get("fields", []):
+            label = field.get("label", "").lower()
+            if not label:
+                continue
+            # Skip conditional fields — they may not be visible
+            if field.get("conditional", False):
+                continue
+            for dt in detected_texts:
+                if _fuzzy(dt, label):
+                    matched_fields.append(field["label"])
+                    break
+
+        # Also check for placeholder text in fields
+        placeholders = _load_field_placeholders()
+        for field in screen.get("fields", []):
+            fl = field.get("label", "")
+            ph = field.get("placeholder") or placeholders.get(fl)
+            if ph and fl not in [f for f in matched_fields]:
+                for dt in detected_texts:
+                    if _fuzzy(dt, ph):
+                        matched_fields.append(fl)
+                        break
+
+        # Weighted score: fields count double since they're more screen-specific
+        total_possible = len([e for e in screen.get("elements", [])]) + \
+                         2 * len([f for f in screen.get("fields", []) if not f.get("conditional", False)])
+        score = len(matched_elements) + 2 * len(matched_fields)
+        confidence = score / total_possible if total_possible > 0 else 0
+
+        if score > best_score:
+            best_score = score
+            best_screen = key
+            best_info = {
+                "screen_key": key,
+                "name": screen.get("name", key),
+                "confidence": round(confidence, 2),
+                "matched_elements": matched_elements,
+                "matched_fields": matched_fields,
+                "fields": screen.get("fields", []),
+                "elements": screen.get("elements", []),
+            }
+
+    if best_screen and best_info.get("confidence", 0) >= 0.15:
+        print(f"[detector] Screen identified: '{best_info['name']}' "
+              f"(confidence={best_info['confidence']}, "
+              f"elements={best_info['matched_elements']}, "
+              f"fields={best_info['matched_fields']})")
+        return best_info
+
+    print(f"[detector] Could not identify screen (best score={best_score})")
+    return None
+
+
+def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Locate an input field by finding its placeholder text via OCR.
+
+    Placeholder text appears inside the input box itself, so the OCR hit
+    position is already *inside* the field — just click there.
+    """
+    placeholders = _load_field_placeholders()
+    placeholder = placeholders.get(field_label)
+
+    # Also check KB entry for a placeholder
+    kb = _kb_entry(field_label)
+    if not placeholder and kb:
+        placeholder = kb.get("placeholder")
+    if not placeholder:
+        return None
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    for bbox, text, conf in results:
+        if _fuzzy(text, placeholder):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            cx = int((min(xs) + max(xs)) / 2 / scale)
+            cy = int((min(ys) + max(ys)) / 2 / scale)
+            print(f"[detector] Placeholder '{placeholder}' found for '{field_label}' at ({cx}, {cy})")
+            return (cx, cy)
+
+    return None
+
+
 def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
     """Locate an input field using its label position as an anchor.
 
@@ -615,30 +810,62 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     # Check for direct matches
     for bbox, text, conf in results:
         if _fuzzy(text, field_label):
-            label_candidates.append((bbox, text, conf))
+            label_candidates.append((bbox, text, conf, False))
     
-    # Try anchor_label from KB if no direct matches or if it is more reliable
+    # Try anchor_label from KB ONLY if it is not a smart_input.
+    # Smart inputs (like Url/Path) often have ambiguous sub-labels that cause 
+    # visual detection to pick large UI containers. For these, we prefer 
+    # looking for the primary label, or falling back to the anchor-description 
+    # method found in find_input_field().
     kb = _kb_entry(field_label)
-    if kb and "anchor_label" in kb:
+    is_smart = (kb.get("type") == "smart_input" if kb else False)
+    if kb and "anchor_label" in kb and not is_smart:
         anchor = kb["anchor_label"]
         for bbox, text, conf in results:
             if _fuzzy(text, anchor):
-                label_candidates.append((bbox, text, conf))
+                label_candidates.append((bbox, text, conf, True))
 
     if not label_candidates:
         return None
         
-    # Preference: Prefer labels that are NOT on a blue background (likely links)
-    label_candidates.sort(key=lambda c: (_is_blue_background(arr, c[0]), -c[2]))
+    # Preference: 
+    # 1. PRIMARY EXACT CASE MATCH (e.g. "Url") comes first
+    # 2. PRIMARY EXACT INSENSITIVE MATCH comes second
+    # 3. ANCHOR EXACT CASE MATCH comes third
+    # 4. ANCHOR EXACT INSENSITIVE MATCH comes fourth
+    # 5. Right-side bias (ignore sidebar)
+    # 6. Higher OCR confidence
+    def _cand_sort(c):
+        p_text = c[1].strip()
+        is_primary_case = p_text == field_label
+        is_primary_exact = p_text.lower() == field_label.lower()
+        
+        is_anchor_case = False
+        is_anchor_exact = False
+        if c[3]: # is_anchor
+            kb = _kb_entry(field_label)
+            if kb and "anchor_label" in kb:
+                anchor_target = kb["anchor_label"]
+                is_anchor_case = p_text == anchor_target
+                is_anchor_exact = p_text.lower() == anchor_target.lower()
+        
+        # Priority: (not primary_case), (not primary_exact), (not anchor_case), (not anchor_exact), (is_left_25), (is_blue_bg), (neg_confidence)
+        screen_w = arr.shape[1]
+        lx1 = min(p[0] for p in c[0])
+        is_left_25 = lx1 < screen_w * 0.25
+        return (not is_primary_case, not is_primary_exact, not is_anchor_case, not is_anchor_exact, is_left_25, _is_blue_background(arr, c[0]), -c[2])
 
-    for cand_bbox, cand_text, cand_conf in label_candidates:
+    label_candidates.sort(key=_cand_sort)
+
+    for cand_bbox, cand_text, cand_conf, is_anchor in label_candidates:
         lx1 = min(p[0] for p in cand_bbox)
         ly1 = min(p[1] for p in cand_bbox)
         lx2 = max(p[0] for p in cand_bbox)
         ly2 = max(p[1] for p in cand_bbox)
 
         # Regions relative to THIS candidate
-        sy2_buffer = 100
+        # Increased search area (1000px deep) to capture fields with very long descriptions (e.g. Target Type)
+        sy2_buffer = 1000
         dx_buffer_left = 100
         dx_buffer_right = 2000
         
@@ -649,7 +876,10 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             dx_buffer_left = sr.get("x_offset_left", dx_buffer_left)
             dx_buffer_right = sr.get("x_offset_right", dx_buffer_right)
 
-        rs_below = (max(0, lx1 - dx_buffer_left), ly2 + 2, min(arr.shape[1], lx1 + dx_buffer_right), min(arr.shape[0], ly2 + sy2_buffer))
+        # DIRECT SEARCH: Look immediately below the label (no description skipping)
+        search_start_y = ly2 + 2
+
+        rs_below = (max(0, lx1 - dx_buffer_left), search_start_y, min(arr.shape[1], lx1 + dx_buffer_right), min(arr.shape[0], search_start_y + sy2_buffer))
         rs_right = (lx2 + 5, ly1 - 10, min(arr.shape[1], lx2 + 1200), ly2 + 10)
 
         best: tuple[int, int, int, int] | None = None
@@ -663,45 +893,138 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             
             # Light Mode contour robustness: lower thresholds for subtler edges
             is_light = _is_light_mode(screenshot)
-            t1 = 20 if is_light else 30
-            t2 = 80 if is_light else 100
+            t1 = 10 if is_light else 15
+            t2 = 40 if is_light else 50
             edges = cv2.Canny(gray, t1, t2)
             
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)
-                if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
-                    # Preference Logic: PROXIMITY to label
-                    # 1. Prefer vertically CLOSEST boxes (within 5px fuzzy zone)
-                    # 2. Prefer WIDEST boxes among those at similar height
-                    if best is None or y < best[1] - 5 or (abs(y - best[1]) <= 5 and w > best[2]):
-                        best = (x, y, w, h)
-                        best_region_origin = (sx1, sy1)
-            if best:
-                break # Exit the region loop if a best candidate is found in this branch
 
-        # ── Branch B: Threshold scan (fallback for THIS candidate) ─────────────
-        if best: break # If best was found in Branch A, skip Branch B for this candidate
+                # ── Minimum height gate: ignore thin lines / decorative borders ──
+                if h < 30:
+                    continue
+
+                if not (150 < w < 2000 and h < 80 and w > h * 1.5):
+                    continue
+
+                # ── Standard WSO2 height match (~32px smart-input, ~49px textarea) ──
+                exact_h = (kb.get('exact_height') if kb else None) or _FIELD_HEIGHT_PX
+                wso2_heights = {32, 49}
+                h_match = abs(h - exact_h) <= 3
+                wso2_match = any(abs(h - wh) <= 3 for wh in wso2_heights)
+                # Height bonus: capped at 60, only awarded when height is close
+                height_bonus = 60 if h_match else (40 if wso2_match else 0)
+
+                # ── Continuous proximity score ────────────────────────────────
+                # Vertical distance from label bottom to candidate top (pixel space).
+                # Closer always beats farther unless the height difference is major.
+                # Score = 200 - distance, clamped to [0, 200].  A box 0px away scores
+                # 200; one 200+px away scores 0.  This dominates the height bonus (max
+                # 60) so a nearer field wins unless it is implausibly thin/tall.
+                abs_x1 = sx1 + x
+                abs_y1 = sy1 + y
+                vert_dist = max(0, abs_y1 - ly2)          # px below label bottom
+                prox_score = max(0, 200 - vert_dist)       # continuous, range [0,200]
+
+                # Small lateral bonus: box left edge close to label left edge
+                horiz_dist = abs(abs_x1 - lx1)
+                lateral_bonus = max(0, 20 - horiz_dist // 10)  # up to +20
+
+                score = 0
+                score += prox_score                                          # dominant: proximity
+                score += height_bonus                                        # secondary: height match
+                score += lateral_bonus                                       # minor: x alignment
+                score += 30 if w > (best[2] * 1.2 if best else 300) else 0  # full-width input
+                region_center = gray.shape[1] / 2
+                if abs((x + w / 2) - region_center) < 100:
+                    score += 20                                              # centrality
+                if is_anchor:
+                    score += 20                                              # anchor sub-label bonus
+
+                # Penalize boxes that contain unrelated text (not a placeholder)
+                for r_bbox, r_text, _rc in results:
+                    rx1_o = min(p[0] for p in r_bbox)
+                    ry1_o = min(p[1] for p in r_bbox)
+                    rx2_o = max(p[0] for p in r_bbox)
+                    ry2_o = max(p[1] for p in r_bbox)
+                    if abs_x1 < (rx1_o + rx2_o) / 2 < abs_x1 + w and \
+                       abs_y1 < (ry1_o + ry2_o) / 2 < abs_y1 + h:
+                        clean_t = r_text.strip().lower()
+                        kb_placeholder = (kb.get("placeholder", "").lower() if kb else "")
+                        is_placeholder = (
+                            _fuzzy(r_text, field_label) or
+                            (kb_placeholder and _fuzzy(r_text, kb_placeholder)) or
+                            any(w_ in clean_t for w_ in ["enter", "type", "select", "path", "http"])
+                        )
+                        if not is_placeholder and len(r_text.strip()) > 2:
+                            score -= 100
+                            break
+
+                if best is None:
+                    best = (x, y, w, h)
+                    best_region_origin = (sx1, sy1)
+                    best_score = score
+                    print(f"[detector]   Candidate: ({x},{y} w={w} h={h}) score={score}")
+                elif score > best_score:
+                    best = (x, y, w, h)
+                    best_region_origin = (sx1, sy1)
+                    best_score = score
+                    print(f"[detector]   Candidate: ({x},{y} w={w} h={h}) score={score} ✓")
+                elif score == best_score and y < best[1] - 5:
+                    best = (x, y, w, h)
+                    best_region_origin = (sx1, sy1)
+
+            if best and best_score > 0:
+                break  # high-quality candidate found
+
+        # ── Branch B: Threshold scan (fallback) ───────────────────────────────
+        if best:
+            break
 
         for sx1, sy1, sx2, sy2 in [rs_below, rs_right]:
             region = arr[sy1:sy2, sx1:sx2]
-            if region.size == 0: continue
+            if region.size == 0:
+                continue
             gray_region = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
-            for thresh_val, mode in [(180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
+            for thresh_val, mode in [(30, cv2.THRESH_BINARY), (60, cv2.THRESH_BINARY),
+                                     (180, cv2.THRESH_BINARY), (80, cv2.THRESH_BINARY_INV)]:
                 _, thresh = cv2.threshold(gray_region, thresh_val, 255, mode)
                 contours2, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 best2 = None
                 for cnt in contours2:
                     x, y, w, h = cv2.boundingRect(cnt)
-                    if 150 < w < 2000 and 8 < h < 80 and w > h * 1.5:
-                        if best2 is None or y < best2[1] - 5 or (abs(y - best2[1]) <= 5 and w > best2[2]):
+                    if h < 30:
+                        continue
+                    if not (150 < w < 2000 and h < 80 and w > h * 1.5):
+                        continue
+                    abs_x1 = sx1 + x
+                    abs_y1 = sy1 + y
+                    directly_below = abs_y1 <= (ly2 + 80)
+                    if best2 is None:
+                        best2 = (x, y, w, h)
+                    else:
+                        is_wider = w > best2[2] * 1.2
+                        is_close = abs(y - best2[1]) < 150
+                        is_higher = y < best2[1] - 5
+                        region_center = thresh.shape[1] / 2
+                        dist_a = abs((best2[0] + best2[2] / 2) - region_center)
+                        dist_b = abs((x + w / 2) - region_center)
+                        is_more_central = dist_b < dist_a - 100
+                        prefer = (directly_below and is_close) or \
+                                 (is_wider and is_close) or \
+                                 (is_more_central and is_close) or \
+                                 (not is_wider and not is_more_central and is_higher)
+                        if prefer:
                             best2 = (x, y, w, h)
                 if best2:
-                    best = (x, y, w, h)
+                    best = best2
                     best_region_origin = (sx1, sy1)
                     break
-            if best: break
-        if best: break
+            if best:
+                break
+        if best:
+            break
 
     if _DEBUG_SAVE_DIR:
         # Save a "scan" image with all labels found, highlighting matches
@@ -716,14 +1039,12 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             draw.rectangle([lx1, ly1, lx2, ly2], outline="#CCCCCC", width=1)
             
         # Draw target/anchor labels in Red
-        for cand_bbox, cand_text, _ in label_candidates:
+        for cand_bbox, cand_text, _, _is_anc in label_candidates:
             lx1, ly1, lx2, ly2 = min(p[0] for p in cand_bbox), min(p[1] for p in cand_bbox), max(p[0] for p in cand_bbox), max(p[1] for p in cand_bbox)
             draw.rectangle([lx1, ly1, lx2, ly2], outline="red", width=3)
-            # Draw the search region in green
-            sy2_buf = 100
-            if kb and "search_region" in kb:
-                sy2_buf = kb["search_region"].get("height", sy2_buf)
-            draw.rectangle([lx1 - 100, ly2 + 2, lx1 + 2000, ly2 + sy2_buf], outline="green", width=2)
+            # Draw the actual search regions used (rs_below and rs_right)
+            draw.rectangle([rs_below[0], rs_below[1], rs_below[2], rs_below[3]], outline="green", width=2)
+            draw.rectangle([rs_right[0], rs_right[1], rs_right[2], rs_right[3]], outline="green", width=1)
 
         # Draw the selected field in Cyan if found
         if best:
@@ -806,10 +1127,162 @@ def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index
     return None
 
 
+def is_text_visible_near(screenshot: Image.Image, text: str, cx: int, cy: int, radius: int = 250) -> bool:
+    """Return True if *text* (or a fuzzy match) is visible within *radius* logical pixels of (cx, cy).
+
+    Used for idempotent typing and verification. 
+    Searches broadly to the right to handle long input fields.
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    # Convert logical → pixel
+    px, py = int(cx * scale), int(cy * scale)
+    
+    # Asymmetric search region: WSO2 fields are wide and left-aligned.
+    # We must search far enough to the left AND right of the click point.
+    x1 = max(0, px - int(800 * scale)) # Search up to 800px LEFT to catch URL start
+    y1 = max(0, py - int(45 * scale))
+    x2 = min(arr.shape[1], px + int(1200 * scale)) # Search up to 1200px RIGHT
+    y2 = min(arr.shape[0], py + int(45 * scale))
+    
+    region = arr[y1:y2, x1:x2]
+    if region.size == 0:
+        return False
+        
+    found_tokens = []
+    matches = False
+    for _, found_text, _ in _ocr().readtext(region):
+        found_tokens.append(found_text)
+        if _fuzzy(found_text, text):
+            matches = True
+            break
+            
+    if not matches and found_tokens:
+        # Also check if the 'text' is a substring of the concatenated tokens (with spaces)
+        combined = " ".join(found_tokens).lower()
+        # Clean both for better matching (URL fragments can be tricky)
+        clean_text = text.lower().replace(" ", "")
+        clean_combined = combined.replace(" ", "")
+        
+        if clean_text in clean_combined or clean_combined in clean_text:
+            matches = True
+            
+    if matches:
+        return True
+    else:
+        # Debug trace (always helpful for idempotency)
+        if found_tokens:
+            print(f"[detector]   Idempotent check for '{text}' at ({cx}, {cy}): False. Saw: {found_tokens}")
+        else:
+            print(f"[detector]   Idempotent check for '{text}': No text found in region.")
+        return False
+
+
+def _find_input_below_description(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Click slightly below the last word of the field's description text.
+
+    Strategy:
+      1. Find the field label (or its anchor_label) via OCR.
+      2. Scan OCR results for description text that sits immediately below the label
+         (within _DESCRIPTION_ZONE_PX pixels).
+      3. Return a click coordinate a small fixed offset below the bottom of that
+         description block — which lands inside the 28px input field.
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # ── Step 1: find the label bbox ─────────────────────────────────────────
+    label_bbox = None
+    for bbox, text, conf in results:
+        if _fuzzy(text, field_label) and not _is_blue_background(arr, bbox):
+            label_bbox = bbox
+            break
+
+    # Fall back to anchor_label from KB
+    kb = _kb_entry(field_label)
+    if label_bbox is None and kb and "anchor_label" in kb:
+        anchor = kb["anchor_label"]
+        for bbox, text, conf in results:
+            if _fuzzy(text, anchor):
+                label_bbox = bbox
+                break
+
+    if label_bbox is None:
+        return None
+
+    lx1 = min(p[0] for p in label_bbox)
+    ly2 = max(p[1] for p in label_bbox)
+
+    # ── Step 2: collect description OCR boxes below the label ───────────────
+    desc_bottom = None   # lowest y-pixel of any description line found
+    for bbox, text, conf in results:
+        ry1 = min(p[1] for p in bbox)
+        ry2 = max(p[1] for p in bbox)
+        rx1 = min(p[0] for p in bbox)
+        # Must appear immediately below the label and share its left margin
+        if ly2 + 2 <= ry1 <= ly2 + _DESCRIPTION_ZONE_PX and rx1 >= lx1 - 50:
+            if desc_bottom is None or ry2 > desc_bottom:
+                desc_bottom = ry2
+                print(f"[detector] Description-anchor: '{text}' ends at pixel y={ry2}")
+
+    if desc_bottom is None:
+        # Click ~40px below the label as a blind guess for the input field box
+        return (int(lx1 / scale) + 20, int(ly2 / scale) + 40)
+
+    # ── Step 3: click slightly below the description bottom ─────────────────
+    # Offsets are in LOGICAL pixels (applied after dividing by scale).
+    #
+    # We use a 10px logical offset below the last line of description text.
+    # Note: we avoid using KB click_offset here because those are typically 
+    # relative to the label top/bottom, not the description bottom.
+    logical_offset = 10
+
+    click_x = int(lx1 / scale) + 50           # 50 logical px right of label edge
+    click_y = int(desc_bottom / scale) + logical_offset
+    
+    if _DEBUG_SAVE_DIR:
+        from PIL import ImageDraw
+        debug_img = screenshot.copy()
+        draw = ImageDraw.Draw(debug_img)
+        # All OCR
+        for bbox, text, _ in results:
+            dx1, dy1 = min(p[0] for p in bbox), min(p[1] for p in bbox)
+            dx2, dy2 = max(p[0] for p in bbox), max(p[1] for p in bbox)
+            draw.rectangle([dx1, dy1, dx2, dy2], outline="#CCCCCC", width=1)
+        # Target label
+        tx1, ty1, tx2, ty2 = min(p[0] for p in label_bbox), min(p[1] for p in label_bbox), max(p[0] for p in label_bbox), max(p[1] for p in label_bbox)
+        draw.rectangle([tx1, ty1, tx2, ty2], outline="red", width=3)
+        # Description lowest line
+        draw.line([lx1, desc_bottom, lx1 + 200, desc_bottom], fill="blue", width=4)
+        # Click point
+        cx, cy = click_x * scale, click_y * scale
+        draw.ellipse([cx-10, cy-10, cx+10, cy+10], fill="yellow", outline="black")
+        
+        fname = f"match_{field_label.replace('*', '')}.png"
+        debug_img.save(_DEBUG_SAVE_DIR / fname)
+
+    print(f"[detector] Description-anchor click at ({click_x}, {click_y}) "
+          f"(desc_bottom={desc_bottom}px / scale={scale:.1f} → logical y "
+          f"{int(desc_bottom/scale)}, offset=+{logical_offset})")
+    return (click_x, click_y)
+
+
 def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
     """Find where to click to focus a named input field."""
-    # Try direct visual detection first
+    # Try direct visual detection first (label + contour)
     result = _find_input_by_visual(screenshot, field_label)
+    if result:
+        return result
+
+    # Fall back to description-anchor method: locate the field's helper text and
+    # click just below its last line — most reliable when a description is present.
+    result = _find_input_below_description(screenshot, field_label)
+    if result:
+        return result
+
+    # Try finding by placeholder text inside the input box
+    result = _find_input_by_placeholder(screenshot, field_label)
     if result:
         return result
 
@@ -820,6 +1293,16 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
         result = _find_input_by_index(screenshot, kb["anchor_label"], kb["field_index"])
         if result:
             return result
+
+    # Try blind-click fallback if anchor and offset are provided
+    if kb and "anchor_label" in kb and "click_offset" in kb:
+        print(f"[detector] Direct visual failed for '{field_label}', attempting blind-click using anchor '{kb['anchor_label']}'...")
+        anchor_pos = _find_ocr(screenshot, kb["anchor_label"])
+        if anchor_pos:
+            cx, cy = anchor_pos
+            off_x, off_y = kb["click_offset"].get("x", 0), kb["click_offset"].get("y", 0)
+            print(f"[detector]   Blind-click at {cx + off_x, cy + off_y} (offset: {off_x}, {off_y})")
+            return (cx + off_x, cy + off_y)
 
     print(f"[detector] Visual detection failed for '{field_label}'.")
     return None
