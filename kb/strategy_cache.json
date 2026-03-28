@@ -29,6 +29,7 @@
       "winner": "ocr_exact",
       "fail_counts": {},
 <<<<<<< HEAD
+<<<<<<< HEAD
       "last_seen": "2026-03-26T15:46:27.319050+00:00"
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -53,6 +54,9 @@
 =======
 =======
       "last_seen": "2026-03-26T16:14:40.051990+00:00"
+=======
+      "last_seen": "2026-03-28T05:56:25.856645+00:00"
+>>>>>>> 331e4f5 (Add api md)
     },
     "call function": {
       "winner": "ocr_after_wait",
@@ -63,8 +67,29 @@
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-03-26T16:23:30.266848+00:00"
+<<<<<<< HEAD
 >>>>>>> d8927dc (Fix Light theme)
+<<<<<<< HEAD
 >>>>>>> 9e3aefa (Fix Light theme)
+=======
+=======
+    },
+    "externalapi": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-27T06:31:55.808410+00:00"
+    },
+    "add artifact": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-27T16:12:39.817031+00:00"
+    },
+    "get": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-03-28T03:44:54.632432+00:00"
+>>>>>>> 331e4f5 (Add api md)
+>>>>>>> 1d91d33 (Add api md)
     }
   }
 }

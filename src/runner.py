@@ -11,6 +11,7 @@ import pyautogui
 from PIL import Image
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 from src.detector import ElementNotFoundError, find_element, find_input_field, is_text_visible_near
 =======
 from src.detector import ElementNotFoundError, find_element, find_input_field
@@ -19,6 +20,13 @@ from src.detector import ElementNotFoundError, find_element, find_input_field
 =======
 <<<<<<< HEAD
 >>>>>>> ee262bc (improved text files)
+=======
+from src.detector import ElementNotFoundError, find_element, find_input_field
+<<<<<<< HEAD
+=======
+from src.detector import ElementNotFoundError, find_element, find_input_field, is_text_visible_near
+>>>>>>> 331e4f5 (Add api md)
+>>>>>>> 1d91d33 (Add api md)
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.3
@@ -904,7 +912,21 @@ def fire(action: dict[str, Any]) -> None:
         pyautogui.click(x, y)
 
     elif kind == "type":
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+        # ── NEW: Idempotent Typing (Idempotency) ───────────────────────
+        # Skip typing if the value is already present in the field.
+        _idemp_x = x if x is not None else 0
+        _idemp_y = y if y is not None else 0
+        _idemp_token = action["value"].split()[0] if action["value"].split() else action["value"][:12]
+        if _idemp_x and _idemp_y and _idemp_token:
+            if is_text_visible_near(pyautogui.screenshot(), _idemp_token, _idemp_x, _idemp_y):
+                print(f"[runner] Skipping type: '{_idemp_token}' is already visible near ({_idemp_x}, {_idemp_y})")
+                return 
+        # ───────────────────────────────────────────────────────────────
+
+>>>>>>> 1d91d33 (Add api md)
         if action.get("_needs_click") and x is not None and y is not None:
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -917,16 +939,25 @@ def fire(action: dict[str, Any]) -> None:
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 =======
 >>>>>>> 7edd6ac (add image indentification)
 =======
 =======
+>>>>>>> 1d91d33 (Add api md)
+=======
 >>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
 >>>>>>> e68c878 (feat: implement static source clickability verifier and fix detection issues)
             
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+
+>>>>>>> 331e4f5 (Add api md)
+>>>>>>> 1d91d33 (Add api md)
             # If a "Set" button is visible, click it to activate the input field
             set_pos = _find_set_button()
             if set_pos:
@@ -962,6 +993,9 @@ def fire(action: dict[str, Any]) -> None:
         _paste(action["value"])
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 1d91d33 (Add api md)
         # ── Verify the typed text is actually visible in the field ──────────
         # If the first token of the value is not visible near (x, y), the click
         # may not have focused the field.  Reset focus by clicking another field,

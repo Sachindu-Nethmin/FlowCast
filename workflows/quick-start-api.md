@@ -54,6 +54,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 1. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
 2. Set the **Connection Name** to `externalApi` and select **Save Connection**.
 3. Select **externalApi**.
@@ -84,6 +85,8 @@
 =======
 >>>>>>> 59739ff (1.0)
 =======
+=======
+>>>>>>> 1d91d33 (Add api md)
 =======
 >>>>>>> 4d665b4 (1.1)
 >>>>>>> 37cea1a (1.1)
@@ -137,4 +140,27 @@
 =======
 =======
 >>>>>>> 4d665b4 (1.1)
+<<<<<<< HEAD
 >>>>>>> 37cea1a (1.1)
+=======
+=======
+1. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
+2. Set the **Connection Name** to `externalApi` and select **Save Connection**.
+3. Select **externalApi**.
+
+## Step 4: Configure HTTP
+
+1. Select **Get**.
+2. Set **Path** to `/`.
+3. Set **Result** to `response`
+4. Set **Target Type** to `json`.
+5. Select **Save**.
+
+## Step 5: Return the response
+
+1. Select **+** inside the resource flow.
+2. Select **Return** node.
+3. Set the **return expression** to `response`.
+4. Select **Save**.
+>>>>>>> 331e4f5 (Add api md)
+>>>>>>> 1d91d33 (Add api md)
