@@ -1,68 +1,20 @@
 {
   "version": 1,
   "entries": {
-<<<<<<< HEAD
-<<<<<<< HEAD
     "execute cell": {
       "winner": "ocr_corrected",
       "fail_counts": {},
       "last_seen": "2026-03-31T08:48:44.765002+00:00"
-=======
-    "println": {
-      "winner": "groq_vision",
-=======
-    "execute cell": {
-      "winner": "ocr_corrected",
->>>>>>> ce266e7 (API test working)
-      "fail_counts": {},
-<<<<<<< HEAD
-      "last_seen": "2026-03-25T09:52:41.063003+00:00"
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 096c2df (Clip idie)
     },
     "+ add artifact": {
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-03-26T13:34:15.828078+00:00"
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 4ae97b6 (Light)
     },
     "+": {
       "winner": "ocr_exact",
       "fail_counts": {},
-<<<<<<< HEAD
-<<<<<<< HEAD
       "last_seen": "2026-03-26T15:46:27.319050+00:00"
-<<<<<<< HEAD
-<<<<<<< HEAD
->>>>>>> 9e44480 (Light (#6))
-=======
-=======
->>>>>>> 713c991 (Light)
-=======
->>>>>>> 32def20 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
-<<<<<<< HEAD
->>>>>>> bed3164 (Enhance UI interaction reliability with click delays, improve icon detection using OCR-anchored template matching and color-aware matching, and add a strategy cache.)
-=======
-=======
->>>>>>> 096c2df (Clip idie)
-<<<<<<< HEAD
->>>>>>> 51c18ba (Clip idie)
-=======
-=======
->>>>>>> 4ae97b6 (Light)
-<<<<<<< HEAD
->>>>>>> 713c991 (Light)
-=======
-=======
-      "last_seen": "2026-03-26T16:14:40.051990+00:00"
-=======
-      "last_seen": "2026-03-28T05:56:25.856645+00:00"
->>>>>>> 331e4f5 (Add api md)
     },
     "call function": {
       "winner": "ocr_after_wait",
@@ -73,35 +25,6 @@
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-03-26T16:23:30.266848+00:00"
-<<<<<<< HEAD
->>>>>>> d8927dc (Fix Light theme)
-<<<<<<< HEAD
->>>>>>> 9e3aefa (Fix Light theme)
-=======
-=======
-    },
-    "externalapi": {
-      "winner": "ocr_after_wait",
-      "fail_counts": {},
-      "last_seen": "2026-03-27T06:31:55.808410+00:00"
-    },
-    "add artifact": {
-      "winner": "ocr_after_wait",
-      "fail_counts": {},
-      "last_seen": "2026-03-27T16:12:39.817031+00:00"
-    },
-    "get": {
-      "winner": "ocr_after_wait",
-      "fail_counts": {},
-      "last_seen": "2026-03-28T03:44:54.632432+00:00"
->>>>>>> 331e4f5 (Add api md)
-<<<<<<< HEAD
->>>>>>> 1d91d33 (Add api md)
-=======
-=======
-      "last_seen": "2026-03-31T08:48:44.765002+00:00"
->>>>>>> f8835f3 (API test working)
->>>>>>> ce266e7 (API test working)
     }
   }
 }

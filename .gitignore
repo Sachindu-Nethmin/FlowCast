@@ -6,11 +6,4 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-output/recordings/
->>>>>>> bebf0b3 (chore: ignore product-integrator source code directory)
-=======
->>>>>>> 8c29978 (Add automation recordings and refined detector for Quick Start workflow)
 product-integrator/

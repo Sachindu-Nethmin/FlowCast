@@ -13,10 +13,6 @@ def is_clickable(label: str) -> bool:
     if not SOURCE_DIR.exists() or not label:
         return True
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> ce266e7 (API test working)
     # Bypass verification for elements handled via icon detection (not React text nodes)
     import json
     _kb_path = Path(__file__).parent.parent / "kb" / "ui_elements.json"
@@ -26,11 +22,6 @@ def is_clickable(label: str) -> bool:
         if isinstance(_entry, dict) and _entry.get("type") in ("checkbox_icon", "ocr_text_offset"):
             return True
 
-<<<<<<< HEAD
-=======
->>>>>>> 9e44480 (Light (#6))
-=======
->>>>>>> ce266e7 (API test working)
     contexts = []
     # Search all .tsx / .jsx files
     for root, _, files in os.walk(SOURCE_DIR):

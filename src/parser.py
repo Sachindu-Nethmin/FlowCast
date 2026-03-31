@@ -16,15 +16,7 @@ _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 # visible label in the application.
 _FIELD_ALIASES: dict[str, str] = {
     "integration name":  "Integration Name",
-<<<<<<< HEAD
-<<<<<<< HEAD
     "resource path":     "Resource Path",
-=======
-    "resource path":     "Resource path",
->>>>>>> 7d1f240 (improved text files)
-=======
-    "resource path":     "Resource Path",
->>>>>>> b856107 (1.0)
     "base url":          "Base URL",
     "action path":       "Path",
     "return expression": "Return expression",
@@ -33,10 +25,6 @@ _FIELD_ALIASES: dict[str, str] = {
     "response type":     "Response Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> ce266e7 (API test working)
     "service base path": "Service Base Path",
     # SAP connector fields
     "auth":              "Auth",
@@ -47,11 +35,6 @@ _FIELD_ALIASES: dict[str, str] = {
     "salesorganization": "SalesOrganization",
     "distributionchannel": "DistributionChannel",
     "organizationdivision": "OrganizationDivision",
-<<<<<<< HEAD
-=======
->>>>>>> 9e44480 (Light (#6))
-=======
->>>>>>> ce266e7 (API test working)
 }
 
 
@@ -76,16 +59,8 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
       • "Name the connection `X`"            → type Connection Name=X
       • "Store … variable named `X` … type `Y`" → type Response Variable=X
                                                    + select Response Type=Y
-<<<<<<< HEAD
-<<<<<<< HEAD
       • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
       • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
-=======
->>>>>>> 9e44480 (Light (#6))
-=======
-      • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
-      • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
->>>>>>> ce266e7 (API test working)
       Suffix (added after the line's primary action):
       • "and save" anywhere in line          → hotkey command+s
     """
@@ -115,15 +90,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         # ── Click: "Select **X**" ─────────────────────────────────────────────
         # Handles multiple selects in one sentence ("… and select **Open**")
-<<<<<<< HEAD
-<<<<<<< HEAD
         for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
-=======
-        for m in re.finditer(r'[Ss]elect\s+\*\*([^*]+)\*\*', line):
->>>>>>> 7d1f240 (improved text files)
-=======
-        for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
->>>>>>> b856107 (1.0)
             line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Click: "Add [a [new]] **X**" ──────────────────────────────────────
@@ -137,10 +104,6 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
         # ── Type: "Set [the] [base] **X** to `Y`"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:
@@ -154,11 +117,6 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         # ── Type: "Set [the] X to `Y`" (non-bold field name)
         elif not line_actions:
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
-=======
-        # ── Type: "Set **X** to `Y`" ──────────────────────────────────────────
-=======
-        # ── Type: "Set [the] **X** to `Y`" ───────────────────────────────────
->>>>>>> b856107 (1.0)
         if not line_actions:
             m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
             if m:
@@ -170,17 +128,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         # ── Type: "Set [the] X to `Y`"  (non-bold field name) ────────────────
         if not line_actions:
-<<<<<<< HEAD
             m = re.search(r'[Ss]et\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line)
->>>>>>> 7d1f240 (improved text files)
-=======
-=======
-        # ── Type: "Set [the] **X** to `Y`" — always checked, even if line has clicks too
-        m = re.search(r'set\s+(?:the\s+)?\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
-=======
-        # ── Type: "Set [the] [base] **X** to `Y`"
-        m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
->>>>>>> 4d665b4 (1.1)
         if m:
             field_name = (m.group(1).strip() + " " + m.group(2).strip()).strip()
             line_actions.insert(0, {
@@ -191,9 +139,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         
         # ── Type: "Set [the] X to `Y`" (non-bold field name)
         elif not line_actions:
->>>>>>> 6e2f95f (add image indentification)
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
->>>>>>> b856107 (1.0)
             if m:
                 line_actions.append({
                     "action":       "type",
@@ -242,10 +188,6 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                     "value":        m.group(2),
                 })
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> ce266e7 (API test working)
         # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
         if not line_actions:
             # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
@@ -266,11 +208,6 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                         "value":        m.group(1).strip(),
                     })
 
-<<<<<<< HEAD
-=======
->>>>>>> 9e44480 (Light (#6))
-=======
->>>>>>> ce266e7 (API test working)
         actions.extend(line_actions)
 
         # ── Suffix: "and save" → hotkey ───────────────────────────────────────
@@ -285,10 +222,7 @@ class Step:
     title: str
     gif_filename: str
     actions: list[dict[str, Any]]
-<<<<<<< HEAD
     raw_instructions: str = ""
-=======
->>>>>>> 9e44480 (Light (#6))
 
 
 def _title_to_slug(title: str) -> str:
@@ -320,15 +254,11 @@ def parse_markdown(path: str | Path) -> list[Step]:
     for title, gif_filename, instructions in raw_steps:
         print(f"[parser] Parsing step: {title}")
         actions = _parse_instructions(instructions)
-<<<<<<< HEAD
         steps.append(Step(
             title=title,
             gif_filename=gif_filename,
             actions=actions,
             raw_instructions=instructions
         ))
-=======
-        steps.append(Step(title=title, gif_filename=gif_filename, actions=actions))
->>>>>>> 9e44480 (Light (#6))
         print(f"[parser]   → {len(actions)} actions")
     return steps
