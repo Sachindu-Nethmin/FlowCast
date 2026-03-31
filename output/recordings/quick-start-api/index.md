@@ -17,11 +17,12 @@
 
 ## Step 2: Add an HTTP service
 
-1. In the design view, select **Add Artifact**.
-2. Select **HTTP Service** under **Integration as API**.
-3. Keep **Service contract** as **Design from scratch**.
-4. Set **Service base path** to `/hello`.
-5. Select **Create**.
+1. Select **Hello_World_API**.
+2. In the design view, select **Add Artifact**.
+3. Select **HTTP Service** under **Integration as API**.
+4. Keep **Service contract** as **Design from scratch**.
+5. Set **Service base path** to `/hello`.
+6. Select **Create**.
 
 <ThemedImage
     alt="Add an HTTP service"
@@ -58,6 +59,7 @@
 2. Set **Path** to `/`.
 3. Set **Result** to `response`
 4. Set **Target Type** to `json`.
+5. Select **Target Type**.
 5. Select **Save**.
 
 <ThemedImage
@@ -72,7 +74,7 @@
 
 1. Select **+** inside the resource flow.
 2. Select **Return** node.
-3. Set the **return expression** to `response`.
+3. Set **Expression** to `response`.
 4. Select **Save**.
 
 <ThemedImage
@@ -80,5 +82,20 @@
     sources={{
         light: '/img/get-started/quick-start-api/return-the-response-light.gif',
         dark: '/img/get-started/quick-start-api/return-the-response-dark.gif',
+    }}
+/>
+
+## Step 6: Run and test
+
+1. Select **Run**.
+2. Select **Try it**.
+2. Select **Execute Cell**.
+4. The automation executes immediately and give 200 response "Hello World".
+
+<ThemedImage
+    alt="Run and test"
+    sources={{
+        light: '/img/get-started/quick-start-api/run-and-test-light.gif',
+        dark: '/img/get-started/quick-start-api/run-and-test-dark.gif',
     }}
 />

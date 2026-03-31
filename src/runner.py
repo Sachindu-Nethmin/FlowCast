@@ -261,9 +261,13 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+
+>>>>>>> ce266e7 (API test working)
 def _paste(value: str) -> None:
     subprocess.run(["pbcopy"], input=value.encode(), check=True)
     pyautogui.hotkey("command", "v")
@@ -755,6 +759,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
@@ -772,20 +777,41 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 >>>>>>> 59739ff (1.0)
 =======
 =======
+>>>>>>> ce266e7 (API test working)
+=======
 >>>>>>> 1b41d5a (feat: implement static source clickability verifier and fix detection issues)
 >>>>>>> e68c878 (feat: implement static source clickability verifier and fix detection issues)
         
+<<<<<<< HEAD
 >>>>>>> 9e44480 (Light (#6))
+=======
+=======
+
+        # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
+        kb = _kb().get("element_hints", {}).get(target, {})
+        if isinstance(kb, dict) and kb.get("type") == "ocr_text_offset":
+            ocr_label = kb["label"]
+            offset = kb.get("click_offset", {"x": 0, "y": 0})
+            print(f"[runner] Finding '{ocr_label}' on screen for '{target}'")
+            x, y = _find(ocr_label, action=action)
+            return {**action, "x": x + offset["x"], "y": y + offset["y"]}
+
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
         # Verify clickability via WSO2 Integrator React source code
         from src.source_verifier import is_clickable
         if not is_clickable(target):
             print(f"[runner] WARNING: Source code check failed. '{target}' is unclickable text (e.g. input label). OpenCV might pick a wild field. Skipping click!")
             return {**action, "x": None, "y": None, "_needs_click": False, "_skip": True}
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
             
 >>>>>>> 9e44480 (Light (#6))
+=======
+
+>>>>>>> ce266e7 (API test working)
         x, y = _find(target, action.get("hint"), action=action)
 =======
         x, y = _find(target, action.get("hint"))
@@ -829,6 +855,9 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         return action
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
     if kind == "search":
         # Find the search input placeholder by field_target label
         from src.detector import find_search_field
@@ -843,8 +872,11 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             print(f"[runner] Could not find search field '{action['field_target']}'")
             return {**action, "x": None, "y": None}
 
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
     return action  # hotkey, wait — no detection needed
 
 
@@ -1084,6 +1116,9 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.scroll(clicks)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
     elif kind == "search":
         _trigger_pre_move()
         if x is not None and y is not None:
@@ -1106,8 +1141,11 @@ def fire(action: dict[str, Any]) -> None:
         wait_ui_change(timeout=3.0)
         print(f"[runner] Searched for '{action['value']}' in '{action.get('field_target', 'Search')}'")
 
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
     elif kind == "wait":
         time.sleep(action.get("seconds", 1.0))
 

@@ -3,8 +3,23 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
+<<<<<<< HEAD
 name = "cairocffi"
 version = "1.7.1"
+=======
+<<<<<<< HEAD
+name = "annotated-types"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5ec9c3402f9f51bf748cec26dde048a2f973a4eea7f5/annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89", size = 16081, upload-time = "2024-05-20T21:33:25.928Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
+]
+
+[[package]]
+name = "anyio"
+version = "4.12.1"
+>>>>>>> ce266e7 (API test working)
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cffi" },
@@ -36,7 +51,12 @@ wheels = [
 =======
 =======
 >>>>>>> 6e2f95f (add image indentification)
+<<<<<<< HEAD
 >>>>>>> 7edd6ac (add image indentification)
+=======
+=======
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
 name = "cairocffi"
 version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -68,11 +88,14 @@ wheels = [
 [[package]]
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 name = "cffi"
 version = "2.0.0"
 =======
 =======
 >>>>>>> 7edd6ac (add image indentification)
+=======
+>>>>>>> ce266e7 (API test working)
 =======
 >>>>>>> 7d1f240 (improved text files)
 =======
@@ -166,7 +189,12 @@ wheels = [
 =======
 =======
 >>>>>>> 6e2f95f (add image indentification)
+<<<<<<< HEAD
 >>>>>>> 7edd6ac (add image indentification)
+=======
+=======
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
 name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -358,6 +386,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "distro"
 version = "1.9.0"
 >>>>>>> 7edd6ac (add image indentification)
@@ -368,6 +397,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> ce266e7 (API test working)
 name = "easyocr"
 version = "1.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1009,6 +1040,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "pydantic"
 version = "2.12.5"
 >>>>>>> 9e44480 (Light (#6))
@@ -1019,6 +1051,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> ce266e7 (API test working)
 name = "pygetwindow"
 version = "0.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1626,6 +1660,7 @@ wheels = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "webencodings"
 version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1635,6 +1670,8 @@ wheels = [
 ]
 
 [[package]]
+=======
+>>>>>>> ce266e7 (API test working)
 name = "webencodings"
 version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }

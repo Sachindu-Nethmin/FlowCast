@@ -2,6 +2,7 @@
   "version": 1,
   "entries": {
 <<<<<<< HEAD
+<<<<<<< HEAD
     "execute cell": {
       "winner": "ocr_corrected",
       "fail_counts": {},
@@ -9,7 +10,12 @@
 =======
     "println": {
       "winner": "groq_vision",
+=======
+    "execute cell": {
+      "winner": "ocr_corrected",
+>>>>>>> ce266e7 (API test working)
       "fail_counts": {},
+<<<<<<< HEAD
       "last_seen": "2026-03-25T09:52:41.063003+00:00"
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -89,7 +95,13 @@
       "fail_counts": {},
       "last_seen": "2026-03-28T03:44:54.632432+00:00"
 >>>>>>> 331e4f5 (Add api md)
+<<<<<<< HEAD
 >>>>>>> 1d91d33 (Add api md)
+=======
+=======
+      "last_seen": "2026-03-31T08:48:44.765002+00:00"
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
     }
   }
 }

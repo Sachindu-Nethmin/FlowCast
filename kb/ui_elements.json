@@ -401,6 +401,9 @@
 >>>>>>> 4d665b4 (1.1)
     },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
     "open_project_choice": {
       "name": "Open Project - Choice Screen",
       "trigger": "Clicking 'Open' on welcome screen",
@@ -483,8 +486,11 @@
         { "label": "Organization", "type": "dropdown", "id": "repo-init-org", "required": true, "hint": "Git organization/workspace selector for new repositories" }
       ]
     },
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
     "action_config": {
       "name": "Action Configuration Dialog",
       "trigger": "Clicking a node in the flow canvas",
@@ -598,11 +604,14 @@
       "click_offset": { "x": 0, "y": -20 },
       "note": "Find the text '[ ]' on screen via OCR, move mouse to it, move up 10px, click."
     },
+<<<<<<< HEAD
 =======
     "Call Function": "Card/option in the node panel inside the automation diagram view. Labeled 'Call Function'. Located in the center grid of the panel.",
     "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
     "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
 >>>>>>> 9e3aefa (Fix Light theme)
+=======
+>>>>>>> ce266e7 (API test working)
     "Values": {
       "label": "Values",
       "hint": "Text input field inside the Initialize Array action dialog. Found below or to the right of the 'Values' label.",
@@ -659,6 +668,9 @@
       "note": "Same as 'Url' field. The asterisk indicates it is required."
     },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
     "Local Project": "Large choice card with a circular folder icon in the Open Project landing view",
     "Cloud project": "Large choice card with a circular cloud icon in the Open Project landing view",
     "Clone Project": "Primary colored button in the cloud project confirmation screen",
@@ -668,6 +680,7 @@
     "Library Name": "Text input field with placeholder 'Enter a library name' on BI library creation form",
     "Create Project": "Primary colored submit button at bottom-right of the BI project creation form",
     "Create Library": "Primary colored submit button at bottom-right of the BI library creation form",
+<<<<<<< HEAD
     "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
     "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
     "Path*": "Same as 'Path' field.",
@@ -691,9 +704,12 @@
     "Url*": "Same as 'Url' field. The asterisk indicates it is required.",
 =======
 >>>>>>> 1d91d33 (Add api md)
+=======
+>>>>>>> ce266e7 (API test working)
     "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
     "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
     "Path*": "Same as 'Path' field.",
+<<<<<<< HEAD
     "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -709,7 +725,28 @@
 >>>>>>> 7d1f240 (improved text files)
 =======
 >>>>>>> 4d665b4 (1.1)
+<<<<<<< HEAD
 >>>>>>> 37cea1a (1.1)
+=======
+=======
+    "Return expression": {
+      "label": "Return expression",
+      "hint": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label.",
+      "search_region": { "height": 80, "x_offset_left": 0, "x_offset_right": 400 },
+      "note": "Smart input field for expressions. Search constrained to right side of label only."
+    },
+    "Expression": {
+      "label": "Expression",
+      "anchor_label": "Return value",
+      "type": "smart_input",
+      "exact_height": 32,
+      "search_region": { "height": 80, "x_offset_left": 0, "x_offset_right": 400 },
+      "click_offset": { "x": 0, "y": 40 },
+      "skip_primary_detection": true,
+      "note": "Smart input in Return node. Skip OCR primary, use 'Return value' anchor which is cleaner."
+    }
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
@@ -717,10 +754,15 @@
       "Integration Name": "Enter an integration name",
       "Package Name": "Enter a package name",
 <<<<<<< HEAD
+<<<<<<< HEAD
       "Project Name": "Enter a project name",
       "Library Name": "Enter a library name",
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+      "Project Name": "Enter a project name",
+      "Library Name": "Enter a library name",
+>>>>>>> ce266e7 (API test working)
       "Select Path": "Enter path or browse to select a folder...",
       "Workspace Name": "Enter workspace name",
       "Package Version": "0.1.0",
@@ -749,8 +791,13 @@
 >>>>>>> 9e44480 (Light (#6))
 =======
       "Folder Name": "Enter folder name",
+<<<<<<< HEAD
       "Url": "Enter URL"
 >>>>>>> 1d91d33 (Add api md)
+=======
+      "Url": "Enter URL",
+      "Path": "/directory-path"
+>>>>>>> ce266e7 (API test working)
     }
   },
   "autofocus_fields": {
@@ -850,9 +897,13 @@
     "Response Variable",
     "Return expression",
 <<<<<<< HEAD
+<<<<<<< HEAD
     "Expression",
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+    "Expression",
+>>>>>>> ce266e7 (API test working)
     "Body",
     "Url",
     "Url*"

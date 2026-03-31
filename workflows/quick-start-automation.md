@@ -24,11 +24,14 @@
 ## Step 2: Add an automation artifact
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 1. Select **Integration**.
 2. In the design view, select **+ Add Artifact**.
 3. Select **Automation** artifact.
 4. Select **Create** to create an automation. This directs you to the automation diagram view.
 =======
+=======
+>>>>>>> ce266e7 (API test working)
 1. In the design view, select **+ Add Artifact**.
 2. Select **Automation** artifact.
 3. Select **Create** to create an automation. This directs you to the automation diagram view.
@@ -42,7 +45,16 @@
 <<<<<<< HEAD
 =======
 >>>>>>> 4d665b4 (1.1)
+<<<<<<< HEAD
 >>>>>>> 37cea1a (1.1)
+=======
+=======
+1. Select **Integration**.
+2. In the design view, select **+ Add Artifact**.
+3. Select **Automation** artifact.
+4. Select **Create** to create an automation. This directs you to the automation diagram view.
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)
 
 ## Step 3: Add logic
 

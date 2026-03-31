@@ -24,12 +24,16 @@
 ## Step 2: Add an HTTP service
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
 1. Select **Hello_World_API**.
 2. In the design view, select **Add Artifact**.
 3. Select **HTTP Service** under **Integration as API**.
 4. Keep **Service contract** as **Design from scratch**.
 5. Set **Service base path** to `/hello`.
 6. Select **Create**.
+<<<<<<< HEAD
 =======
 1. In the design view, select **Add Artifact**.
 2. Select **HTTP Service** under **Integration as API**.
@@ -37,6 +41,8 @@
 4. Set **Service base path** to `/hello`.
 5. Select **Create**.
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
 
 ## Step 3: Design the integration flow
 
@@ -154,13 +160,27 @@
 2. Set **Path** to `/`.
 3. Set **Result** to `response`
 4. Set **Target Type** to `json`.
+5. Select **Target Type**.
 5. Select **Save**.
 
 ## Step 5: Return the response
 
 1. Select **+** inside the resource flow.
 2. Select **Return** node.
-3. Set the **return expression** to `response`.
+3. Set **Expression** to `response`.
 4. Select **Save**.
+<<<<<<< HEAD
 >>>>>>> 331e4f5 (Add api md)
+<<<<<<< HEAD
 >>>>>>> 1d91d33 (Add api md)
+=======
+=======
+
+## Step 6: Run and test
+
+1. Select **Run**.
+2. Select **Try it**.
+2. Select **Execute Cell**.  
+4. The automation executes immediately and give 200 response "Hello World".
+>>>>>>> f8835f3 (API test working)
+>>>>>>> ce266e7 (API test working)

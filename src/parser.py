@@ -34,6 +34,9 @@ _FIELD_ALIASES: dict[str, str] = {
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
     "service base path": "Service Base Path",
     # SAP connector fields
     "auth":              "Auth",
@@ -44,8 +47,11 @@ _FIELD_ALIASES: dict[str, str] = {
     "salesorganization": "SalesOrganization",
     "distributionchannel": "DistributionChannel",
     "organizationdivision": "OrganizationDivision",
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
 }
 
 
@@ -71,10 +77,15 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
       • "Store … variable named `X` … type `Y`" → type Response Variable=X
                                                    + select Response Type=Y
 <<<<<<< HEAD
+<<<<<<< HEAD
       • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
       • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+      • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
+      • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
+>>>>>>> ce266e7 (API test working)
       Suffix (added after the line's primary action):
       • "and save" anywhere in line          → hotkey command+s
     """
@@ -232,6 +243,9 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                 })
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ce266e7 (API test working)
         # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
         if not line_actions:
             # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
@@ -252,8 +266,11 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                         "value":        m.group(1).strip(),
                     })
 
+<<<<<<< HEAD
 =======
 >>>>>>> 9e44480 (Light (#6))
+=======
+>>>>>>> ce266e7 (API test working)
         actions.extend(line_actions)
 
         # ── Suffix: "and save" → hotkey ───────────────────────────────────────
