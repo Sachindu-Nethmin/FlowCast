@@ -25,6 +25,16 @@ _FIELD_ALIASES: dict[str, str] = {
     "response type":     "Response Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
+    "service base path": "Service Base Path",
+    # SAP connector fields
+    "auth":              "Auth",
+    "password":          "Password",
+    "hostname":          "Hostname",
+    "data format":       "Data Format",
+    "salesordertype":    "SalesOrderType",
+    "salesorganization": "SalesOrganization",
+    "distributionchannel": "DistributionChannel",
+    "organizationdivision": "OrganizationDivision",
 }
 
 
@@ -49,6 +59,8 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
       • "Name the connection `X`"            → type Connection Name=X
       • "Store … variable named `X` … type `Y`" → type Response Variable=X
                                                    + select Response Type=Y
+      • "[Ss]earch **X** for `Y`"           → search field_target=X, value=Y
+      • "[Ss]earch for `Y`"                 → search field_target="Search", value=Y
       Suffix (added after the line's primary action):
       • "and save" anywhere in line          → hotkey command+s
     """
@@ -152,6 +164,26 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                     "field_target": "Response Type",
                     "value":        m.group(2),
                 })
+
+        # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
+        if not line_actions:
+            # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
+            m = re.search(r'search\s+\*\*([^*]+)\*\*\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+            if m:
+                line_actions.append({
+                    "action":       "search",
+                    "field_target": m.group(1).strip(),
+                    "value":        m.group(2).strip(),
+                })
+            else:
+                # Without field name: Search for `api_sales_order_srv`
+                m = re.search(r'search\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+                if m:
+                    line_actions.append({
+                        "action":       "search",
+                        "field_target": "Search",
+                        "value":        m.group(1).strip(),
+                    })
 
         actions.extend(line_actions)
 

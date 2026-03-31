@@ -144,6 +144,7 @@ def _find_set_button() -> tuple[int, int] | None:
     return (cx, cy)
 
 
+
 def _paste(value: str) -> None:
     subprocess.run(["pbcopy"], input=value.encode(), check=True)
     pyautogui.hotkey("command", "v")
@@ -204,13 +205,22 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "click":
         target = action["target"]
-        
+
+        # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
+        kb = _kb().get("element_hints", {}).get(target, {})
+        if isinstance(kb, dict) and kb.get("type") == "ocr_text_offset":
+            ocr_label = kb["label"]
+            offset = kb.get("click_offset", {"x": 0, "y": 0})
+            print(f"[runner] Finding '{ocr_label}' on screen for '{target}'")
+            x, y = _find(ocr_label, action=action)
+            return {**action, "x": x + offset["x"], "y": y + offset["y"]}
+
         # Verify clickability via WSO2 Integrator React source code
         from src.source_verifier import is_clickable
         if not is_clickable(target):
             print(f"[runner] WARNING: Source code check failed. '{target}' is unclickable text (e.g. input label). OpenCV might pick a wild field. Skipping click!")
             return {**action, "x": None, "y": None, "_needs_click": False, "_skip": True}
-            
+
         x, y = _find(target, action.get("hint"), action=action)
         return {**action, "x": x, "y": y}
 
@@ -238,6 +248,20 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             x, y = _find(target)
             return {**action, "x": x, "y": y}
         return action
+
+    if kind == "search":
+        # Find the search input placeholder by field_target label
+        from src.detector import find_search_field
+        result = find_search_field(_screenshot(), action["field_target"])
+        if result:
+            return {**action, "x": result[0], "y": result[1]}
+        # Fallback: try find_element for the placeholder text
+        try:
+            x, y = _find(action["field_target"], action=action)
+            return {**action, "x": x, "y": y}
+        except ElementNotFoundError:
+            print(f"[runner] Could not find search field '{action['field_target']}'")
+            return {**action, "x": None, "y": None}
 
     return action  # hotkey, wait — no detection needed
 
@@ -364,6 +388,28 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.scroll(clicks, x=x, y=y)
         else:
             pyautogui.scroll(clicks)
+
+    elif kind == "search":
+        _trigger_pre_move()
+        if x is not None and y is not None:
+            pyautogui.moveTo(x, y, duration=0.2)
+            pyautogui.click(x, y)
+        else:
+            # No coords — try to click a visible search placeholder
+            try:
+                sx, sy = find_element(pyautogui.screenshot(), "Search")
+                pyautogui.moveTo(sx, sy, duration=0.2)
+                pyautogui.click(sx, sy)
+            except ElementNotFoundError:
+                print("[runner] Could not find search box — typing at current focus")
+        time.sleep(0.2)
+        # Clear any existing text, then type the search value
+        pyautogui.hotkey("command", "a")
+        time.sleep(0.1)
+        _paste(action["value"])
+        # Wait for search results to populate
+        wait_ui_change(timeout=3.0)
+        print(f"[runner] Searched for '{action['value']}' in '{action.get('field_target', 'Search')}'")
 
     elif kind == "wait":
         time.sleep(action.get("seconds", 1.0))

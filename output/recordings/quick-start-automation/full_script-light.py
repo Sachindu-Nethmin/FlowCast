@@ -36,6 +36,7 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 # Step 2: Add an automation artifact
 # ──────────────────────────────────────────────────────────
+_run({'action': 'click', 'target': 'Integration'})
 _run({'action': 'click', 'target': '+ Add Artifact'})
 _run({'action': 'click', 'target': 'Automation'})
 _run({'action': 'click', 'target': 'Create'})

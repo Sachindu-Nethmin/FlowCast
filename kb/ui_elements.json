@@ -396,6 +396,88 @@
         }
       ]
     },
+    "open_project_choice": {
+      "name": "Open Project - Choice Screen",
+      "trigger": "Clicking 'Open' on welcome screen",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "icon": "bi-arrow-back", "position": "top-left", "action": "Return to welcome screen" },
+        { "label": "Local Project", "type": "choice_card", "position": "left card", "action": "Choose local folder picker", "hint": "Large card with folder icon for local project selection" },
+        { "label": "Cloud project", "type": "choice_card", "position": "right card", "action": "Choose cloud project list", "hint": "Large card with cloud icon for Choreo/Devant project selection" }
+      ]
+    },
+    "cloud_project_list": {
+      "name": "Cloud Project List",
+      "trigger": "Selecting 'Cloud project' from Open choice screen",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "icon": "bi-arrow-back", "position": "top-left", "action": "Return to choice screen" },
+        { "label": "Org Switcher", "type": "dropdown", "position": "top-right", "action": "Switch organization context", "hint": "Circular avatar/initials dropdown in the header row" },
+        { "label": "Project Row", "type": "list_item", "position": "scrollable list", "action": "Select a project to clone", "hint": "Iterative row with project icon, name, and description" }
+      ]
+    },
+    "clone_project_confirmation": {
+      "name": "Clone Project Confirmation",
+      "trigger": "Selecting a project from the cloud list",
+      "elements": [
+        { "label": "Back", "type": "icon_button", "icon": "bi-arrow-back", "position": "top-left", "action": "Return to project list" },
+        { "label": "Clone Project", "type": "button", "style": "primary", "position": "center action", "action": "Begin cloning process", "hint": "Primary button in the confirmation panel" },
+        { "label": "Back to project list", "type": "link", "position": "below primary button", "action": "Return to project list" }
+      ]
+    },
+    "bi_project_creation_new": {
+      "name": "Create BI Project Screen (Workspace Mode)",
+      "trigger": "Selecting 'Create Project' from welcome or navigation",
+      "note": "Wait 300ms for expansion animation to settle if 'Create within a project' is checked.",
+      "elements": [
+        { "label": "Back", "type": "button", "icon": "arrow-left", "position": "top-left", "action": "Return to previous screen" },
+        { "label": "Create Project", "type": "button", "style": "primary", "position": "bottom-right", "action": "Submit creation" }
+      ],
+      "fields": [
+        { "label": "Integration Name", "type": "text", "required": true, "autofocus": true },
+        { "label": "Project Name", "type": "text", "anchor_label": "Project", "required": true, "conditional": true, "hint": "Visible only when 'Create within a project' is checked" },
+        { "label": "Select Path", "type": "text", "required": true, "hint": "Uses DirectorySelector with Browse button" }
+      ]
+    },
+    "bi_library_creation": {
+      "name": "Create Library (BI)",
+      "trigger": "Selecting 'Create Library' from welcome or navigation",
+      "fields": [
+        { "label": "Library Name", "type": "text", "placeholder": "Enter a library name", "autofocus": true, "required": true },
+        { "label": "Project Name", "type": "text", "placeholder": "Enter project name", "required": true, "conditional": true, "condition": "Create within a project is checked" },
+        { "label": "Create within a project", "type": "checkbox", "default_value": true },
+        { "label": "Select Path", "type": "directory_selector", "placeholder": "Browse to select a folder...", "required": true },
+        { "label": "Package Name", "type": "text" },
+        { "label": "Organization Name", "type": "text" },
+        { "label": "Package Version", "type": "text", "placeholder": "0.1.0" }
+      ],
+      "elements": [
+        { "label": "Create Library", "type": "button", "style": "primary", "position": "bottom-right", "action": "Create the library" },
+        { "label": "Package Information", "type": "collapsible_section", "action": "Expand package details" }
+      ]
+    },
+    "user_account_popover": {
+      "name": "User Account Popover",
+      "trigger": "Clicking the user avatar/initials in header",
+      "elements": [
+        { "label": "Sign Out", "type": "icon_button", "icon": "sign-out", "action": "Log out from cloud", "hint": "Red icon button next to user email" }
+      ]
+    },
+    "component_deploy_form": {
+      "name": "Deploy Integration to Cloud",
+      "trigger": "Clicking 'Deploy' command",
+      "elements": [
+        { "label": "Deploy", "type": "button", "style": "primary", "position": "bottom-right", "action": "Submit deployment", "hint": "Primary button. Label may be 'Deploy All' for multiple integrations." },
+        { "label": "Edit Name", "type": "icon_button", "icon": "pencil", "position": "next to integration name", "action": "Make name editable", "hint": "Stylized ✎ icon in the integration list row" }
+      ],
+      "fields": [
+        { "label": "Integration Name", "type": "text", "note": "Click to edit if needed. Field appears inline when ✎ is clicked.", "autofocus": true },
+        { "label": "Repository", "type": "dropdown", "id": "git-remote", "required": true, "hint": "Remote Git URL selector" },
+        { "label": "Git Provider", "type": "dropdown", "id": "gitProvider", "required": true },
+        { "label": "Credential", "type": "dropdown", "id": "gen-details-cred", "required": true },
+        { "label": "Branch", "type": "dropdown", "id": "gen-details-branch", "required": true },
+        { "label": "Path", "type": "text", "placeholder": "/directory-path", "note": "Sub-directory path in the repository" },
+        { "label": "Organization", "type": "dropdown", "id": "repo-init-org", "required": true, "hint": "Git organization/workspace selector for new repositories" }
+      ]
+    },
     "action_config": {
       "name": "Action Configuration Dialog",
       "trigger": "Clicking a node in the flow canvas",
@@ -464,6 +546,12 @@
     "Call Function": "Card/option in the node panel inside the automation diagram view. Labeled 'Call Function'. Located in the center grid of the panel.",
     "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
     "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
+    "Execute Cell": {
+      "label": "[ ]",
+      "type": "ocr_text_offset",
+      "click_offset": { "x": 0, "y": -20 },
+      "note": "Find the text '[ ]' on screen via OCR, move mouse to it, move up 10px, click."
+    },
     "Values": {
       "label": "Values",
       "hint": "Text input field inside the Initialize Array action dialog. Found below or to the right of the 'Values' label.",
@@ -496,16 +584,42 @@
       "click_offset": { "x": 0, "y": 60 },
       "note": "Same as 'Url' field. The asterisk indicates it is required."
     },
+    "Local Project": "Large choice card with a circular folder icon in the Open Project landing view",
+    "Cloud project": "Large choice card with a circular cloud icon in the Open Project landing view",
+    "Clone Project": "Primary colored button in the cloud project confirmation screen",
+    "Back to project list": "Blue link text below the Clone Project button",
+    "Sign Out": "Red sign-out icon button in the account popover",
+    "Project Name": "Text input field with placeholder 'Enter a project name' on BI project creation form",
+    "Library Name": "Text input field with placeholder 'Enter a library name' on BI library creation form",
+    "Create Project": "Primary colored submit button at bottom-right of the BI project creation form",
+    "Create Library": "Primary colored submit button at bottom-right of the BI library creation form",
     "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
     "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
     "Path*": "Same as 'Path' field.",
-    "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
+    "Return expression": {
+      "label": "Return expression",
+      "hint": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label.",
+      "search_region": { "height": 80, "x_offset_left": 0, "x_offset_right": 400 },
+      "note": "Smart input field for expressions. Search constrained to right side of label only."
+    },
+    "Expression": {
+      "label": "Expression",
+      "anchor_label": "Return value",
+      "type": "smart_input",
+      "exact_height": 32,
+      "search_region": { "height": 80, "x_offset_left": 0, "x_offset_right": 400 },
+      "click_offset": { "x": 0, "y": 40 },
+      "skip_primary_detection": true,
+      "note": "Smart input in Return node. Skip OCR primary, use 'Return value' anchor which is cleaner."
+    }
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
     "fields": {
       "Integration Name": "Enter an integration name",
       "Package Name": "Enter a package name",
+      "Project Name": "Enter a project name",
+      "Library Name": "Enter a library name",
       "Select Path": "Enter path or browse to select a folder...",
       "Workspace Name": "Enter workspace name",
       "Package Version": "0.1.0",
@@ -518,7 +632,8 @@
       "Group Id": "com.microintegrator.projects",
       "Version": "1.0.0",
       "Folder Name": "Enter folder name",
-      "Url": "Enter URL"
+      "Url": "Enter URL",
+      "Path": "/directory-path"
     }
   },
   "autofocus_fields": {
@@ -604,6 +719,7 @@
     "Path",
     "Response Variable",
     "Return expression",
+    "Expression",
     "Body",
     "Url",
     "Url*"
