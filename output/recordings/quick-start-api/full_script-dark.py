@@ -36,6 +36,7 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 # Step 2: Add an HTTP service
 # ──────────────────────────────────────────────────────────
+_run({'action': 'click', 'target': 'Hello_World_API'})
 _run({'action': 'click', 'target': 'Add Artifact'})
 _run({'action': 'click', 'target': 'HTTP Service'})
 _run({'action': 'type', 'field_target': 'Service Base Path', 'value': '/hello'})
@@ -63,6 +64,7 @@ _run({'action': 'click', 'target': 'Get'})
 _run({'action': 'type', 'field_target': 'Path', 'value': '/'})
 _run({'action': 'type', 'field_target': 'Result', 'value': 'response'})
 _run({'action': 'type', 'field_target': 'Target Type', 'value': 'json'})
+_run({'action': 'click', 'target': 'Target Type'})
 _run({'action': 'click', 'target': 'Save'})
 
 # ──────────────────────────────────────────────────────────
@@ -70,5 +72,12 @@ _run({'action': 'click', 'target': 'Save'})
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Return'})
-_run({'action': 'type', 'field_target': 'Return expression', 'value': 'response'})
+_run({'action': 'type', 'field_target': 'Expression', 'value': 'response'})
 _run({'action': 'click', 'target': 'Save'})
+
+# ──────────────────────────────────────────────────────────
+# Step 6: Run and test
+# ──────────────────────────────────────────────────────────
+_run({'action': 'click', 'target': 'Run'})
+_run({'action': 'click', 'target': 'Try it'})
+_run({'action': 'click', 'target': 'Execute Cell'})
