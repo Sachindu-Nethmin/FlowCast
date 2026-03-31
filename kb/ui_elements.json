@@ -737,13 +737,12 @@
     },
     "Expression": {
       "label": "Expression",
-      "anchor_label": "Return value",
+      "anchor_label": "fx",
       "type": "smart_input",
       "exact_height": 32,
-      "search_region": { "height": 80, "x_offset_left": 0, "x_offset_right": 400 },
-      "click_offset": { "x": 0, "y": 40 },
+      "search_region": { "height": 60, "x_offset_left": 0, "x_offset_right": 300 },
       "skip_primary_detection": true,
-      "note": "Smart input in Return node. Skip OCR primary, use 'Return value' anchor which is cleaner."
+      "note": "Smart input in Return node. Use 'fx' icon as anchor — small clean bbox, right beside the Expression input."
     }
 >>>>>>> f8835f3 (API test working)
 >>>>>>> ce266e7 (API test working)
