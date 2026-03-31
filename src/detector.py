@@ -889,13 +889,12 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
         print(f"[detector] Skipping primary detection for '{field_label}' (skip_primary_detection=true). Using anchor only.")
     
     # Try anchor_label from KB as a fallback when primary label detection fails
-    # For smart_inputs with OCR-corrupted primary labels, anchor_label provides a recovery path
+    # Use raw (unmerged) OCR results for anchor lookup to avoid merge artifacts
     is_smart = (kb.get("type") == "smart_input" if kb else False)
     if kb and "anchor_label" in kb:
         anchor = kb["anchor_label"]
-        for bbox, text, conf in merged_results:
+        for bbox, text, conf in results:  # raw results, not merged
             if _fuzzy(text, anchor):
-                # Same width check for anchor labels
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
                 if bbox_width > 300:
                     print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
