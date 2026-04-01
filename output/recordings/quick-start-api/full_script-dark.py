@@ -29,6 +29,7 @@ def _run(action):
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
 _run({'action': 'click', 'target': 'Create'})
 _run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World_API'})
+_run({'action': 'type', 'field_target': 'Project Name', 'value': 'Quick_Start'})
 _run({'action': 'click', 'target': 'Browse'})
 _run({'action': 'click', 'target': 'Open'})
 _run({'action': 'click', 'target': 'Create Integration'})
