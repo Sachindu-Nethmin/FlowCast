@@ -2,10 +2,11 @@
 
 1. Open WSO2 Integrator.
 2. Select **Create**.
-3. Set **Integration Name** to `Integration`.
-4. Select **Browse**.
-5. Select the project location and select **Open**.
-6. Select **Create Integration**.
+3. Set **Integration Name** to `Hello_World`.
+4. Set **Project Name** to `Quick_Start`.
+5. Select **Browse**.
+6. Select the project location and select **Open**.
+7. Select **Create Integration**.
 
 <ThemedImage
     alt="Create the project"
@@ -17,10 +18,10 @@
 
 ## Step 2: Add an automation artifact
 
-1. Select **Integration**.
-2. In the design view, select **+ Add Artifact**.
+1. Select **Hello_World**.
+2. In the design view, select **Add Artifact**.
 3. Select **Automation** artifact.
-4. Select **Create** to create an automation. This directs you to the automation diagram view.
+4. Select **Create**.
 
 <ThemedImage
     alt="Add an automation artifact"
@@ -34,7 +35,7 @@
 
 1. Select **+** after the **Start** node to open the node panel.
 2. Select **Call Function** node to the flow.
-3. Select **Println** from the node panel.
+3. Select **Print** from the node panel.
 4. Select **Initialize Array** from the node panel.
 5. Set **Values** to `"Hello World"` and select **Save**.
 

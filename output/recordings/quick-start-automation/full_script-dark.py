@@ -28,7 +28,8 @@ def _run(action):
 # ──────────────────────────────────────────────────────────
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
 _run({'action': 'click', 'target': 'Create'})
-_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Integration'})
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Hello_World'})
+_run({'action': 'type', 'field_target': 'Project Name', 'value': 'Quick_Start'})
 _run({'action': 'click', 'target': 'Browse'})
 _run({'action': 'click', 'target': 'Open'})
 _run({'action': 'click', 'target': 'Create Integration'})
@@ -36,8 +37,8 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 # Step 2: Add an automation artifact
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Integration'})
-_run({'action': 'click', 'target': '+ Add Artifact'})
+_run({'action': 'click', 'target': 'Hello_World'})
+_run({'action': 'click', 'target': 'Add Artifact'})
 _run({'action': 'click', 'target': 'Automation'})
 _run({'action': 'click', 'target': 'Create'})
 
@@ -46,7 +47,7 @@ _run({'action': 'click', 'target': 'Create'})
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Call Function'})
-_run({'action': 'click', 'target': 'Println'})
+_run({'action': 'click', 'target': 'Print'})
 _run({'action': 'click', 'target': 'Initialize Array'})
 _run({'action': 'type', 'field_target': 'Values', 'value': '"Hello World"'})
 _run({'action': 'click', 'target': 'Save'})
