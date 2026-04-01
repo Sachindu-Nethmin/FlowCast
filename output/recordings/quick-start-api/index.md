@@ -3,9 +3,10 @@
 1. Open WSO2 Integrator.
 2. Select **Create**.
 3. Set **Integration Name** to `Hello_World_API`.
-4. Select **Browse**.
-5. Select the project location and select **Open**.
-6. Select **Create Integration**.
+4. Set **Project Name** to `Quick_Start`.
+5. Select **Browse**.
+6. Select the project location and select **Open**.
+7. Select **Create Integration**.
 
 <ThemedImage
     alt="Create the project"

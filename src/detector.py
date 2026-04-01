@@ -977,8 +977,14 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             for cnt in contours:
                 x, y, w, h = cv2.boundingRect(cnt)
 
+                # ── Skip edge-of-region artifacts (label borders, window chrome) ──
+                # Only skip thin lines at the edge, not full-height input fields that
+                # happen to start at y=0 (e.g. a field immediately below its label).
+                if (x == 0 and w < 100) or (y == 0 and h < 15):
+                    continue
+
                 # ── Minimum height gate: ignore thin lines / decorative borders ──
-                if h < 30:
+                if h < 25:
                     continue
 
                 if not (150 < w < 2000 and h < 80 and w > h * 1.5):
@@ -1027,7 +1033,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 if is_anchor:
                     score += 20                                              # anchor sub-label bonus
 
-                # Penalize boxes that contain unrelated text (not a placeholder)
+                # Penalize boxes that contain unrelated text (not a placeholder or pre-filled value)
                 for r_bbox, r_text, _rc in results:
                     rx1_o = min(p[0] for p in r_bbox)
                     ry1_o = min(p[1] for p in r_bbox)
@@ -1037,7 +1043,14 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                        abs_y1 < (ry1_o + ry2_o) / 2 < abs_y1 + h:
                         clean_t = r_text.strip().lower()
                         kb_placeholder = (kb.get("placeholder", "").lower() if kb else "")
+                        # A short single-word text without label markers (* :) is likely a
+                        # pre-filled default value (e.g. "Untitled", "Default") — don't penalize
+                        looks_like_prefilled = (
+                            "*" not in r_text and ":" not in r_text and
+                            len(r_text.strip().split()) <= 2 and len(r_text.strip()) <= 20
+                        )
                         is_placeholder = (
+                            looks_like_prefilled or
                             _fuzzy(r_text, field_label) or
                             (kb_placeholder and _fuzzy(r_text, kb_placeholder)) or
                             any(w_ in clean_t for w_ in ["enter", "type", "select", "path", "http"])
@@ -1079,7 +1092,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 best2 = None
                 for cnt in contours2:
                     x, y, w, h = cv2.boundingRect(cnt)
-                    if h < 30:
+                    if h < 25:
                         continue
                     if not (150 < w < 2000 and h < 80 and w > h * 1.5):
                         continue
@@ -1136,8 +1149,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             rx, ry = best_region_origin
             x, y, w, h = best
             draw.rectangle([rx + x, ry + y, rx + x + w, ry + y + h], outline="cyan", width=4)
-            offset_pct = 0.3 if w > 200 else 0.5
-            cx = (rx + x + w * offset_pct) / scale
+            cx = (rx + x + w / 2) / scale
             cy = (ry + y + h / 2) / scale
             draw.ellipse([cx * scale - 10, cy * scale - 10, cx * scale + 10, cy * scale + 10], fill="yellow", outline="black")
 
@@ -1148,8 +1160,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     if best:
         rx, ry = best_region_origin
         x, y, w, h = best
-        offset_pct = 0.3 if w > 200 else 0.5
-        cx = int((rx + x + w * offset_pct) / scale)
+        cx = int((rx + x + w / 2) / scale)
         cy = int((ry + y + h / 2) / scale)
         return (cx, cy)
 
@@ -1201,9 +1212,7 @@ def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index
     
     if len(candidates) > field_index:
         x, y, w, h = candidates[field_index]
-        # Same Smart Offset logic for indexed search
-        offset_pct = 0.3 if w > 200 else 0.5
-        cx = int((sx1 + x + w * offset_pct) / scale)
+        cx = int((sx1 + x + w / 2) / scale)
         cy = int((sy1 + y + h / 2) / scale)
         print(f"[detector] Indexed search found box {field_index} below '{anchor_label}' at ({cx}, {cy}) (w={w})")
         return (cx, cy)
@@ -1315,16 +1324,13 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
         # Click ~40px below the label as a blind guess for the input field box
         return (int(lx1 / scale) + 20, int(ly2 / scale) + 40)
 
-    # ── Step 3: click slightly below the description bottom ─────────────────
-    # Offsets are in LOGICAL pixels (applied after dividing by scale).
-    #
-    # We use a 10px logical offset below the last line of description text.
-    # Note: we avoid using KB click_offset here because those are typically 
-    # relative to the label top/bottom, not the description bottom.
-    logical_offset = 10
-
+    # ── Step 3: click at the description bottom ──────────────────────────────
+    # desc_bottom is either the bottom of description text above the field,
+    # or placeholder text inside the field. In both cases, clicking directly
+    # at this y-position lands on or inside the input field — no offset needed.
     click_x = int(lx1 / scale) + 50           # 50 logical px right of label edge
-    click_y = int(desc_bottom / scale) + logical_offset
+    click_y = int(desc_bottom / scale)
+    logical_offset = 0
     
     if _DEBUG_SAVE_DIR:
         from PIL import ImageDraw
@@ -1494,7 +1500,7 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> t
 
     if search_box:
         x, y, w, h = search_box
-        cx = int((x + w * 0.3) / scale)  # left-of-center click (avoids clear X button)
+        cx = int((x + w / 2) / scale)
         cy = int((y + h / 2) / scale)
         print(f"[detector] Search field found via contour at ({cx}, {cy})")
         return (cx, cy)

@@ -32,8 +32,6 @@ def _trigger_pre_move() -> None:
         _pre_move_cb = None  # one-shot
 
 
-_MAX_RETRIES = 3
-_RETRY_DELAY = 2.0
 _TARGET_APP = "WSO2 Integrator"
 _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 
@@ -171,7 +169,7 @@ def wait_ui_change(timeout: float = 5.0) -> bool:
         curr = pyautogui.screenshot()
         if _ui_changed(baseline, curr):
             return True
-    print("[runner] wait_ui_change: no change detected within timeout")
+    print("[runner] WARNING: wait_ui_change - no change detected within timeout, continuing execution")
     return False
 
 
@@ -228,9 +226,6 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         field_target = action["field_target"]
         if _is_auto_populated(field_target):
             return {**action, "_skip": True}
-        # Autofocus fields are already focused — no click needed, just clear + paste
-        if _is_autofocus(field_target):
-            return {**action, "x": None, "y": None, "_needs_click": False}
         # Locate target input box
         result = find_input_field(_screenshot(), field_target)
         if result:
@@ -307,23 +302,25 @@ def fire(action: dict[str, Any]) -> None:
                 return 
         # ───────────────────────────────────────────────────────────────
 
-        if action.get("_needs_click") and x is not None and y is not None:
+        if x is not None and y is not None:
             _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
-            wait_ui_change(timeout=2.0)
+            ui_changed = wait_ui_change(timeout=2.0)
 
-            # If a "Set" button is visible, click it to activate the input field
-            set_pos = _find_set_button()
-            if set_pos:
-                # Prevent wild set clicks by enforcing proximity to the clicked field
-                import math
-                if math.hypot(set_pos[0] - x, set_pos[1] - y) < 800:
-                    pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
-                    pyautogui.click(set_pos[0], set_pos[1])
-                    wait_ui_change(timeout=2.0)
-                else:
-                    print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
+            # Only look for a "Set" button if the field click caused a UI change
+            # (meaning the Set button may have appeared). If nothing changed, the
+            # field is directly editable and there is no Set button to click.
+            if ui_changed:
+                set_pos = _find_set_button()
+                if set_pos:
+                    import math
+                    if math.hypot(set_pos[0] - x, set_pos[1] - y) < 800:
+                        pyautogui.moveTo(set_pos[0], set_pos[1], duration=0.2)
+                        pyautogui.click(set_pos[0], set_pos[1])
+                        wait_ui_change(timeout=2.0)
+                    else:
+                        print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
 
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
@@ -331,39 +328,13 @@ def fire(action: dict[str, Any]) -> None:
         _paste(action["value"])
 
         # ── Verify the typed text is actually visible in the field ──────────
-        # If the first token of the value is not visible near (x, y), the click
-        # may not have focused the field.  Reset focus by clicking another field,
-        # then re-find and retype.
+        # Warn if text is not visible, but continue execution (no retry).
         _verify_x = x if x is not None else 0
         _verify_y = y if y is not None else 0
         _check_token = action["value"].split()[0] if action["value"].split() else action["value"][:12]
         time.sleep(0.3)
         if _check_token and not is_text_visible_near(pyautogui.screenshot(), _check_token, _verify_x, _verify_y):
-            print(f"[runner] Typed text '{_check_token}' not visible near ({_verify_x}, {_verify_y}) — retrying with focus-reset")
-            # Click a different field: move to a neutral Y offset above the field
-            # (likely hits a label/title area — non-interactive) to reset focus state
-            _alt_y = max(50, _verify_y - 120)
-            pyautogui.click(_verify_x, _alt_y)
-            time.sleep(0.4)
-            # Re-detect the field from a fresh screenshot
-            field_target = action.get("field_target", "")
-            if field_target:
-                _retry_pos = find_input_field(pyautogui.screenshot(), field_target)
-                if _retry_pos:
-                    _rx, _ry = _retry_pos
-                    pyautogui.moveTo(_rx, _ry, duration=0.2)
-                    pyautogui.click(_rx, _ry)
-                    time.sleep(0.3)
-                    _set_pos2 = _find_set_button()
-                    if _set_pos2:
-                        import math as _math
-                        if _math.hypot(_set_pos2[0] - _rx, _set_pos2[1] - _ry) < 800:
-                            pyautogui.click(_set_pos2[0], _set_pos2[1])
-                            time.sleep(0.3)
-            pyautogui.hotkey("command", "a")
-            time.sleep(0.1)
-            _paste(action["value"])
-            print(f"[runner] Retry paste complete for '{field_target}'")
+            print(f"[runner] WARNING: Typed text '{_check_token}' not visible near ({_verify_x}, {_verify_y}) — continuing without retry")
         # ─────────────────────────────────────────────────────────────────────
 
     elif kind == "select":
