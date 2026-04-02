@@ -35,6 +35,11 @@ _FIELD_ALIASES: dict[str, str] = {
     "salesorganization": "SalesOrganization",
     "distributionchannel": "DistributionChannel",
     "organizationdivision": "OrganizationDivision",
+    # RabbitMQ connector fields
+    "queue":             "Queue",
+    "port":              "Port",
+    "username":          "Username",
+    "message":           "Message",
 }
 
 

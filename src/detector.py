@@ -87,8 +87,9 @@ def _fuzzy(detected: str, target: str) -> bool:
             return True
 
     # OCR may only capture part of a multi-word target — allow detected ⊂ target
-    # But ONLY if it's a significant portion (e.g. "integrator" in "wso2 integrator")
-    if d in t and len(d) > 4:
+    # But ONLY if the target has multiple words (e.g. "integrator" in "wso2 integrator")
+    # Avoid matching camelCase substrings (e.g. "print" should NOT match "printInfo")
+    if d in t and len(d) > 4 and ' ' in t:
         return True
 
     return False
@@ -342,10 +343,13 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             for ocr_word in text.lower().split():
                 if not ocr_word.isalpha():
                     continue
-                # Reject words significantly longer than the keyword —
-                # prevents "myautomation" (len 12) matching "automation" (len 10).
+                # Reject words significantly longer or shorter than the keyword —
+                # prevents "myautomation" (len 12) matching "automation" (len 10),
+                # and "println" (len 7) matching "printInfo" (len 9).
                 # Allow ±1 char for OCR typos (e.g. "Automatoin" still passes).
                 if len(ocr_word) > len(keyword) + 1:
+                    continue
+                if len(ocr_word) < len(keyword) - 1:
                     continue
                 similarity = SequenceMatcher(None, keyword, ocr_word).ratio()
                 if similarity >= 0.75:

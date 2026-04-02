@@ -51,4 +51,4 @@
 1. Select **Run**.
 2. Select **Try it**.
 2. Select **Execute Cell**.  
-4. The automation executes immediately and give 200 response "Hello World".
+4. The project executes immediately and give 200 response "Hello World".
