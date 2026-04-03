@@ -132,12 +132,24 @@ def _best_ocr_similarity(target: str, ocr_results: list) -> tuple[str, float]:
     best_text, best_ratio = "", 0.0
     t = target.lower().strip()
     for _, text, _ in ocr_results:
-        for word in text.lower().split():
+        # Penalize overall length mismatch to avoid correcting short symbols
+        # (like '+') to longer noisy strings (like '+ @ C').
+        text_l = text.lower().strip()
+        for word in text_l.split():
             ratio = SequenceMatcher(None, t, word).ratio()
+            # If the target is very short (<= 2 chars), require exact length match
+            # or apply a heavy penalty for mismatched length.
+            if len(t) <= 2 and len(word) > len(t):
+                ratio *= 0.1
+            
             if ratio > best_ratio:
                 best_ratio, best_text = ratio, text
+        
         # Also check the full OCR string
-        ratio = SequenceMatcher(None, t, text.lower()).ratio()
+        ratio = SequenceMatcher(None, t, text_l).ratio()
+        if len(t) <= 2 and len(text_l) > len(t):
+            ratio *= 0.1
+            
         if ratio > best_ratio:
             best_ratio, best_text = ratio, text
     return best_text, best_ratio
@@ -207,6 +219,7 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
         _find_ocr,
         _scale,
         _ocr,
+        find_element,
     )
     import numpy as np
 
@@ -223,13 +236,17 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
     winner = get_winner(target)
     # (Strategy 0: check cached winner)
 
-    # ── Phase 1: fresh OCR ────────────────────────────────────────────────────
+    # ── Phase 1: fresh OCR (now context-aware) ─────────────────────────────────
     time.sleep(0.5)
-    result = _find_ocr(ctx.screenshot, target)
-    if result:
-        print(f"[healer] Phase 1 OCR found '{target}' at {result}")
-        record_win(target, "ocr_exact")
-        return result
+    hint = ctx.action.get("hint")
+    try:
+        result = find_element(ctx.screenshot, target, hint=hint)
+        if result:
+            print(f"[healer] Phase 1 search found '{target}' at {result}")
+            record_win(target, "ocr_exact")
+            return result
+    except ElementNotFoundError:
+        pass
 
     # ── Phase 2: wait + retry OCR ─────────────────────────────────────────────
     print(f"[healer] Phase 2: waiting 1.5s then retrying OCR for '{target}'")
@@ -238,24 +255,37 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
     fresh_screenshot = pyautogui.screenshot()
     arr = np.array(fresh_screenshot)
     fresh_ocr = _ocr().readtext(arr)
+    hint = ctx.action.get("hint")
 
-    result = _find_ocr(fresh_screenshot, target)
-    if result:
-        print(f"[healer] Phase 2 OCR-after-wait found '{target}' at {result}")
-        record_win(target, "ocr_after_wait")
-        return result
+    try:
+        result = find_element(fresh_screenshot, target, hint=hint)
+        if result:
+            print(f"[healer] Phase 2 search-after-wait found '{target}' at {result}")
+            record_win(target, "ocr_after_wait")
+            return result
+    except ElementNotFoundError:
+        pass
 
     # ── Phase 3: diagnose + auto-correct ─────────────────────────────────────
     diag = diagnose(target, fresh_ocr, fresh_screenshot)
     print(f"[healer] Diagnosis: {diag.message}")
 
     if diag.kind == DiagnosisKind.MD_ERROR and diag.closest_match:
-        # .md has a typo — retry OCR using the corrected text from screen
+        # .md has a typo — retry matching using the corrected text from screen
         corrected = diag.closest_match.strip()
         print(f"[healer] Auto-correcting target: '{target}' → '{corrected}'")
-        result = _find_ocr(fresh_screenshot, corrected)
+        
+        # Preservation of hint logic: Use find_element instead of _find_ocr
+        # directly so that specialized hints (like next_to:) are preserved.
+        from src.detector import find_element
+        try:
+            hint = ctx.action.get("hint")
+            result = find_element(fresh_screenshot, corrected, hint=hint)
+        except Exception:
+            result = _find_ocr(fresh_screenshot, corrected)
+        
         if result:
-            print(f"[healer] Corrected OCR found '{corrected}' at {result}")
+            print(f"[healer] Corrected search found '{corrected}' at {result}")
             record_win(target, "ocr_corrected")
             return result
 

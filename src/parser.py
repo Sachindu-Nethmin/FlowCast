@@ -88,10 +88,23 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
 
         line_actions: list[dict[str, Any]] = []
 
+        # ── Click: "Select **+** next to [the] **X** [section]" ──────────────
+        m = re.search(
+            r'select\s+\*\*\+\*\*\s+next\s+to\s+(?:the\s+)?\*\*([^*]+)\*\*',
+            line, re.IGNORECASE,
+        )
+        if m:
+            line_actions.append({
+                "action": "click",
+                "target": "+",
+                "hint": "next_to:" + m.group(1).strip(),
+            })
+
         # ── Click: "Select **X**" ─────────────────────────────────────────────
         # Handles multiple selects in one sentence ("… and select **Open**")
-        for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
-            line_actions.append({"action": "click", "target": m.group(1).strip()})
+        if not line_actions:
+            for m in re.finditer(r'select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE):
+                line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Click: "Add [a [new]] **X**" ──────────────────────────────────────
         if not line_actions:

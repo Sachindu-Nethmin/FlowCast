@@ -10,6 +10,11 @@
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-04-01T12:37:27.578477+00:00"
+    },
+    "+": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-04-02T14:16:53.398705+00:00"
     }
   }
 }

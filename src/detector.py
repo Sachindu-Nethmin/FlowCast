@@ -504,6 +504,126 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     return (cx, cy)
 
 
+def _find_plus_right_of_label(screenshot: Image.Image, anchor_text: str) -> tuple[int, int] | None:
+    """Find the + button to the right of a named label using OpenCV cross-kernel matching.
+
+    Used for instructions like "Select + next to the Query section".
+    Strategy:
+      1. OCR the full screenshot to locate the anchor label's bounding box.
+      2. Crop to the row strip to the right of the label.
+      3. Threshold the crop (theme-aware) to isolate bright pixels.
+      4. Build a programmatic cross-shaped kernel and template-match it.
+      5. Return the best match centre in logical screen coordinates.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # ── Step 1: locate anchor label via OCR ──────────────────────────────────
+    anchor_box = None
+    for bbox, text, conf in results:
+        if _fuzzy(text, anchor_text):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            anchor_box = (
+                int(min(xs) / scale),  # lx1
+                int(min(ys) / scale),  # ly1
+                int(max(xs) / scale),  # lx2
+                int(max(ys) / scale),  # ly2
+            )
+            break
+
+    if anchor_box is None:
+        print(f"[detector] Anchor '{anchor_text}' not found via OCR")
+        return None
+
+    lx1, ly1, lx2, ly2 = anchor_box
+    label_h = max(ly2 - ly1, 1)
+    padding = max(label_h, 12)
+    print(f"[detector] Anchor '{anchor_text}' at ({lx1},{ly1})-({lx2},{ly2}), searching for + via OpenCV")
+
+    # ── Step 2: crop to the row strip right of the anchor ────────────────────
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    rx1 = lx2 + 2
+    rx2 = w_l
+    ry1 = max(0, ly1 - padding)
+    ry2 = min(h_l, ly2 + padding)
+
+    crop_px = screenshot.crop((rx1 * scale, ry1 * scale, rx2 * scale, ry2 * scale))
+    crop_gray = cv2.cvtColor(np.array(crop_px.convert("RGB")), cv2.COLOR_RGB2GRAY)
+
+    # ── Step 3: threshold — isolate bright pixels in dark mode, dark in light ─
+    is_light = _is_light_mode(screenshot)
+    if is_light:
+        # Light theme: + is dark on light background → invert so + becomes bright
+        crop_thresh = cv2.bitwise_not(crop_gray)
+    else:
+        crop_thresh = crop_gray.copy()
+    _, crop_bin = cv2.threshold(crop_thresh, 100, 255, cv2.THRESH_BINARY)
+
+    # ── Step 4: build cross-shaped kernels and template-match ─────────────────
+    best_val, best_cx, best_cy = -1.0, None, None
+    # Try several arm-lengths to handle different icon sizes / Retina scaling
+    for arm in (3, 4, 5, 6, 8, 10, 12):
+        size = arm * 2 + 1
+        tmpl = np.zeros((size, size), dtype=np.uint8)
+        mid = arm
+        tmpl[mid, :] = 255   # horizontal bar
+        tmpl[:, mid] = 255   # vertical bar
+
+        if tmpl.shape[0] > crop_bin.shape[0] or tmpl.shape[1] > crop_bin.shape[1]:
+            continue
+
+        res = cv2.matchTemplate(crop_bin, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, val, _, loc = cv2.minMaxLoc(res)
+        if val > best_val:
+            best_val = val
+            # loc is top-left of template in crop; centre it
+            cx_crop = loc[0] + arm
+            cy_crop = loc[1] + arm
+            # Convert crop-relative pixel coords → logical screen coords
+            best_cx = int(cx_crop / scale) + rx1
+            best_cy = int(cy_crop / scale) + ry1
+
+    threshold = 0.35
+    if best_val < threshold:
+        print(f"[detector] + right of '{anchor_text}' not found via OpenCV (best={best_val:.2f})")
+        best_cx = best_cy = None
+
+    # ── Debug image ───────────────────────────────────────────────────────────
+    if _DEBUG_SAVE_DIR:
+        from PIL import ImageDraw
+        debug_img = screenshot.copy()
+        draw = ImageDraw.Draw(debug_img)
+        for bbox, text, _ in results:
+            bx1 = min(p[0] for p in bbox)
+            by1 = min(p[1] for p in bbox)
+            bx2 = max(p[0] for p in bbox)
+            by2 = max(p[1] for p in bbox)
+            draw.rectangle([bx1, by1, bx2, by2], outline="#CCCCCC", width=1)
+        # Anchor in red
+        draw.rectangle([lx1 * scale, ly1 * scale, lx2 * scale, ly2 * scale], outline="red", width=3)
+        # Search band in green
+        draw.rectangle([rx1 * scale, ry1 * scale, rx2 * scale, ry2 * scale], outline="green", width=2)
+        # Result as yellow dot
+        if best_cx is not None:
+            px, py = best_cx * scale, best_cy * scale
+            draw.ellipse([px - 10, py - 10, px + 10, py + 10], fill="yellow", outline="black")
+        status = "match" if best_cx is not None else "fail"
+        save_dir = _DEBUG_SAVE_DIR / "next_to"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        debug_img.save(save_dir / f"{status}_{anchor_text.replace(' ', '_')}.png")
+
+    if best_cx is None:
+        return None
+
+    print(f"[detector] + found right of '{anchor_text}' at ({best_cx}, {best_cy}) (confidence={best_val:.2f})")
+    return (best_cx, best_cy)
+
+
 def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     """Find the green play/run button in the toolbar using HSV color detection.
 
@@ -554,7 +674,7 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     return (cx, cy)
 
 
-def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False) -> tuple[int, int] | None:
+def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
     """OpenCV multi-scale template matching against the icon file in kb/icons/.
 
     Returns logical (x, y) of the best match center, or None if no confident match.
@@ -603,11 +723,19 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         x_offset = 400
         screen_gray = screen_gray[:, x_offset:]
         screen_bgr  = screen_bgr[:, x_offset:]
+    elif search_region:
+        x1, y1, x2, y2 = search_region
+        x_offset, y_offset = int(max(0, x1)), int(max(0, y1))
+        # Protect against out-of-bounds crop
+        x2, y2 = min(screen_gray.shape[1], int(x2)), min(screen_gray.shape[0], int(y2))
+        if x2 > x_offset and y2 > y_offset:
+            screen_gray = screen_gray[y_offset:y2, x_offset:x2]
+            screen_bgr = screen_bgr[y_offset:y2, x_offset:x2]
 
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
 
     for icon_path in icon_paths:
-        icon_path = _Path(icon_path)
+        icon_path = Path(icon_path)
         if not icon_path.exists() or icon_path.suffix.lower() == ".svg":
             continue
         
@@ -1400,6 +1528,15 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
 
 
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+    # "next_to:" hint: OCR-only search for + to the right of the named label.
+    # Short-circuit everything else — no Start node, no template matching.
+    if target.strip() == "+" and hint and hint.startswith("next_to:"):
+        anchor = hint[len("next_to:"):].strip()
+        result = _find_plus_right_of_label(screenshot, anchor_text=anchor)
+        if result:
+            return result
+        raise ElementNotFoundError(f"Could not find '+' to the right of '{anchor}' via OCR.")
+
     # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
     # For all other targets, try OCR first and fall back to template match.
     icon_entry = _icon_entry_for(target)
