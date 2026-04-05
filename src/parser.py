@@ -100,6 +100,41 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                 "hint": "next_to:" + m.group(1).strip(),
             })
 
+        # ── Click: "Select **X** in **Y**" ───────────────────────────────────
+        # e.g. "Select **Expression** in **Path**" → click Expression to the right of Path label
+        if not line_actions:
+            m = re.search(r'select\s+\*\*([^*]+)\*\*\s+in\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                line_actions.append({
+                    "action": "click",
+                    "target": m.group(1).strip(),
+                    "hint": "right_of:" + m.group(2).strip(),
+                })
+
+        # ── Scroll + Click: "Scroll down and select **X**" ───────────────────
+        # e.g. "Scroll down and select **Local Files** under **File Integration**"
+        if not line_actions:
+            m = re.search(r'scroll\s+down\s+and\s+select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                line_actions.append({"action": "scroll", "clicks": -5})
+                line_actions.append({"action": "click", "target": m.group(1).strip()})
+
+        # ── Search + Click: "Search `X` and select **Y**" ────────────────────
+        # e.g. "Search `printInfo` and select **printInfo**"
+        # Must be checked before the generic "Select **X**" rule to avoid partial match.
+        if not line_actions:
+            m = re.search(r'search\s+`([^`]+)`\s+and\s+select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                line_actions.append({
+                    "action":       "search",
+                    "field_target": "Search",
+                    "value":        m.group(1).strip(),
+                })
+                line_actions.append({
+                    "action": "click",
+                    "target": m.group(2).strip(),
+                })
+
         # ── Click: "Select **X**" ─────────────────────────────────────────────
         # Handles multiple selects in one sentence ("… and select **Open**")
         if not line_actions:
@@ -117,7 +152,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
-        # ── Type: "Set [the] [base] **X** to `Y`"
+        # ── Type: "Set [the] [base] **X** to `Y`" or "Set **X** to **Y**"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:
             field_name = (m.group(1).strip() + " " + m.group(2).strip()).strip()
@@ -126,9 +161,20 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                 "field_target": _normalise_field(field_name),
                 "value":        m.group(3),
             })
-        
+
+        # ── Type: "Set **X** to **Y**" (bold value, quotes preserved)
+        if not line_actions:
+            m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                field_name = (m.group(1).strip() + " " + m.group(2).strip()).strip()
+                line_actions.insert(0, {
+                    "action":       "type",
+                    "field_target": _normalise_field(field_name),
+                    "value":        m.group(3),
+                })
+
         # ── Type: "Set [the] X to `Y`" (non-bold field name)
-        elif not line_actions:
+        if not line_actions:
             m = re.search(r'set\s+(?:the\s+)?([a-zA-Z ]+?)\s+to\s+`([^`]+)`', line, re.IGNORECASE)
             if m:
                 line_actions.append({
@@ -203,6 +249,13 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         # ── Suffix: "and save" → hotkey ───────────────────────────────────────
         if re.search(r'\band\s+save\b', line, re.IGNORECASE):
             actions.append({"action": "hotkey", "keys": ["command", "s"]})
+
+        # ── Suffix: "in the toolbar" → keep recording 3 extra seconds so the
+        #    GIF shows the app starting up, then wait 5s for it to fully load ──
+        if re.search(r'\bin\s+the\s+toolbar\b', line, re.IGNORECASE):
+            if actions:
+                actions[-1] = {**actions[-1], "post_delay": 5.0}
+            actions.append({"action": "wait", "seconds": 5.0})
 
     return actions
 

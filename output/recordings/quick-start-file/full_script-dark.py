@@ -39,17 +39,19 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': 'FileTracker'})
 _run({'action': 'click', 'target': '+ Add Artifact'})
+_run({'action': 'scroll', 'clicks': -5})
 _run({'action': 'click', 'target': 'Local Files'})
+_run({'action': 'type', 'field_target': 'Path', 'value': '"/tmp"'})
 _run({'action': 'click', 'target': 'Create'})
 
 # ──────────────────────────────────────────────────────────
 # Step 3: Tracking modified files
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': '+'})
+_run({'action': 'click', 'target': 'Add Handler'})
 _run({'action': 'click', 'target': 'onModify'})
-_run({'action': 'click', 'target': 'Create'})
 _run({'action': 'click', 'target': 'onModify'})
 _run({'action': 'click', 'target': '+'})
+_run({'action': 'search', 'field_target': 'Search', 'value': 'printInfo'})
 _run({'action': 'click', 'target': 'printInfo'})
 _run({'action': 'type', 'field_target': 'Msg', 'value': 'File modified'})
 _run({'action': 'click', 'target': 'Save'})
@@ -57,4 +59,5 @@ _run({'action': 'click', 'target': 'Save'})
 # ──────────────────────────────────────────────────────────
 # Step 4: Run and Test
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Run'})
+_run({'action': 'click', 'target': 'Run', 'post_delay': 5.0})
+_run({'action': 'wait', 'seconds': 5.0})

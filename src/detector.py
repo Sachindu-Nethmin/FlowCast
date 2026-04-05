@@ -1002,10 +1002,19 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     kb = _kb_entry(field_label)
     skip_primary = kb.get("skip_primary_detection", False) if kb else False
 
+    # Top-bar exclusion: the app chrome (tabs, toolbar, breadcrumbs) occupies the
+    # top ~12% of the screenshot.  Form labels never live there, so any OCR hit in
+    # that strip is noise — reject it to avoid false label anchors.
+    top_bar_cutoff = int(arr.shape[0] * 0.12)
+
     # Check for direct matches (skip if configured)
     if not skip_primary:
         for bbox, text, conf in merged_results:
             if _fuzzy(text, field_label):
+                bbox_y_top = min(p[1] for p in bbox)
+                if bbox_y_top < top_bar_cutoff:
+                    print(f"[detector] Rejecting '{text}' label: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
+                    continue
                 # Reject label bounding boxes that are unreasonably wide (>300px)
                 # OCR sometimes includes the entire input field in the label bbox
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
@@ -1015,7 +1024,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 label_candidates.append((bbox, text, conf, False))
     else:
         print(f"[detector] Skipping primary detection for '{field_label}' (skip_primary_detection=true). Using anchor only.")
-    
+
     # Try anchor_label from KB as a fallback when primary label detection fails
     # Use raw (unmerged) OCR results for anchor lookup to avoid merge artifacts
     is_smart = (kb.get("type") == "smart_input" if kb else False)
@@ -1023,6 +1032,10 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
         anchor = kb["anchor_label"]
         for bbox, text, conf in results:  # raw results, not merged
             if _fuzzy(text, anchor):
+                bbox_y_top = min(p[1] for p in bbox)
+                if bbox_y_top < top_bar_cutoff:
+                    print(f"[detector] Rejecting '{text}' anchor: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
+                    continue
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
                 if bbox_width > 300:
                     print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
@@ -1041,9 +1054,18 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     # 6. Higher OCR confidence
     def _cand_sort(c):
         p_text = c[1].strip()
-        is_primary_case = p_text == field_label
-        is_primary_exact = p_text.lower() == field_label.lower()
-        
+        # Strip non-word chars (e.g. asterisks in "Path*") before comparing so the
+        # actual form label "Path*" correctly outranks a description containing "Path".
+        p_text_clean = re.sub(r'[^\w\s]', '', p_text).strip()
+        fl_clean = re.sub(r'[^\w\s]', '', field_label).strip()
+        is_primary_case = p_text_clean == fl_clean
+        is_primary_exact = p_text_clean.lower() == fl_clean.lower()
+        # A multi-word OCR hit (e.g. "path to be monitored") should never be treated
+        # as a primary match for a single-word label like "Path".
+        if len(p_text_clean.split()) > len(fl_clean.split()):
+            is_primary_case = False
+            is_primary_exact = False
+
         is_anchor_case = False
         is_anchor_exact = False
         if c[3]: # is_anchor
@@ -1052,12 +1074,14 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 anchor_target = kb["anchor_label"]
                 is_anchor_case = p_text == anchor_target
                 is_anchor_exact = p_text.lower() == anchor_target.lower()
-        
-        # Priority: (not primary_case), (not primary_exact), (not anchor_case), (not anchor_exact), (is_left_25), (is_blue_bg), (neg_confidence)
+
+        # Priority: (not primary_case), (not primary_exact), (not anchor_case), (not anchor_exact),
+        #           (is_left_25), (is_blue_bg), (neg_confidence), (label_y — prefer higher on screen)
         screen_w = arr.shape[1]
         lx1 = min(p[0] for p in c[0])
+        label_y = min(p[1] for p in c[0])   # lower y = higher on screen = more likely the real label
         is_left_25 = lx1 < screen_w * 0.25
-        return (not is_primary_case, not is_primary_exact, not is_anchor_case, not is_anchor_exact, is_left_25, _is_blue_background(arr, c[0]), -c[2])
+        return (not is_primary_case, not is_primary_exact, not is_anchor_case, not is_anchor_exact, is_left_25, _is_blue_background(arr, c[0]), -c[2], label_y)
 
     label_candidates.sort(key=_cand_sort)
 
@@ -1527,7 +1551,80 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
     return None
 
 
+def _find_text_right_of_label(screenshot: Image.Image, target: str, anchor_text: str) -> tuple[int, int] | None:
+    """Find *target* text that appears to the right of *anchor_text* on the same row.
+
+    Used for instructions like "Select **Expression** in **Path**" where Expression
+    is a button/option sitting to the right of the Path label.
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # Locate anchor label
+    anchor_box = None
+    for bbox, text, _ in results:
+        if _fuzzy(text, anchor_text):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            anchor_box = (
+                int(min(xs) / scale),
+                int(min(ys) / scale),
+                int(max(xs) / scale),
+                int(max(ys) / scale),
+            )
+            break
+
+    if anchor_box is None:
+        print(f"[detector] Anchor '{anchor_text}' not found for right_of search")
+        return None
+
+    lx1, ly1, lx2, ly2 = anchor_box
+    row_h = max(ly2 - ly1, 12)
+    # Search the row band to the right of the anchor, with vertical padding
+    rx1, ry1 = lx2, max(0, ly1 - row_h)
+    rx2 = int(screenshot.width / scale)
+    ry2 = min(int(screenshot.height / scale), ly2 + row_h)
+
+    print(f"[detector] Anchor '{anchor_text}' at ({lx1},{ly1})-({lx2},{ly2}), searching right for '{target}'")
+
+    from difflib import SequenceMatcher
+
+    best: tuple[int, int] | None = None
+    best_sim = 0.0
+    for bbox, text, _ in results:
+        xs = [p[0] for p in bbox]
+        ys = [p[1] for p in bbox]
+        tx1 = int(min(xs) / scale)
+        ty1 = int(min(ys) / scale)
+        tx2 = int(max(xs) / scale)
+        ty2 = int(max(ys) / scale)
+        # Must be to the right of anchor and within the row band
+        if tx1 < lx2 or ty2 < ry1 or ty1 > ry2:
+            continue
+        sim = SequenceMatcher(None, text.strip().lower(), target.strip().lower()).ratio()
+        if sim > best_sim:
+            best_sim = sim
+            best = (int((tx1 + tx2) / 2), int((ty1 + ty2) / 2))
+
+    if best and best_sim >= 0.5:
+        print(f"[detector] Found '{target}' to the right of '{anchor_text}' at {best} (sim={best_sim:.2f})")
+        return best
+
+    print(f"[detector] '{target}' not found to the right of '{anchor_text}' (best sim={best_sim:.2f})")
+    return None
+
+
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+    # "right_of:" hint: find target text in the row to the right of the anchor label.
+    if hint and hint.startswith("right_of:"):
+        anchor = hint[len("right_of:"):].strip()
+        result = _find_text_right_of_label(screenshot, target, anchor_text=anchor)
+        if result:
+            return result
+        # Fall through to normal OCR/template detection as last resort
+        print(f"[detector] right_of fallback: trying normal detection for '{target}'")
+
     # "next_to:" hint: OCR-only search for + to the right of the named label.
     # Short-circuit everything else — no Start node, no template matching.
     if target.strip() == "+" and hint and hint.startswith("next_to:"):
@@ -1581,6 +1678,23 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
 
 
 
+def _find_search_by_magnify_icon(screenshot: Image.Image) -> tuple[int, int] | None:
+    """Find the magnifying glass icon and return coordinates to its right.
+    
+    This strategy works when the search field is identified by a magnifying icon
+    rather than literal 'Search' text.
+    """
+    # 1. Theme-aware template matching for the magnify icon
+    for target in ["magnify_dark", "magnify_white"]:
+        pos = _find_template(screenshot, target)
+        if pos:
+            # Click offset: to the right of the icon (+20 pixels) to focus the input field
+            cx, cy = pos
+            return (cx + 20, cy)
+            
+    return None
+
+
 def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> tuple[int, int] | None:
     """Locate a search input box by its placeholder text or label.
 
@@ -1591,6 +1705,13 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> t
 
     Returns logical (x, y) to click, or None if not found.
     """
+    # 1. Try magnifying icon strategy first (most reliable for icon-only search bars)
+    icon_pos = _find_search_by_magnify_icon(screenshot)
+    if icon_pos:
+        print(f"[detector] Search field '{field_label}' found via magnify icon at {icon_pos}")
+        return icon_pos
+
+    # 2. OCR the screenshot for the exact placeholder text
     arr = np.array(screenshot)
     scale = _scale(screenshot)
     results = _ocr().readtext(arr)

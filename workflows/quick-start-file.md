@@ -12,19 +12,17 @@
 
 1. Select **FileTracker**.
 2. In the design view, select **+ Add Artifact**.
-3. Select **Local Files** under **File Integration**.
-4. Set path **/tmp**.
-5. Set recursive to **False**.
+3. Scroll down and select **Local Files** under **File Integration**.
+5. Set **Path** to **"/tmp"**.
 6. Select **Create**.
 
 ## Step 3: Tracking modified files
 
-1. Select **+** and add **File Handler**.
+1. Select **Add Handler**.
 2. Select **onModify**.
-3. Select **Create**.
-2. Select **onModify**.
+2. Select **onModify** again.
 4. Select **+** .
-5. Search **printInfo** and select **printInfo**.
+5. Search `printInfo` and select **printInfo**.
 6. Set **Msg** to `File modified`.
 7. Select **Save**.
 

@@ -76,10 +76,13 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str, is_last_st
                 runner.wait_ui_change()
                 runner.wait_ui_settle()
 
-                # If this is the last action of the last step, add extra time to show output
-                if is_last_step and i == len(step.actions) - 1:
-                    print("   [extra] Adding 1s delay to show output in last step")
-                    time.sleep(1.0)
+                # Hold recording open for any extra seconds requested by the action
+                post_delay = resolved.get("post_delay", 0.0)
+                if is_last_step and i == len(step.actions) - 1 and not post_delay:
+                    post_delay = 1.0  # default trailing delay on last step
+                if post_delay:
+                    print(f"   [extra] Holding recording open for {post_delay}s")
+                    time.sleep(post_delay)
             except Exception as e:
                 runner.set_pre_move_callback(None)
                 if recorder._proc is not None:
