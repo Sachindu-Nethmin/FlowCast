@@ -2,50 +2,34 @@
 
 1. Open WSO2 Integrator.
 2. Select **Create**.
-3. Set **Integration Name** to `FileProcessor`.
-4. Select **Browse**.
-5. Select the project location and select **Open**.
-6. Select **Create Integration**.
+3. Set **Integration Name** to `FileTracker`.
+4. Set **Project Name** to `Quick_Start`.
+5. Select **Browse**.
+6. Select the project location and select **Open**.
+7. Select **Create Integration**.
 
 ## Step 2: Add a File Integration Artifact
 
-1. Select **FileProcessor**.
+1. Select **FileTracker**.
 2. In the design view, select **+ Add Artifact**.
-3. Select **Directory Service** (for local files) or **FTP Service** (for remote files) under **Integration as API**.
-4. Configure the directory path to watch.
-5. Select **Create**.
+3. Select **Local Files** under **File Integration**.
+4. Set path **/tmp**.
+5. Set recursive to **False**.
+6. Select **Create**.
 
-## Step 3: Process Incoming Files
+## Step 3: Tracking modified files
 
-Add logic to read and process files when they arrive:
-
-```ballerina
-import ballerina/file;
-import ballerina/io;
-import ballerina/log;
-
-listener file:Listener dirListener = new ({
-    path: "/data/inbox",
-    recursive: false
-});
-
-service on dirListener {
-    remote function onCreate(file:FileEvent event) returns error? {
-        string filePath = event.name;
-        log:printInfo("New file detected", path = filePath);
-
-        // Read CSV content
-        string content = check io:fileReadString(filePath);
-        log:printInfo("File content", content = content);
-
-        // Process and write output
-        check io:fileWriteString("/data/processed/" + filePath, content);
-    }
-}
-```
+1. Select **+** and add **File Handler**.
+2. Select **onModify**.
+3. Select **Create**.
+2. Select **onModify**.
+4. Select **+** .
+5. Search **printInfo** and select **printInfo**.
+6. Set **Msg** to `File modified`.
+7. Select **Save**.
 
 ## Step 4: Run and Test
 
 1. Select **Run** in the toolbar.
-2. Drop a file into the watched directory (`/data/inbox`).
-3. Verify the processed output appears in `/data/processed/`.
+2. open new terminal and type `echo "test" > /tmp/testfile.txt` to test.
+

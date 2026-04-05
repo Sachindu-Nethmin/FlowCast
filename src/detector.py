@@ -1565,7 +1565,7 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
         print(f"[detector] OCR failed for '{target}', trying template match...")
 
     # For green play icons: HSV color detection avoids transparent-PNG false positives
-    if icon_entry and "play_green" in icon_entry.get("icon_file", ""):
+    if icon_entry and "play_green" in (icon_entry.get("icon_file") or ""):
         result = _find_green_play_button(screenshot)
         if result:
             return result
