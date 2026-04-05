@@ -261,35 +261,44 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     clean_target = _alpha_target(target)
     candidates: list[dict] = []
     
+    # Top-bar cutoff: IDE chrome (tabs, toolbar, search bar) sits in the top ~8%.
+    # Form/canvas elements never live there — treat any hit in this strip as noise.
+    top_bar_cutoff_ocr = int(h * 0.08)
+
     for bbox, text, conf in results:
         if _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target)):
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             cx_img = int((min(xs) + max(xs)) / 2)
             cy_img = int((min(ys) + max(ys)) / 2)
-            
+
+            # Reject hits inside the IDE top bar (e.g. the "Q Quick_Start" search bar)
+            if min(ys) < top_bar_cutoff_ocr:
+                print(f"[detector] OCR: rejecting '{text}' — inside top-bar zone (y={min(ys)} < {top_bar_cutoff_ocr})")
+                continue
+
             # Centrality: 20-80% width is the 'workspace' area
             in_workspace = (0.2 * w < cx_img < 0.8 * w)
             dist_from_v_center = abs(cy_img - h/2) / (h/2)
             centrality_score = (15 if in_workspace else 0) + (10 * (1 - dist_from_v_center))
-            
+
             # Card Check: Professional UI cards have higher score
             is_card = _is_contained_in_card(arr, bbox)
             card_score = 30 if is_card else 0
-            
+
             # Blue Check: Highlighter for active elements
             is_blue = _is_blue_background(arr, bbox)
             blue_score = 10 if is_blue else 0
-            
+
             # 4. Exact Match Bonus: Favor complete strings over partials
             is_exact = (text.strip().lower() == target.lower())
             is_case_match = (text.strip() == target)
             exact_score = 50 if is_exact else 0
             case_bonus = 20 if is_case_match else 0
-            
+
             # Sidebar Suppression: Penalize the leftmost 25% of the screen
             sidebar_penalty = -50 if min(xs) < (w * 0.25) else 0
-            
+
             total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
             candidates.append({
                 "pos": (int(cx_img / scale), int(cy_img / scale)),
@@ -1005,7 +1014,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     # Top-bar exclusion: the app chrome (tabs, toolbar, breadcrumbs) occupies the
     # top ~12% of the screenshot.  Form labels never live there, so any OCR hit in
     # that strip is noise — reject it to avoid false label anchors.
-    top_bar_cutoff = int(arr.shape[0] * 0.12)
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
 
     # Check for direct matches (skip if configured)
     if not skip_primary:
