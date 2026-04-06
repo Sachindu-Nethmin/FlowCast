@@ -242,6 +242,11 @@ def main() -> None:
     out_dir = OUTPUT_DIR / slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Always regenerate artifacts (script, themed markdown) early so they 
+    # reflect the latest markdown even if the recording loop below fails.
+    full_script = _build_full_script(steps, out_dir, theme)
+    themed_md   = _build_themed_markdown(steps, out_dir, slug)
+
     print(f"\n{'='*60}")
     print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
     print(f"  Output: {out_dir}")
@@ -260,13 +265,6 @@ def main() -> None:
     # Always regenerate full video from all existing step MOVs (including any
     # recorded in previous runs so individual --step runs accumulate correctly).
     full_mov = _build_full_video(out_dir, theme)
-
-    # Always regenerate the script from all parsed steps so every step's code
-    # is present even when only one step was executed this run.
-    full_script = _build_full_script(steps, out_dir, theme)
-
-    # Generate the final themed markdown file (index.md)
-    themed_md = _build_themed_markdown(steps, out_dir, slug)
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")

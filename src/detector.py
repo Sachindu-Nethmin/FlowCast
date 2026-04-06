@@ -1148,7 +1148,9 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 if h < 25:
                     continue
 
-                if not (150 < w < 2000 and h < 80 and w > h * 1.5):
+                # Allow taller contours when the KB declares an explicit height (e.g. large textareas)
+                max_h = (kb.get('exact_height', 0) + 20) if (kb and kb.get('exact_height', 0) > 80) else 80
+                if not (150 < w < 2000 and h < max_h and w > h * 1.5):
                     continue
 
                 # ── Standard WSO2 height match (~32px smart-input, ~49px textarea) ──
@@ -1485,13 +1487,14 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
         # Click ~40px below the label as a blind guess for the input field box
         return (int(lx1 / scale) + 20, int(ly2 / scale) + 40)
 
-    # ── Step 3: click at the description bottom ──────────────────────────────
-    # desc_bottom is either the bottom of description text above the field,
-    # or placeholder text inside the field. In both cases, clicking directly
-    # at this y-position lands on or inside the input field — no offset needed.
+    # ── Step 3: click below the description bottom ───────────────────────────
+    # desc_bottom is the bottom edge of the description/helper text that sits
+    # above the field. The actual input textarea starts below that, so add a
+    # fixed offset to land inside it rather than on the border.
+    _FIELD_BELOW_OFFSET = 20  # logical pixels below desc_bottom to hit the field
     click_x = int(lx1 / scale) + 50           # 50 logical px right of label edge
-    click_y = int(desc_bottom / scale)
-    logical_offset = 0
+    click_y = int(desc_bottom / scale) + _FIELD_BELOW_OFFSET
+    logical_offset = _FIELD_BELOW_OFFSET
     
     if _DEBUG_SAVE_DIR:
         from PIL import ImageDraw

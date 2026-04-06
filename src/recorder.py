@@ -63,14 +63,22 @@ def start(name: str, output_dir: Path) -> None:
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
         str(_mov_path),
     ]
-    _stderr_tmp = tempfile.TemporaryFile()
-    _proc = subprocess.Popen(
-        cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=_stderr_tmp,
-    )
-    time.sleep(0.8)
-    if _proc.poll() is not None:
+    for attempt in range(2):
+        _stderr_tmp = tempfile.TemporaryFile()
+        _proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=_stderr_tmp,
+        )
+        time.sleep(1.0)
+        if _proc.poll() is None:
+            break  # ffmpeg is running — recording started successfully
         _stderr_tmp.seek(0)
         err = _stderr_tmp.read().decode(errors="replace")
+        _stderr_tmp.close()
+        _proc = None
+        if attempt == 0 and "Invalid device index" in err:
+            print("[recorder] AVFoundation device unavailable, retrying in 2s...")
+            time.sleep(2.0)
+            continue
         raise RuntimeError(f"Recorder exited early:\n{err}")
     print(f"[recorder] Recording → {_mov_path.name}")
 
@@ -86,6 +94,11 @@ def stop() -> Path:
         _proc.stdin.flush()
     except (BrokenPipeError, OSError):
         pass
+    finally:
+        try:
+            _proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
 
     try:
         _proc.wait(timeout=30)
@@ -109,6 +122,11 @@ def stop() -> Path:
     _proc = None
     _mov_path = None
     _stderr_tmp = None
+
+    # Give macOS AVFoundation time to release the screen capture device before
+    # the next recording can start — without this pause the next ffmpeg launch
+    # gets "Invalid device index" because the device is still held.
+    time.sleep(0.5)
 
     if rc != 0:
         raise RuntimeError(
