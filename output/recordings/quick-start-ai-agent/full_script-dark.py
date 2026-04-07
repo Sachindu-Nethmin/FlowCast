@@ -47,7 +47,7 @@ _run({'action': 'click', 'target': 'Create'})
 # ──────────────────────────────────────────────────────────
 # Step 3: Configure the AI Agent
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Wso2 Integrator Assistant'})
+_run({'action': 'click', 'target': 'AI Agent'})
 _run({'action': 'type', 'field_target': 'Instructions', 'value': 'You are a highly skilled WSO2 Integration Architect. Your goal is to assist developers in building, debugging, and optimizing integration flows.'})
 _run({'action': 'click', 'target': 'Save'})
 
