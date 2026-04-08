@@ -261,35 +261,44 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     clean_target = _alpha_target(target)
     candidates: list[dict] = []
     
+    # Top-bar cutoff: IDE chrome (tabs, toolbar, search bar) sits in the top ~8%.
+    # Form/canvas elements never live there — treat any hit in this strip as noise.
+    top_bar_cutoff_ocr = int(h * 0.08)
+
     for bbox, text, conf in results:
         if _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target)):
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             cx_img = int((min(xs) + max(xs)) / 2)
             cy_img = int((min(ys) + max(ys)) / 2)
-            
+
+            # Reject hits inside the IDE top bar (e.g. the "Q Quick_Start" search bar)
+            if min(ys) < top_bar_cutoff_ocr:
+                print(f"[detector] OCR: rejecting '{text}' — inside top-bar zone (y={min(ys)} < {top_bar_cutoff_ocr})")
+                continue
+
             # Centrality: 20-80% width is the 'workspace' area
             in_workspace = (0.2 * w < cx_img < 0.8 * w)
             dist_from_v_center = abs(cy_img - h/2) / (h/2)
             centrality_score = (15 if in_workspace else 0) + (10 * (1 - dist_from_v_center))
-            
+
             # Card Check: Professional UI cards have higher score
             is_card = _is_contained_in_card(arr, bbox)
             card_score = 30 if is_card else 0
-            
+
             # Blue Check: Highlighter for active elements
             is_blue = _is_blue_background(arr, bbox)
             blue_score = 10 if is_blue else 0
-            
+
             # 4. Exact Match Bonus: Favor complete strings over partials
             is_exact = (text.strip().lower() == target.lower())
             is_case_match = (text.strip() == target)
             exact_score = 50 if is_exact else 0
             case_bonus = 20 if is_case_match else 0
-            
+
             # Sidebar Suppression: Penalize the leftmost 25% of the screen
             sidebar_penalty = -50 if min(xs) < (w * 0.25) else 0
-            
+
             total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
             candidates.append({
                 "pos": (int(cx_img / scale), int(cy_img / scale)),
@@ -504,6 +513,126 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
     return (cx, cy)
 
 
+def _find_plus_right_of_label(screenshot: Image.Image, anchor_text: str) -> tuple[int, int] | None:
+    """Find the + button to the right of a named label using OpenCV cross-kernel matching.
+
+    Used for instructions like "Select + next to the Query section".
+    Strategy:
+      1. OCR the full screenshot to locate the anchor label's bounding box.
+      2. Crop to the row strip to the right of the label.
+      3. Threshold the crop (theme-aware) to isolate bright pixels.
+      4. Build a programmatic cross-shaped kernel and template-match it.
+      5. Return the best match centre in logical screen coordinates.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # ── Step 1: locate anchor label via OCR ──────────────────────────────────
+    anchor_box = None
+    for bbox, text, conf in results:
+        if _fuzzy(text, anchor_text):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            anchor_box = (
+                int(min(xs) / scale),  # lx1
+                int(min(ys) / scale),  # ly1
+                int(max(xs) / scale),  # lx2
+                int(max(ys) / scale),  # ly2
+            )
+            break
+
+    if anchor_box is None:
+        print(f"[detector] Anchor '{anchor_text}' not found via OCR")
+        return None
+
+    lx1, ly1, lx2, ly2 = anchor_box
+    label_h = max(ly2 - ly1, 1)
+    padding = max(label_h, 12)
+    print(f"[detector] Anchor '{anchor_text}' at ({lx1},{ly1})-({lx2},{ly2}), searching for + via OpenCV")
+
+    # ── Step 2: crop to the row strip right of the anchor ────────────────────
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+    rx1 = lx2 + 2
+    rx2 = w_l
+    ry1 = max(0, ly1 - padding)
+    ry2 = min(h_l, ly2 + padding)
+
+    crop_px = screenshot.crop((rx1 * scale, ry1 * scale, rx2 * scale, ry2 * scale))
+    crop_gray = cv2.cvtColor(np.array(crop_px.convert("RGB")), cv2.COLOR_RGB2GRAY)
+
+    # ── Step 3: threshold — isolate bright pixels in dark mode, dark in light ─
+    is_light = _is_light_mode(screenshot)
+    if is_light:
+        # Light theme: + is dark on light background → invert so + becomes bright
+        crop_thresh = cv2.bitwise_not(crop_gray)
+    else:
+        crop_thresh = crop_gray.copy()
+    _, crop_bin = cv2.threshold(crop_thresh, 100, 255, cv2.THRESH_BINARY)
+
+    # ── Step 4: build cross-shaped kernels and template-match ─────────────────
+    best_val, best_cx, best_cy = -1.0, None, None
+    # Try several arm-lengths to handle different icon sizes / Retina scaling
+    for arm in (3, 4, 5, 6, 8, 10, 12):
+        size = arm * 2 + 1
+        tmpl = np.zeros((size, size), dtype=np.uint8)
+        mid = arm
+        tmpl[mid, :] = 255   # horizontal bar
+        tmpl[:, mid] = 255   # vertical bar
+
+        if tmpl.shape[0] > crop_bin.shape[0] or tmpl.shape[1] > crop_bin.shape[1]:
+            continue
+
+        res = cv2.matchTemplate(crop_bin, tmpl, cv2.TM_CCOEFF_NORMED)
+        _, val, _, loc = cv2.minMaxLoc(res)
+        if val > best_val:
+            best_val = val
+            # loc is top-left of template in crop; centre it
+            cx_crop = loc[0] + arm
+            cy_crop = loc[1] + arm
+            # Convert crop-relative pixel coords → logical screen coords
+            best_cx = int(cx_crop / scale) + rx1
+            best_cy = int(cy_crop / scale) + ry1
+
+    threshold = 0.35
+    if best_val < threshold:
+        print(f"[detector] + right of '{anchor_text}' not found via OpenCV (best={best_val:.2f})")
+        best_cx = best_cy = None
+
+    # ── Debug image ───────────────────────────────────────────────────────────
+    if _DEBUG_SAVE_DIR:
+        from PIL import ImageDraw
+        debug_img = screenshot.copy()
+        draw = ImageDraw.Draw(debug_img)
+        for bbox, text, _ in results:
+            bx1 = min(p[0] for p in bbox)
+            by1 = min(p[1] for p in bbox)
+            bx2 = max(p[0] for p in bbox)
+            by2 = max(p[1] for p in bbox)
+            draw.rectangle([bx1, by1, bx2, by2], outline="#CCCCCC", width=1)
+        # Anchor in red
+        draw.rectangle([lx1 * scale, ly1 * scale, lx2 * scale, ly2 * scale], outline="red", width=3)
+        # Search band in green
+        draw.rectangle([rx1 * scale, ry1 * scale, rx2 * scale, ry2 * scale], outline="green", width=2)
+        # Result as yellow dot
+        if best_cx is not None:
+            px, py = best_cx * scale, best_cy * scale
+            draw.ellipse([px - 10, py - 10, px + 10, py + 10], fill="yellow", outline="black")
+        status = "match" if best_cx is not None else "fail"
+        save_dir = _DEBUG_SAVE_DIR / "next_to"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        debug_img.save(save_dir / f"{status}_{anchor_text.replace(' ', '_')}.png")
+
+    if best_cx is None:
+        return None
+
+    print(f"[detector] + found right of '{anchor_text}' at ({best_cx}, {best_cy}) (confidence={best_val:.2f})")
+    return (best_cx, best_cy)
+
+
 def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     """Find the green play/run button in the toolbar using HSV color detection.
 
@@ -554,7 +683,7 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     return (cx, cy)
 
 
-def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False) -> tuple[int, int] | None:
+def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = False, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
     """OpenCV multi-scale template matching against the icon file in kb/icons/.
 
     Returns logical (x, y) of the best match center, or None if no confident match.
@@ -603,11 +732,19 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         x_offset = 400
         screen_gray = screen_gray[:, x_offset:]
         screen_bgr  = screen_bgr[:, x_offset:]
+    elif search_region:
+        x1, y1, x2, y2 = search_region
+        x_offset, y_offset = int(max(0, x1)), int(max(0, y1))
+        # Protect against out-of-bounds crop
+        x2, y2 = min(screen_gray.shape[1], int(x2)), min(screen_gray.shape[0], int(y2))
+        if x2 > x_offset and y2 > y_offset:
+            screen_gray = screen_gray[y_offset:y2, x_offset:x2]
+            screen_bgr = screen_bgr[y_offset:y2, x_offset:x2]
 
     best_val, best_loc, best_tw, best_th = -1.0, (0, 0), 1, 1
 
     for icon_path in icon_paths:
-        icon_path = _Path(icon_path)
+        icon_path = Path(icon_path)
         if not icon_path.exists() or icon_path.suffix.lower() == ".svg":
             continue
         
@@ -874,10 +1011,19 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     kb = _kb_entry(field_label)
     skip_primary = kb.get("skip_primary_detection", False) if kb else False
 
+    # Top-bar exclusion: the app chrome (tabs, toolbar, breadcrumbs) occupies the
+    # top ~12% of the screenshot.  Form labels never live there, so any OCR hit in
+    # that strip is noise — reject it to avoid false label anchors.
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
+
     # Check for direct matches (skip if configured)
     if not skip_primary:
         for bbox, text, conf in merged_results:
             if _fuzzy(text, field_label):
+                bbox_y_top = min(p[1] for p in bbox)
+                if bbox_y_top < top_bar_cutoff:
+                    print(f"[detector] Rejecting '{text}' label: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
+                    continue
                 # Reject label bounding boxes that are unreasonably wide (>300px)
                 # OCR sometimes includes the entire input field in the label bbox
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
@@ -887,7 +1033,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 label_candidates.append((bbox, text, conf, False))
     else:
         print(f"[detector] Skipping primary detection for '{field_label}' (skip_primary_detection=true). Using anchor only.")
-    
+
     # Try anchor_label from KB as a fallback when primary label detection fails
     # Use raw (unmerged) OCR results for anchor lookup to avoid merge artifacts
     is_smart = (kb.get("type") == "smart_input" if kb else False)
@@ -895,6 +1041,10 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
         anchor = kb["anchor_label"]
         for bbox, text, conf in results:  # raw results, not merged
             if _fuzzy(text, anchor):
+                bbox_y_top = min(p[1] for p in bbox)
+                if bbox_y_top < top_bar_cutoff:
+                    print(f"[detector] Rejecting '{text}' anchor: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
+                    continue
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
                 if bbox_width > 300:
                     print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
@@ -913,9 +1063,18 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     # 6. Higher OCR confidence
     def _cand_sort(c):
         p_text = c[1].strip()
-        is_primary_case = p_text == field_label
-        is_primary_exact = p_text.lower() == field_label.lower()
-        
+        # Strip non-word chars (e.g. asterisks in "Path*") before comparing so the
+        # actual form label "Path*" correctly outranks a description containing "Path".
+        p_text_clean = re.sub(r'[^\w\s]', '', p_text).strip()
+        fl_clean = re.sub(r'[^\w\s]', '', field_label).strip()
+        is_primary_case = p_text_clean == fl_clean
+        is_primary_exact = p_text_clean.lower() == fl_clean.lower()
+        # A multi-word OCR hit (e.g. "path to be monitored") should never be treated
+        # as a primary match for a single-word label like "Path".
+        if len(p_text_clean.split()) > len(fl_clean.split()):
+            is_primary_case = False
+            is_primary_exact = False
+
         is_anchor_case = False
         is_anchor_exact = False
         if c[3]: # is_anchor
@@ -924,12 +1083,14 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 anchor_target = kb["anchor_label"]
                 is_anchor_case = p_text == anchor_target
                 is_anchor_exact = p_text.lower() == anchor_target.lower()
-        
-        # Priority: (not primary_case), (not primary_exact), (not anchor_case), (not anchor_exact), (is_left_25), (is_blue_bg), (neg_confidence)
+
+        # Priority: (not primary_case), (not primary_exact), (not anchor_case), (not anchor_exact),
+        #           (is_left_25), (is_blue_bg), (neg_confidence), (label_y — prefer higher on screen)
         screen_w = arr.shape[1]
         lx1 = min(p[0] for p in c[0])
+        label_y = min(p[1] for p in c[0])   # lower y = higher on screen = more likely the real label
         is_left_25 = lx1 < screen_w * 0.25
-        return (not is_primary_case, not is_primary_exact, not is_anchor_case, not is_anchor_exact, is_left_25, _is_blue_background(arr, c[0]), -c[2])
+        return (not is_primary_case, not is_primary_exact, not is_anchor_case, not is_anchor_exact, is_left_25, _is_blue_background(arr, c[0]), -c[2], label_y)
 
     label_candidates.sort(key=_cand_sort)
 
@@ -987,7 +1148,9 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 if h < 25:
                     continue
 
-                if not (150 < w < 2000 and h < 80 and w > h * 1.5):
+                # Allow taller contours when the KB declares an explicit height (e.g. large textareas)
+                max_h = (kb.get('exact_height', 0) + 20) if (kb and kb.get('exact_height', 0) > 80) else 80
+                if not (150 < w < 2000 and h < max_h and w > h * 1.5):
                     continue
 
                 # ── Standard WSO2 height match (~32px smart-input, ~49px textarea) ──
@@ -1324,13 +1487,14 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
         # Click ~40px below the label as a blind guess for the input field box
         return (int(lx1 / scale) + 20, int(ly2 / scale) + 40)
 
-    # ── Step 3: click at the description bottom ──────────────────────────────
-    # desc_bottom is either the bottom of description text above the field,
-    # or placeholder text inside the field. In both cases, clicking directly
-    # at this y-position lands on or inside the input field — no offset needed.
+    # ── Step 3: click below the description bottom ───────────────────────────
+    # desc_bottom is the bottom edge of the description/helper text that sits
+    # above the field. The actual input textarea starts below that, so add a
+    # fixed offset to land inside it rather than on the border.
+    _FIELD_BELOW_OFFSET = 20  # logical pixels below desc_bottom to hit the field
     click_x = int(lx1 / scale) + 50           # 50 logical px right of label edge
-    click_y = int(desc_bottom / scale)
-    logical_offset = 0
+    click_y = int(desc_bottom / scale) + _FIELD_BELOW_OFFSET
+    logical_offset = _FIELD_BELOW_OFFSET
     
     if _DEBUG_SAVE_DIR:
         from PIL import ImageDraw
@@ -1399,7 +1563,89 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
     return None
 
 
+def _find_text_right_of_label(screenshot: Image.Image, target: str, anchor_text: str) -> tuple[int, int] | None:
+    """Find *target* text that appears to the right of *anchor_text* on the same row.
+
+    Used for instructions like "Select **Expression** in **Path**" where Expression
+    is a button/option sitting to the right of the Path label.
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _ocr().readtext(arr)
+
+    # Locate anchor label
+    anchor_box = None
+    for bbox, text, _ in results:
+        if _fuzzy(text, anchor_text):
+            xs = [p[0] for p in bbox]
+            ys = [p[1] for p in bbox]
+            anchor_box = (
+                int(min(xs) / scale),
+                int(min(ys) / scale),
+                int(max(xs) / scale),
+                int(max(ys) / scale),
+            )
+            break
+
+    if anchor_box is None:
+        print(f"[detector] Anchor '{anchor_text}' not found for right_of search")
+        return None
+
+    lx1, ly1, lx2, ly2 = anchor_box
+    row_h = max(ly2 - ly1, 12)
+    # Search the row band to the right of the anchor, with vertical padding
+    rx1, ry1 = lx2, max(0, ly1 - row_h)
+    rx2 = int(screenshot.width / scale)
+    ry2 = min(int(screenshot.height / scale), ly2 + row_h)
+
+    print(f"[detector] Anchor '{anchor_text}' at ({lx1},{ly1})-({lx2},{ly2}), searching right for '{target}'")
+
+    from difflib import SequenceMatcher
+
+    best: tuple[int, int] | None = None
+    best_sim = 0.0
+    for bbox, text, _ in results:
+        xs = [p[0] for p in bbox]
+        ys = [p[1] for p in bbox]
+        tx1 = int(min(xs) / scale)
+        ty1 = int(min(ys) / scale)
+        tx2 = int(max(xs) / scale)
+        ty2 = int(max(ys) / scale)
+        # Must be to the right of anchor and within the row band
+        if tx1 < lx2 or ty2 < ry1 or ty1 > ry2:
+            continue
+        sim = SequenceMatcher(None, text.strip().lower(), target.strip().lower()).ratio()
+        if sim > best_sim:
+            best_sim = sim
+            best = (int((tx1 + tx2) / 2), int((ty1 + ty2) / 2))
+
+    if best and best_sim >= 0.5:
+        print(f"[detector] Found '{target}' to the right of '{anchor_text}' at {best} (sim={best_sim:.2f})")
+        return best
+
+    print(f"[detector] '{target}' not found to the right of '{anchor_text}' (best sim={best_sim:.2f})")
+    return None
+
+
 def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+    # "right_of:" hint: find target text in the row to the right of the anchor label.
+    if hint and hint.startswith("right_of:"):
+        anchor = hint[len("right_of:"):].strip()
+        result = _find_text_right_of_label(screenshot, target, anchor_text=anchor)
+        if result:
+            return result
+        # Fall through to normal OCR/template detection as last resort
+        print(f"[detector] right_of fallback: trying normal detection for '{target}'")
+
+    # "next_to:" hint: OCR-only search for + to the right of the named label.
+    # Short-circuit everything else — no Start node, no template matching.
+    if target.strip() == "+" and hint and hint.startswith("next_to:"):
+        anchor = hint[len("next_to:"):].strip()
+        result = _find_plus_right_of_label(screenshot, anchor_text=anchor)
+        if result:
+            return result
+        raise ElementNotFoundError(f"Could not find '+' to the right of '{anchor}' via OCR.")
+
     # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
     # For all other targets, try OCR first and fall back to template match.
     icon_entry = _icon_entry_for(target)
@@ -1428,7 +1674,7 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
         print(f"[detector] OCR failed for '{target}', trying template match...")
 
     # For green play icons: HSV color detection avoids transparent-PNG false positives
-    if icon_entry and "play_green" in icon_entry.get("icon_file", ""):
+    if icon_entry and "play_green" in (icon_entry.get("icon_file") or ""):
         result = _find_green_play_button(screenshot)
         if result:
             return result
@@ -1444,6 +1690,23 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
 
 
 
+def _find_search_by_magnify_icon(screenshot: Image.Image) -> tuple[int, int] | None:
+    """Find the magnifying glass icon and return coordinates to its right.
+    
+    This strategy works when the search field is identified by a magnifying icon
+    rather than literal 'Search' text.
+    """
+    # 1. Theme-aware template matching for the magnify icon
+    for target in ["magnify_dark", "magnify_white"]:
+        pos = _find_template(screenshot, target)
+        if pos:
+            # Click offset: to the right of the icon (+20 pixels) to focus the input field
+            cx, cy = pos
+            return (cx + 20, cy)
+            
+    return None
+
+
 def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> tuple[int, int] | None:
     """Locate a search input box by its placeholder text or label.
 
@@ -1454,6 +1717,13 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> t
 
     Returns logical (x, y) to click, or None if not found.
     """
+    # 1. Try magnifying icon strategy first (most reliable for icon-only search bars)
+    icon_pos = _find_search_by_magnify_icon(screenshot)
+    if icon_pos:
+        print(f"[detector] Search field '{field_label}' found via magnify icon at {icon_pos}")
+        return icon_pos
+
+    # 2. OCR the screenshot for the exact placeholder text
     arr = np.array(screenshot)
     scale = _scale(screenshot)
     results = _ocr().readtext(arr)

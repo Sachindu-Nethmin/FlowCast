@@ -76,10 +76,13 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str, is_last_st
                 runner.wait_ui_change()
                 runner.wait_ui_settle()
 
-                # If this is the last action of the last step, add extra time to show output
-                if is_last_step and i == len(step.actions) - 1:
-                    print("   [extra] Adding 1s delay to show output in last step")
-                    time.sleep(1.0)
+                # Hold recording open for any extra seconds requested by the action
+                post_delay = resolved.get("post_delay", 0.0)
+                if is_last_step and i == len(step.actions) - 1 and not post_delay:
+                    post_delay = 1.0  # default trailing delay on last step
+                if post_delay:
+                    print(f"   [extra] Holding recording open for {post_delay}s")
+                    time.sleep(post_delay)
             except Exception as e:
                 runner.set_pre_move_callback(None)
                 if recorder._proc is not None:
@@ -147,8 +150,8 @@ def _build_themed_markdown(steps: list[Step], out_dir: Path, slug: str) -> Path:
             "<ThemedImage",
             f'    alt="{step.title}"',
             "    sources={{",
-            f"        light: '/img/get-started/{slug}/{gif_stem}-light.gif',",
-            f"        dark: '/img/get-started/{slug}/{gif_stem}-dark.gif',",
+            f"        light: useBaseUrl('/img/get-started/{slug}/{gif_stem}-light.gif'),",
+            f"        dark: useBaseUrl('/img/get-started/{slug}/{gif_stem}-dark.gif'),",
             "    }}",
             "/>",
             ""
@@ -239,6 +242,11 @@ def main() -> None:
     out_dir = OUTPUT_DIR / slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Always regenerate artifacts (script, themed markdown) early so they 
+    # reflect the latest markdown even if the recording loop below fails.
+    full_script = _build_full_script(steps, out_dir, theme)
+    themed_md   = _build_themed_markdown(steps, out_dir, slug)
+
     print(f"\n{'='*60}")
     print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
     print(f"  Output: {out_dir}")
@@ -257,13 +265,6 @@ def main() -> None:
     # Always regenerate full video from all existing step MOVs (including any
     # recorded in previous runs so individual --step runs accumulate correctly).
     full_mov = _build_full_video(out_dir, theme)
-
-    # Always regenerate the script from all parsed steps so every step's code
-    # is present even when only one step was executed this run.
-    full_script = _build_full_script(steps, out_dir, theme)
-
-    # Generate the final themed markdown file (index.md)
-    themed_md = _build_themed_markdown(steps, out_dir, slug)
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")

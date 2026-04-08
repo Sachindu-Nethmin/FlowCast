@@ -58,6 +58,27 @@ def _is_autofocus(field_label: str) -> bool:
     return False
 
 
+def _is_smart_input(field_label: str) -> bool:
+    """Smart inputs are expression-editor fields opened by a prior click.
+    For these, skip find_input_field and Set-button detection — just paste at current focus.
+    """
+    return any(
+        field_label.lower() == s.lower()
+        for s in _kb().get("smart_inputs", [])
+    )
+
+
+def _is_no_set_button(field_label: str) -> bool:
+    """Fields that are plain textareas / inputs with no Set button (e.g. Instructions).
+    Clicking them may cause a UI change (focus indicator) but should never trigger
+    Set-button detection, which would accidentally open an expression editor.
+    """
+    return any(
+        field_label.lower() == s.lower()
+        for s in _kb().get("no_set_button_fields", [])
+    )
+
+
 def _is_auto_populated(field_label: str) -> bool:
     for f in _kb().get("auto_populated_fields", {}).get("fields", []):
         if f["label"].lower() == field_label.lower():
@@ -229,7 +250,9 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
         # Locate target input box
         result = find_input_field(_screenshot(), field_target)
         if result:
-            return {**action, "x": result[0], "y": result[1], "_needs_click": True}
+            # Smart inputs and plain textareas both skip Set-button detection.
+            skip_set = _is_smart_input(field_target) or _is_no_set_button(field_target)
+            return {**action, "x": result[0], "y": result[1], "_needs_click": True, "_skip_set_button": skip_set}
         print(f"[runner] Could not locate input for '{field_target}' — will type into focused element")
         return {**action, "x": None, "y": None, "_needs_click": False}
 
@@ -291,17 +314,6 @@ def fire(action: dict[str, Any]) -> None:
         pyautogui.click(x, y)
 
     elif kind == "type":
-        # ── NEW: Idempotent Typing (Idempotency) ───────────────────────
-        # Skip typing if the value is already present in the field.
-        _idemp_x = x if x is not None else 0
-        _idemp_y = y if y is not None else 0
-        _idemp_token = action["value"].split()[0] if action["value"].split() else action["value"][:12]
-        if _idemp_x and _idemp_y and _idemp_token:
-            if is_text_visible_near(pyautogui.screenshot(), _idemp_token, _idemp_x, _idemp_y):
-                print(f"[runner] Skipping type: '{_idemp_token}' is already visible near ({_idemp_x}, {_idemp_y})")
-                return 
-        # ───────────────────────────────────────────────────────────────
-
         if x is not None and y is not None:
             _trigger_pre_move()
             pyautogui.moveTo(x, y, duration=0.2)
@@ -311,7 +323,7 @@ def fire(action: dict[str, Any]) -> None:
             # Only look for a "Set" button if the field click caused a UI change
             # (meaning the Set button may have appeared). If nothing changed, the
             # field is directly editable and there is no Set button to click.
-            if ui_changed:
+            if ui_changed and not action.get("_skip_set_button"):
                 set_pos = _find_set_button()
                 if set_pos:
                     import math
@@ -366,12 +378,15 @@ def fire(action: dict[str, Any]) -> None:
             pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.click(x, y)
         else:
-            # No coords — try to click a visible search placeholder
-            try:
-                sx, sy = find_element(pyautogui.screenshot(), "Search")
+            # No coords — use find_search_field which tries the magnify icon first
+            from src.detector import find_search_field
+            field_label = action.get("field_target", "Search")
+            result = find_search_field(_screenshot(), field_label)
+            if result:
+                sx, sy = result
                 pyautogui.moveTo(sx, sy, duration=0.2)
                 pyautogui.click(sx, sy)
-            except ElementNotFoundError:
+            else:
                 print("[runner] Could not find search box — typing at current focus")
         time.sleep(0.2)
         # Clear any existing text, then type the search value

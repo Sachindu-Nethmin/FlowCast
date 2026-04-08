@@ -632,7 +632,8 @@
       "Version": "1.0.0",
       "Folder Name": "Enter folder name",
       "Url": "Enter URL",
-      "Path": "/directory-path"
+      "Path": "/directory-path",
+      "Instructions": "Detailed instructions for the agent"
     }
   },
   "autofocus_fields": {
@@ -722,5 +723,8 @@
     "Body",
     "Url",
     "Url*"
+  ],
+  "no_set_button_fields": [
+    "Instructions"
   ]
 }
