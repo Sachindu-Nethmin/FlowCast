@@ -150,8 +150,8 @@ def _build_themed_markdown(steps: list[Step], out_dir: Path, slug: str) -> Path:
             "<ThemedImage",
             f'    alt="{step.title}"',
             "    sources={{",
-            f"        light: '/img/get-started/{slug}/{gif_stem}-light.gif',",
-            f"        dark: '/img/get-started/{slug}/{gif_stem}-dark.gif',",
+            f"        light: useBaseUrl('/img/get-started/{slug}/{gif_stem}-light.gif'),",
+            f"        dark: useBaseUrl('/img/get-started/{slug}/{gif_stem}-dark.gif'),",
             "    }}",
             "/>",
             ""

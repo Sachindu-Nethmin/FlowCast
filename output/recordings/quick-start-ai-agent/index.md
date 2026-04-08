@@ -11,8 +11,8 @@
 <ThemedImage
     alt="Create the Project"
     sources={{
-        light: '/img/get-started/quick-start-ai-agent/create-the-project-light.gif',
-        dark: '/img/get-started/quick-start-ai-agent/create-the-project-dark.gif',
+        light: useBaseUrl('/img/get-started/quick-start-ai-agent/create-the-project-light.gif'),
+        dark: useBaseUrl('/img/get-started/quick-start-ai-agent/create-the-project-dark.gif'),
     }}
 />
 
@@ -27,8 +27,8 @@
 <ThemedImage
     alt="Add a File Integration Artifact"
     sources={{
-        light: '/img/get-started/quick-start-ai-agent/add-a-file-integration-artifact-light.gif',
-        dark: '/img/get-started/quick-start-ai-agent/add-a-file-integration-artifact-dark.gif',
+        light: useBaseUrl('/img/get-started/quick-start-ai-agent/add-a-file-integration-artifact-light.gif'),
+        dark: useBaseUrl('/img/get-started/quick-start-ai-agent/add-a-file-integration-artifact-dark.gif'),
     }}
 />
 
@@ -41,8 +41,8 @@
 <ThemedImage
     alt="Configure the AI Agent"
     sources={{
-        light: '/img/get-started/quick-start-ai-agent/configure-the-ai-agent-light.gif',
-        dark: '/img/get-started/quick-start-ai-agent/configure-the-ai-agent-dark.gif',
+        light: useBaseUrl('/img/get-started/quick-start-ai-agent/configure-the-ai-agent-light.gif'),
+        dark: useBaseUrl('/img/get-started/quick-start-ai-agent/configure-the-ai-agent-dark.gif'),
     }}
 />
 
@@ -50,12 +50,12 @@
 
 1. Select **Run**.
 2. Select **Chat**.
-3. Type `Hello` and press **Enter** to check if it works.
+3. Type `Hello` to check if it works.
 
 <ThemedImage
     alt="Run and test"
     sources={{
-        light: '/img/get-started/quick-start-ai-agent/run-and-test-light.gif',
-        dark: '/img/get-started/quick-start-ai-agent/run-and-test-dark.gif',
+        light: useBaseUrl('/img/get-started/quick-start-ai-agent/run-and-test-light.gif'),
+        dark: useBaseUrl('/img/get-started/quick-start-ai-agent/run-and-test-dark.gif'),
     }}
 />
