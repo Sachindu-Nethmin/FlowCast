@@ -714,10 +714,10 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     h, w = img.shape[:2]
     # Build a mask covering the top-right toolbar region
     search_mask = np.zeros((h, w), dtype=np.uint8)
-    # The Run button is in the VS Code top-right toolbar, typically at 88-100% width, top 80px.
-    # Restrict to VERY tight zone — the actual toolbar icons occupy the far-right 12% of screen.
-    # This prevents false matches from breadcrumbs, editor controls, and other UI elements.
-    search_mask[:80, int(w * 0.88):] = 255
+    # The Run button is in the VS Code toolbar, NOT in the macOS menu bar above it.
+    # macOS menu bar: ~25px | VS Code title+tabs: ~63px | Editor starts: ~88px
+    # Search from y=30 (skip menu bar) to y=90 (VS Code toolbar area), rightmost 12% (88-100%).
+    search_mask[30:90, int(w * 0.88):] = 255
 
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
@@ -2205,8 +2205,8 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
             scale = _scale(screenshot)
             w_l = int(screenshot.width / scale)
             h_l = int(screenshot.height / scale)
-            # Match HSV search zone: top 80px height, right 12% of screen width (88-100%)
-            search_region = (int(w_l * 0.88), 0, w_l, 80)
+            # Match HSV search zone: y=30 to 90 (VS Code toolbar, skip macOS menu bar), right 12% (88-100%)
+            search_region = (int(w_l * 0.88), 30, w_l, 90)
 
     # For canvas + button: anchor to Start node for reliable position
     if target.strip() == "+" and canvas_only:
