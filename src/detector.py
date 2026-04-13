@@ -714,9 +714,10 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     h, w = img.shape[:2]
     # Build a mask covering the top-right toolbar region
     search_mask = np.zeros((h, w), dtype=np.uint8)
-    # The Run button is in the VS Code top-right toolbar, typically at 82-100% width, top 90px.
-    # Restrict to tight zone to avoid false matches from other toolbar icons (breadcrumbs, etc).
-    search_mask[:90, int(w * 0.82):] = 255
+    # The Run button is in the VS Code top-right toolbar, typically at 88-100% width, top 80px.
+    # Restrict to VERY tight zone — the actual toolbar icons occupy the far-right 12% of screen.
+    # This prevents false matches from breadcrumbs, editor controls, and other UI elements.
+    search_mask[:80, int(w * 0.88):] = 255
 
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
@@ -736,17 +737,21 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     if not contours:
         return None
 
-    # Pick the largest green blob
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < 4:  # too small — noise
+    # Filter out tiny noise (< 4 pixels)
+    contours = [c for c in contours if cv2.contourArea(c) >= 4]
+    if not contours:
         return None
 
-    M = cv2.moments(largest)
+    # Pick the RIGHTMOST green blob (not largest) — the Run button is in the far-right toolbar
+    # Calculate x-center for each contour and pick the one with highest x value
+    rightmost = max(contours, key=lambda c: cv2.moments(c)["m10"] / max(cv2.moments(c)["m00"], 1))
+
+    M = cv2.moments(rightmost)
     if M["m00"] == 0:
         return None
     cx = int(M["m10"] / M["m00"])
     cy = int(M["m01"] / M["m00"])
-    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection")
+    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection (rightmost blob)")
     return (cx, cy)
 
 
