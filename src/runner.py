@@ -253,8 +253,8 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             # Smart inputs and plain textareas both skip Set-button detection.
             skip_set = _is_smart_input(field_target) or _is_no_set_button(field_target)
             return {**action, "x": result[0], "y": result[1], "_needs_click": True, "_skip_set_button": skip_set}
-        print(f"[runner] Could not locate input for '{field_target}' — will type into focused element")
-        return {**action, "x": None, "y": None, "_needs_click": False}
+        print(f"[runner] ABORT: Could not locate input for '{field_target}' — skipping to prevent wrong-field write")
+        return {**action, "_skip": True, "_detection_failed": True}
 
     if kind == "select":
         x, y = _find(action["field_target"])
@@ -368,9 +368,14 @@ def fire(action: dict[str, Any]) -> None:
     elif kind == "scroll":
         clicks = action.get("clicks", -3)
         if x is not None:
+            pyautogui.moveTo(x, y, duration=0.2)
             pyautogui.scroll(clicks, x=x, y=y)
         else:
-            pyautogui.scroll(clicks)
+            sw, sh = pyautogui.size()
+            cx, cy = sw // 2, sh // 2
+            _trigger_pre_move()
+            pyautogui.moveTo(cx, cy, duration=0.3)
+            pyautogui.scroll(clicks, x=cx, y=cy)
 
     elif kind == "search":
         _trigger_pre_move()

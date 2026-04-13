@@ -25,6 +25,16 @@
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-04-06T10:00:29.895128+00:00"
+    },
+    "continue to connection details": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-04-09T16:32:31.370837+00:00"
+    },
+    "get rows from inventory table": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-04-10T03:00:17.649710+00:00"
     }
   }
 }

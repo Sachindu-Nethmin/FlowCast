@@ -116,7 +116,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         if not line_actions:
             m = re.search(r'scroll\s+down\s+and\s+select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
             if m:
-                line_actions.append({"action": "scroll", "clicks": -5})
+                line_actions.append({"action": "scroll", "clicks": -15})
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Search + Click: "Search `X` and select **Y**" ────────────────────
