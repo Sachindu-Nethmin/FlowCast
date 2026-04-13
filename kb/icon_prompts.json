@@ -159,7 +159,7 @@
       "screen": "Integration editor toolbar",
       "position_hint": "toolbar at the top of the screen",
       "action": "Runs the integration",
-      "icon_file": "play_green_icon.png",
+      "icon_file": "play_green.png",
       "prefer_template": true,
       "match_threshold": 0.5
     },
