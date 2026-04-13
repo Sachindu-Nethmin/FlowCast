@@ -712,10 +712,11 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     img = np.array(screenshot.resize((w_l, h_l), Image.LANCZOS))
 
     h, w = img.shape[:2]
-    # Build a mask covering the top toolbar and right-side toolbar
+    # Build a mask covering the top-right toolbar region
     search_mask = np.zeros((h, w), dtype=np.uint8)
-    search_mask[:80, :] = 255                # top toolbar strip
-    search_mask[:, int(w * 0.6):] = 255     # right-side toolbar
+    # The Run button is typically in the top-right toolbar.
+    # Restrict to top 120px and right 40% of the screen.
+    search_mask[:120, int(w * 0.6):] = 255
 
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
@@ -820,10 +821,14 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         if has_alpha:
             # Transparent icon: grayscale + alpha mask (only glyph pixels match)
             tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+            # Ensure mask is 8-bit single channel
             tmpl_mask = np.array(icon_img.split()[-1])
+            if tmpl_mask.dtype != np.uint8:
+                tmpl_mask = tmpl_mask.astype(np.uint8)
             screen_match = screen_gray
         else:
             # Opaque icon: full color matching preserves distinctive colors (e.g. blue +)
+            # Use BGR for screen_match since OpenCV uses BGR
             tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2BGR)
             tmpl_mask = None
             screen_match = screen_bgr
@@ -834,17 +839,24 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         factors = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.4, 1.6)
         for s in factors:
             tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
-            if tw_s < 10 or th_s < 10:
+            if tw_s < 5 or th_s < 5:
                 continue
             if tw_s > screen_match.shape[1] or th_s > screen_match.shape[0]:
                 continue
             tmpl_r = cv2.resize(tmpl_gray, (tw_s, th_s))
             if tmpl_mask is not None:
                 mask_r = cv2.resize(tmpl_mask, (tw_s, th_s))
+                # TM_CCOEFF_NORMED with mask can sometimes return -inf if mask is invalid
+                # or for certain OpenCV versions. Fall back to no-mask if it fails.
                 res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
+                _, val, _, loc = cv2.minMaxLoc(res)
+                if np.isinf(val) or np.isnan(val):
+                    res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
+                    _, val, _, loc = cv2.minMaxLoc(res)
             else:
                 res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
-            _, val, _, loc = cv2.minMaxLoc(res)
+                _, val, _, loc = cv2.minMaxLoc(res)
+            
             if val > best_val:
                 best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
 
@@ -2166,9 +2178,18 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
     skip_ocr = (len(target.strip()) <= 2 and icon_entry is not None) or \
                (icon_entry is not None and icon_entry.get("prefer_template", False))
     canvas_only = False
+    search_region = None
     if icon_entry and icon_entry.get("position_hint", ""):
         hint_lower = icon_entry["position_hint"].lower()
         canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
+
+        # Restrict search region for toolbar buttons to avoid false positives
+        if "toolbar" in hint_lower:
+            scale = _scale(screenshot)
+            w_l = int(screenshot.width / scale)
+            h_l = int(screenshot.height / scale)
+            # Search in top 120px height, right 40% of screen width
+            search_region = (int(w_l * 0.6), 0, w_l, 120)
 
     # For canvas + button: anchor to Start node for reliable position
     if target.strip() == "+" and canvas_only:
@@ -2186,15 +2207,24 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
             return result
         print(f"[detector] OCR failed for '{target}', trying template match...")
 
-    # For green play icons: HSV color detection avoids transparent-PNG false positives
+    # Template matching: exact pixel comparison against the known icon file
+    # For targets that prefer template (e.g. green play button), try this first
+    if skip_ocr:
+        result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=search_region)
+        if result:
+            print(f"[detector] Template match found '{target}' at {result}")
+            return result
+
+    # For green play icons: HSV color detection avoids transparent-PNG false positives.
+    # We use this as a robust fallback if OCR/Exact Template fails or as a primary for green icons.
     if icon_entry and "play_green" in (icon_entry.get("icon_file") or ""):
         result = _find_green_play_button(screenshot)
         if result:
             return result
         print(f"[detector] HSV color detection failed for '{target}', trying template match...")
 
-    # Template matching: exact pixel comparison against the known icon file
-    result = _find_template(screenshot, target, canvas_only=canvas_only)
+    # Template matching: final fallback or primary for non-skip_ocr icons
+    result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=search_region)
     if result:
         print(f"[detector] Template match found '{target}' at {result}")
         return result
