@@ -732,6 +732,17 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     # Restrict to toolbar areas only
     mask = cv2.bitwise_and(green_mask, search_mask)
 
+    # Debug: save the search mask and detected blobs so we can see exactly what was found
+    if _DEBUG_SAVE_DIR:
+        import time
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        # Save the masked region as a debug image (white = green detected, black = no green)
+        debug_img = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        cv2.imwrite(str(_DEBUG_SAVE_DIR / f"hsv_mask_run_{ts}.png"), debug_img)
+        # Also save the source crop for visual reference (the actual toolbar area being searched)
+        src_crop = cv2.cvtColor(img[:80, int(w * 0.88):], cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(_DEBUG_SAVE_DIR / f"hsv_crop_run_{ts}.png"), src_crop)
+
     # Find contours of green regions
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
@@ -2188,13 +2199,14 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
         hint_lower = icon_entry["position_hint"].lower()
         canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
 
-        # Restrict search region for toolbar buttons to avoid false positives
+        # Restrict search region for toolbar buttons to match HSV detection zone exactly
+        # This ensures consistent behavior between HSV and template matching methods
         if "toolbar" in hint_lower:
             scale = _scale(screenshot)
             w_l = int(screenshot.width / scale)
             h_l = int(screenshot.height / scale)
-            # Search in top 120px height, right 40% of screen width
-            search_region = (int(w_l * 0.6), 0, w_l, 120)
+            # Match HSV search zone: top 80px height, right 12% of screen width (88-100%)
+            search_region = (int(w_l * 0.88), 0, w_l, 80)
 
     # For canvas + button: anchor to Start node for reliable position
     if target.strip() == "+" and canvas_only:

@@ -35,7 +35,7 @@ def debug_detection():
         print(f"Blob {i}: pos=({cx}, {cy}), area={area}")
 
     # Test template matching for 'Run'
-    icon_path = Path("kb/icons/play_green_icon.png")
+    icon_path = Path("kb/icons/play.png")
     if icon_path.exists():
         tmpl = cv2.imread(str(icon_path))
         # tmpl is BGR
