@@ -2212,17 +2212,17 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
             return result
         print(f"[detector] OCR failed for '{target}', trying template match...")
 
-    # For green play icons: HSV color detection is the PRIMARY method.
-    # Template matching of the tiny generic green triangle causes false positives.
-    is_play_green = icon_entry and "play_green" in (icon_entry.get("icon_file") or "")
-    if is_play_green:
+    # For play button icons: HSV color detection is the PRIMARY method.
+    # Template matching of the tiny generic triangle causes false positives.
+    is_play_button = icon_entry and "play" in (icon_entry.get("icon_file") or "").lower()
+    if is_play_button:
         result = _find_green_play_button(screenshot)
         if result:
             return result
         print(f"[detector] HSV color detection failed for '{target}', trying template match as fallback...")
 
     # Template matching: skip if already handled by HSV above, unless HSV failed
-    if skip_ocr and not is_play_green:
+    if skip_ocr and not is_play_button:
         result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=search_region)
         if result:
             print(f"[detector] Template match found '{target}' at {result}")

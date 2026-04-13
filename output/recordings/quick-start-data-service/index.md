@@ -88,7 +88,7 @@
 1. Select **+**.
 5. Search `println` and select **println**.
 4. Select **Initialize Array** from the node panel.
-5. Set **Values** to `itemsNames` and select **Save**.
+5. Set **Values** to `ItemsNames` and select **Save**.
 
 <ThemedImage
     alt="Implement Logic Loop"

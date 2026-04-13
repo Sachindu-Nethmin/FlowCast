@@ -14,7 +14,7 @@
     "+": {
       "winner": "ocr_corrected",
       "fail_counts": {},
-      "last_seen": "2026-04-02T14:16:53.398705+00:00"
+      "last_seen": "2026-04-13T05:04:21.747639+00:00"
     },
     "local files": {
       "winner": "ocr_after_wait",
@@ -34,7 +34,17 @@
     "get rows from inventory table": {
       "winner": "ocr_corrected",
       "fail_counts": {},
-      "last_seen": "2026-04-10T03:00:17.649710+00:00"
+      "last_seen": "2026-04-13T06:01:47.231079+00:00"
+    },
+    "search": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-04-13T06:20:50.381874+00:00"
+    },
+    "run": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-04-13T06:35:31.429910+00:00"
     }
   }
 }

@@ -82,7 +82,7 @@ _run({'action': 'click', 'target': '+'})
 _run({'action': 'search', 'field_target': 'Search', 'value': 'println'})
 _run({'action': 'click', 'target': 'println'})
 _run({'action': 'click', 'target': 'Initialize Array'})
-_run({'action': 'type', 'field_target': 'Values', 'value': 'itemsNames'})
+_run({'action': 'type', 'field_target': 'Values', 'value': 'ItemsNames'})
 _run({'action': 'click', 'target': 'Save'})
 
 # ──────────────────────────────────────────────────────────
