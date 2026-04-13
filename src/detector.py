@@ -714,9 +714,9 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     h, w = img.shape[:2]
     # Build a mask covering the top-right toolbar region
     search_mask = np.zeros((h, w), dtype=np.uint8)
-    # The Run button is typically in the top-right toolbar.
-    # Restrict to top 120px and right 40% of the screen.
-    search_mask[:120, int(w * 0.6):] = 255
+    # The Run button is in the VS Code top-right toolbar, typically at 82-100% width, top 90px.
+    # Restrict to tight zone to avoid false matches from other toolbar icons (breadcrumbs, etc).
+    search_mask[:90, int(w * 0.82):] = 255
 
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
@@ -2207,23 +2207,23 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
             return result
         print(f"[detector] OCR failed for '{target}', trying template match...")
 
-    # Template matching: exact pixel comparison against the known icon file
-    # For targets that prefer template (e.g. green play button), try this first
-    if skip_ocr:
+    # For green play icons: HSV color detection is the PRIMARY method.
+    # Template matching of the tiny generic green triangle causes false positives.
+    is_play_green = icon_entry and "play_green" in (icon_entry.get("icon_file") or "")
+    if is_play_green:
+        result = _find_green_play_button(screenshot)
+        if result:
+            return result
+        print(f"[detector] HSV color detection failed for '{target}', trying template match as fallback...")
+
+    # Template matching: skip if already handled by HSV above, unless HSV failed
+    if skip_ocr and not is_play_green:
         result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=search_region)
         if result:
             print(f"[detector] Template match found '{target}' at {result}")
             return result
 
-    # For green play icons: HSV color detection avoids transparent-PNG false positives.
-    # We use this as a robust fallback if OCR/Exact Template fails or as a primary for green icons.
-    if icon_entry and "play_green" in (icon_entry.get("icon_file") or ""):
-        result = _find_green_play_button(screenshot)
-        if result:
-            return result
-        print(f"[detector] HSV color detection failed for '{target}', trying template match...")
-
-    # Template matching: final fallback or primary for non-skip_ocr icons
+    # Final fallback template match (for non-skip_ocr icons and play_green fallback)
     result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=search_region)
     if result:
         print(f"[detector] Template match found '{target}' at {result}")
