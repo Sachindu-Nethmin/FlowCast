@@ -1,4 +1,5 @@
 import base64
+import difflib
 import io
 import json
 import os
@@ -129,6 +130,48 @@ def _fuzzy(detected: str, target: str) -> bool:
         return True
 
     return False
+
+
+def _similarity_score(detected: str, target: str) -> float:
+    """Calculate similarity score (0.0 to 1.0) between detected and target strings.
+
+    Uses SequenceMatcher for string similarity, accounting for:
+    - Punctuation differences
+    - Case differences
+    - Substring matches
+
+    Returns a score from 0.0 (no match) to 1.0 (perfect match).
+    """
+    d, t = detected.strip(), target.strip()
+    if not d or not t:
+        return 0.0
+
+    if d.lower() == t.lower():
+        return 1.0
+
+    # Clean punctuation
+    t_clean = re.sub(r'[^\w\s]', '', t).lower().strip()
+    d_clean = re.sub(r'[^\w\s]', '', d).lower().strip()
+
+    if t_clean == d_clean:
+        return 0.95
+
+    # Use SequenceMatcher for similarity
+    ratio = difflib.SequenceMatcher(None, d_clean, t_clean).ratio()
+
+    # Also check word-by-word matching
+    t_words = t_clean.split()
+    d_words = d_clean.split()
+
+    if t_words and d_words:
+        # Count how many target words appear in detected
+        matched_words = sum(1 for tw in t_words if any(tw in dw for dw in d_words))
+        word_ratio = matched_words / len(t_words) if t_words else 0
+        # Weight word matching higher for multi-word targets
+        if len(t_words) > 1:
+            ratio = (ratio * 0.5) + (word_ratio * 0.5)
+
+    return ratio
 
 
 def _merge_ocr_results(results: list) -> list:
@@ -957,8 +1000,14 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
 
     Runs OCR on the screenshot and scores each known screen from the KB by
     counting how many of its distinctive element labels and field labels are
-    visible.  Returns the best-matching screen dict augmented with a
-    ``screen_key`` field, or None if no screen scores above threshold.
+    visible. Uses multiple field matching sources:
+    - Field labels
+    - Field placeholders
+    - Field helper text (more distinctive than placeholders)
+    - Combined word sequences from all sources
+
+    Returns the best-matching screen dict augmented with a ``screen_key`` field,
+    or None if no screen scores above threshold.
 
     Return format::
 
@@ -981,12 +1030,13 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
         return None
 
     best_screen = None
-    best_score = 0
+    best_score = 0.0
     best_info = {}
 
     for key, screen in screens.items():
         matched_elements = []
         matched_fields = []
+        field_match_score = 0.0
 
         # Score element labels
         for elem in screen.get("elements", []):
@@ -998,34 +1048,62 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
                     matched_elements.append(elem["label"])
                     break
 
-        # Score field labels (heavier weight — fields are more distinctive)
-        for field in screen.get("fields", []):
-            label = field.get("label", "").lower()
-            if not label:
-                continue
-            # Skip conditional fields — they may not be visible
-            if field.get("conditional", False):
-                continue
-            for _, dt, _ in merged_results:
-                if _fuzzy(dt, label):
-                    matched_fields.append(field["label"])
-                    break
-
-        # Also check for placeholder text in fields
+        # Score field labels with multiple sources
         placeholders = _load_field_placeholders()
         for field in screen.get("fields", []):
             fl = field.get("label", "")
-            ph = field.get("placeholder") or placeholders.get(fl)
-            if ph and fl not in [f for f in matched_fields]:
-                for _, dt, _ in merged_results:
-                    if _fuzzy(dt, ph):
-                        matched_fields.append(fl)
+            if not fl:
+                continue
+
+            # Skip conditional fields — they may not be visible
+            if field.get("conditional", False):
+                continue
+
+            # Collect all searchable text for this field
+            field_sources = [
+                field.get("label", "").lower(),
+                field.get("placeholder") or placeholders.get(fl),
+                field.get("helper_text", ""),
+                field.get("note", ""),
+            ]
+            field_sources = [src.lower() for src in field_sources if src]
+
+            # Look for best match across all OCR results
+            best_field_match = 0.0
+            for _, dt, conf in merged_results + results:
+                dt_lower = dt.lower()
+                for source in field_sources:
+                    if not source:
+                        continue
+
+                    # Use fuzzy match first (binary check)
+                    if _fuzzy(dt, source):
+                        best_field_match = 1.0
                         break
 
-        # Weighted score: fields count double since they're more screen-specific
-        total_possible = len([e for e in screen.get("elements", [])]) + \
-                         2 * len([f for f in screen.get("fields", []) if not f.get("conditional", False)])
-        score = len(matched_elements) + 2 * len(matched_fields)
+                    # Otherwise use similarity score
+                    sim = _similarity_score(dt, source)
+                    if sim > best_field_match:
+                        best_field_match = sim
+
+                if best_field_match >= 1.0:
+                    break
+
+            # Add to matched fields if good match found
+            if best_field_match >= 0.75:
+                matched_fields.append(fl)
+                field_match_score += best_field_match
+
+        # Weighted score calculation
+        # Fields are more distinctive (count double)
+        # Use both count and quality of matches
+        num_valid_fields = len([f for f in screen.get("fields", []) if not f.get("conditional", False)])
+        num_valid_elements = len([e for e in screen.get("elements", [])])
+
+        # Scoring: exact matches count more, similarity scores less
+        score = len(matched_elements) + (2 * len(matched_fields)) + (field_match_score * 0.5)
+        total_possible = num_valid_elements + (2 * num_valid_fields)
+
         confidence = score / total_possible if total_possible > 0 else 0
 
         if score > best_score:
@@ -1097,18 +1175,24 @@ def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tup
     all_sources = list(merged_results) + list(results)
 
     for bbox, text, conf in all_sources:
-        if _fuzzy(text, placeholder):
+        # Check both fuzzy and similarity matching
+        is_fuzzy_match = _fuzzy(text, placeholder)
+        similarity = _similarity_score(text, placeholder)
+
+        # Accept if fuzzy match OR good similarity score
+        if is_fuzzy_match or similarity >= 0.75:
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             ocr_cx_img = (min(xs) + max(xs)) / 2
             ocr_cy_img = (min(ys) + max(ys)) / 2
             # Only accept hits inside an input contour (reject label text matches)
             if not _ocr_inside_input(ocr_cx_img, ocr_cy_img):
-                print(f"[detector] Placeholder hit '{text}' for '{field_label}' rejected — not inside input contour")
+                print(f"[detector] Placeholder hit '{text}' (sim={similarity:.2f}) for '{field_label}' rejected — not inside input contour")
                 continue
             cx = int(ocr_cx_img / scale)
             cy = int(ocr_cy_img / scale)
-            print(f"[detector] SUCCESS: Placeholder '{text}' found for '{field_label}' at ({cx}, {cy})")
+            match_type = "fuzzy" if is_fuzzy_match else f"similarity ({similarity:.2f})"
+            print(f"[detector] SUCCESS: Placeholder '{text}' ({match_type}) found for '{field_label}' at ({cx}, {cy})")
             return (cx, cy)
 
     # Last-word fallback: EasyOCR sometimes merges the label text with the placeholder
@@ -1121,7 +1205,12 @@ def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tup
         if len(last_word) >= 5:  # only use distinctive words (skip short words like "of")
             for bbox, text, conf in all_sources:
                 text_words = re.sub(r'[^\w\s]', '', text.lower()).split()
-                if last_word.lower() in text_words:
+                # Try exact word match first
+                word_match = last_word.lower() in text_words
+                # Also try similarity matching on the entire text
+                sim = _similarity_score(text, last_word)
+
+                if word_match or sim >= 0.7:
                     xs = [p[0] for p in bbox]
                     ys = [p[1] for p in bbox]
                     ocr_cx_img = (min(xs) + max(xs)) / 2
@@ -1130,7 +1219,8 @@ def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tup
                         continue
                     cx = int(ocr_cx_img / scale)
                     cy = int(ocr_cy_img / scale)
-                    print(f"[detector] SUCCESS: Placeholder last-word '{last_word}' in '{text}' → '{field_label}' at ({cx}, {cy})")
+                    match_type = "word-match" if word_match else f"similarity ({sim:.2f})"
+                    print(f"[detector] SUCCESS: Placeholder last-word '{last_word}' ({match_type}) in '{text}' → '{field_label}' at ({cx}, {cy})")
                     return (cx, cy)
 
     print(f"[detector] No placeholder match found for '{field_label}' (target: '{placeholder}')")
@@ -1170,7 +1260,11 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str, exact_only:
                 is_match = (text.strip().lower() == field_label.strip().lower())
             else:
                 is_match = _fuzzy(text, field_label)
-                
+                # Also check similarity score for better matching
+                if not is_match:
+                    sim = _similarity_score(text, field_label)
+                    is_match = sim >= 0.80
+
             if is_match:
                 bbox_y_top = min(p[1] for p in bbox)
                 if bbox_y_top < top_bar_cutoff:
@@ -1208,7 +1302,11 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str, exact_only:
                 is_match = (text.strip().lower() == anchor.strip().lower())
             else:
                 is_match = _fuzzy(text, anchor)
-                
+                # Also check similarity score for fallback anchor matching
+                if not is_match:
+                    sim = _similarity_score(text, anchor)
+                    is_match = sim >= 0.75
+
             if is_match:
                 bbox_y_top = min(p[1] for p in bbox)
                 if bbox_y_top < top_bar_cutoff:
@@ -1524,8 +1622,18 @@ def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index
     results = _ocr().readtext(arr)
 
     anchor_bbox = None
+    best_sim = 0.0
     for bbox, text, conf in results:
-        if _fuzzy(text, anchor_label):
+        is_match = _fuzzy(text, anchor_label)
+        # Also check similarity if fuzzy match fails
+        if not is_match:
+            sim = _similarity_score(text, anchor_label)
+            if sim > best_sim:
+                best_sim = sim
+                if sim >= 0.75:
+                    is_match = True
+
+        if is_match:
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             anchor_bbox = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
@@ -1639,7 +1747,13 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
     merged_results = _merge_ocr_results(results)
     candidates = []
     for bbox, text, conf in merged_results:
-        if _fuzzy(text, field_label) and not _is_blue_background(arr, bbox):
+        is_match = _fuzzy(text, field_label)
+        # Also try similarity scoring if fuzzy match fails
+        if not is_match:
+            sim = _similarity_score(text, field_label)
+            is_match = sim >= 0.80
+
+        if is_match and not _is_blue_background(arr, bbox):
             # Validate width to ensure we didn't accidentally merge with the field
             bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
             num_words = len(text.split())
@@ -1661,7 +1775,13 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
         anchor = kb["anchor_label"]
         anchor_candidates = []
         for bbox, text, conf in merged_results:
-            if _fuzzy(text, anchor):
+            is_match = _fuzzy(text, anchor)
+            # Also try similarity scoring for anchor matching
+            if not is_match:
+                sim = _similarity_score(text, anchor)
+                is_match = sim >= 0.75
+
+            if is_match:
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
                 num_words = len(text.split())
                 max_width = 80 if num_words == 1 else 100 * num_words
