@@ -19,7 +19,7 @@ def is_clickable(label: str) -> bool:
     if _kb_path.exists():
         _hints = json.loads(_kb_path.read_text()).get("element_hints", {})
         _entry = _hints.get(label, {})
-        if isinstance(_entry, dict) and _entry.get("type") in ("checkbox_icon", "ocr_text_offset"):
+        if isinstance(_entry, dict) and _entry.get("type") in ("checkbox_icon", "ocr_text_offset", "card"):
             return True
 
     contexts = []

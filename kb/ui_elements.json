@@ -532,9 +532,27 @@
     "Version": "Text field in MI Advanced Options, default '1.0.0'",
     "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
     "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
-    "Automation": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'Automation' in the center of the screen. Has a blue icon or blue-highlighted background. Do NOT match text in the file tree or breadcrumbs.",
-    "HTTP Service": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'HTTP Service' in the center of the screen.",
-    "API": "Card/option inside the Add Artifact picker panel. Appears as a grid card labelled 'API' in the center of the screen.",
+    "Automation": {
+      "label": "Automation",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "icon": "blue background or blue icon",
+      "note": "Card/option in the Add Artifact picker. Click the card (not just the text). OCR finds the text label, click center of card. Do NOT match text in the file tree or breadcrumbs."
+    },
+    "HTTP Service": {
+      "label": "HTTP Service",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "icon": "multicolor or service icon",
+      "note": "Card/option in the Add Artifact picker. Click the entire card (not just the text)."
+    },
+    "API": {
+      "label": "API",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "icon": "multicolor or API icon",
+      "note": "Card/option in the Add Artifact picker. Click the entire card (not just the text)."
+    },
     "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
     "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
     "Resource Path": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens.",

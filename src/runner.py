@@ -234,6 +234,16 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             x, y = _find(ocr_label, action=action)
             return {**action, "x": x + offset["x"], "y": y + offset["y"]}
 
+        # Handle card elements (e.g., Automation, HTTP Service, API cards in picker)
+        # Cards are larger clickable areas — find the text label and click on the card
+        if isinstance(kb, dict) and kb.get("type") == "card":
+            card_label = kb["label"]
+            print(f"[runner] Finding card '{card_label}' for '{target}'")
+            x, y = _find(card_label, action=action)
+            # Card click is slightly offset to ensure we hit the card, not just the text
+            offset = kb.get("click_offset", {"x": 0, "y": 0})
+            return {**action, "x": x + offset["x"], "y": y + offset["y"]}
+
         # Verify clickability via WSO2 Integrator React source code
         from src.source_verifier import is_clickable
         if not is_clickable(target):
