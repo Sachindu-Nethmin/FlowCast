@@ -160,7 +160,7 @@
       "screen": "Integration editor toolbar",
       "position_hint": "toolbar at the top of the screen",
       "action": "Runs the integration",
-      "icon_file": "play_green_icon.png",
+      "icon_file": "play.png",
       "prefer_template": true,
       "match_threshold": 0.5
     },
@@ -190,12 +190,24 @@
       "icon_b64": null
     },
     {
-      "id": "cloud",
-      "element_label": "Cloud Project card icon",
-      "screen": "Open Project Choice Screen",
-      "position_hint": "Inside the 'Cloud project' choice card",
-      "action": "Visual indicator for cloud project selection",
-      "icon_file": "dark-globe.svg"
+      "id": "magnify_dark",
+      "element_label": "Search Magnifying Glass (Dark)",
+      "screen": "Search input fields in dark theme",
+      "position_hint": "Inside search box, left side",
+      "action": "Visual indicator for search field",
+      "icon_file": "magnify_dark.png",
+      "prefer_template": true,
+      "match_threshold": 0.7
+    },
+    {
+      "id": "magnify_white",
+      "element_label": "Search Magnifying Glass (White)",
+      "screen": "Search input fields in light theme",
+      "position_hint": "Inside search box, left side",
+      "action": "Visual indicator for search field",
+      "icon_file": "magnify_white.png",
+      "prefer_template": true,
+      "match_threshold": 0.7
     }
   ]
 }

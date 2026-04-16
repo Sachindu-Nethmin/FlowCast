@@ -614,7 +614,59 @@
     "URL of the target service:": "This is the sub-label for the Url field. Use it as an anchor to find the input box directly below it.",
     "Path": "Smart input field for URL path. Often has a 'Path segment' sub-label.",
     "Path*": "Same as 'Path' field.",
-    "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label."
+    "Return expression": "Text input field in the return node configuration. Located to the RIGHT of the 'Return expression' label.",
+    "Database Name": {
+      "label": "Database Name",
+      "anchor_label": "Database",
+      "note": "Standard text input for database names. Often maps to 'Database' label in older workflows."
+    },
+    "Database": {
+      "label": "Database",
+      "anchor_label": "Database",
+      "note": "Alias for Database Name field in the database connection form."
+    },
+    "Host": {
+      "label": "Host",
+      "anchor_label": "Host",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "Host field in database connection forms. Tight search region prevents picking up wrong contours."
+    },
+    "Port": {
+      "label": "Port",
+      "anchor_label": "Port",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "Port field in database connection forms. Tight search region prevents picking up wrong contours."
+    },
+    "Database": {
+      "label": "Database",
+      "anchor_label": "Database",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "Database field in database connection forms."
+    },
+    "Username": {
+      "label": "Username",
+      "anchor_label": "User",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "Username field — UI label is 'User'. Do NOT use placeholder matching: causes false positives."
+    },
+    "User": {
+      "label": "User",
+      "anchor_label": "User",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "User field in database connection forms. Do NOT use placeholder matching: causes false positives."
+    },
+    "Password": {
+      "label": "Password",
+      "anchor_label": "Password",
+      "search_region": { "height": 70, "x_offset_left": 0, "x_offset_right": 800 },
+      "click_offset": { "x": 300, "y": 35 },
+      "note": "Password field in database connection forms. Do NOT use placeholder matching: causes false positives."
+    }
   },
   "field_placeholders": {
     "description": "Placeholder or pre-filled text visible inside each input field. OCR can find this text to locate the input box directly.",
@@ -630,13 +682,21 @@
       "Resource Path": "/path",
       "Listener port": "8080",
       "Base URL": "Enter base URL",
-      "Connection Name": "Enter connection name",
+      "Connection Name": "Database connection name",
       "Response Variable": "Enter variable name",
       "Group Id": "com.microintegrator.projects",
       "Version": "1.0.0",
       "Folder Name": "Enter folder name",
       "Url": "Enter URL",
-      "Path": "/directory-path"
+      "Path": "/directory-path",
+      "Instructions": "Detailed instructions for the agent",
+      "Host": "localhost",
+      "Port": "3306",
+      "Database": "Name of the database to connect",
+      "Database Name": "Name of the database to connect",
+      "User": "Database username",
+      "Username": "Database username",
+      "Password": "Database user password"
     }
   },
   "autofocus_fields": {
@@ -726,5 +786,19 @@
     "Body",
     "Url",
     "Url*"
+  ],
+  "no_set_button_fields": [
+    "Instructions",
+    "Host",
+    "Port",
+    "Database",
+    "Database Name",
+    "User",
+    "Username",
+    "Password",
+    "Connection Name"
+  ],
+  "exact_match_elements": [
+    "Get rows from inventory table"
   ]
 }

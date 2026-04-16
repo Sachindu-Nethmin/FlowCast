@@ -21,19 +21,26 @@ def _get_screen_index() -> str:
     if _screen_idx is not None:
         return _screen_idx
     try:
+        # Run ffmpeg to list devices
         result = subprocess.run(
             ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
             capture_output=True, text=True, timeout=5,
         )
-        for line in result.stderr.splitlines():
-            if "screen" in line.lower() or "capture screen" in line.lower():
+        # Device list is in stderr
+        for line in (result.stderr or "").splitlines():
+            line_low = line.lower()
+            # Look for devices labeled as 'screen' or 'capture'
+            if "screen" in line_low or "capture screen" in line_low:
                 m = re.search(r'\[(\d+)\]', line)
                 if m:
                     _screen_idx = m.group(1)
+                    print(f"[recorder] Auto-detected screen index: {_screen_idx}")
                     return _screen_idx
-    except Exception:
-        pass
-    _screen_idx = "2"
+    except Exception as e:
+        print(f"[recorder] Warning: failed to auto-detect screen index: {e}")
+    
+    # Fallback to "0" if auto-detection fails (based on recent diagnostic)
+    _screen_idx = "0"
     return _screen_idx
 
 
@@ -63,14 +70,30 @@ def start(name: str, output_dir: Path) -> None:
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
         str(_mov_path),
     ]
-    _stderr_tmp = tempfile.TemporaryFile()
-    _proc = subprocess.Popen(
-        cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=_stderr_tmp,
-    )
-    time.sleep(0.8)
-    if _proc.poll() is not None:
+    for attempt in range(3):
+        # Re-query device index on every attempt — cached index may become stale
+        if attempt > 0:
+            _screen_idx = None
+        current_idx = _get_screen_index()
+        i_pos = cmd.index("-i")
+        cmd[i_pos + 1] = f"{current_idx}:none"
+
+        _stderr_tmp = tempfile.TemporaryFile()
+        _proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=_stderr_tmp,
+        )
+        time.sleep(1.0)
+        if _proc.poll() is None:
+            break  # ffmpeg is running — recording started successfully
         _stderr_tmp.seek(0)
         err = _stderr_tmp.read().decode(errors="replace")
+        _stderr_tmp.close()
+        _proc = None
+        if "Invalid device index" in err and attempt < 2:
+            wait = 3.0 if attempt == 0 else 5.0
+            print(f"[recorder] AVFoundation device unavailable, retrying in {wait}s (attempt {attempt + 1}/3)...")
+            time.sleep(wait)
+            continue
         raise RuntimeError(f"Recorder exited early:\n{err}")
     return _screen_idx
 
@@ -119,6 +142,11 @@ def stop() -> Path:
         _proc.stdin.flush()
     except (BrokenPipeError, OSError):
         pass
+    finally:
+        try:
+            _proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
 
     if _proc is None:
         raise RuntimeError("Recorder not running")
@@ -150,6 +178,11 @@ def stop() -> Path:
     _proc = None
     _mov_path = None
     _stderr_tmp = None
+
+    # Give macOS AVFoundation time to release the screen capture device before
+    # the next recording can start — without this pause the next ffmpeg launch
+    # gets "Invalid device index" because the device is still held.
+    time.sleep(1.5)
 
     if rc != 0:
         raise RuntimeError(
