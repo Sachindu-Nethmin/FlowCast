@@ -290,6 +290,26 @@ def _parse_steps_from_md(content: str) -> list[tuple[str, str, str]]:
     return results
 
 
+def instruction_lines(raw: str) -> list[str]:
+    """Return display-ready instruction lines from a step's raw Markdown block.
+
+    Strips list markers (``1. `` / ``- `` / ``* ``), HTML tags, and inline
+    Markdown formatting (``**bold**``, `` `code` ``).  Used by TraceFlow and
+    the FlowCast Studio preview to render human-readable checklist items.
+    """
+    lines = []
+    for raw_line in raw.splitlines():
+        line = re.sub(r'^\s*\d+\.\s+', '', raw_line).strip()
+        line = re.sub(r'^\s*[-*+]\s+', '', line).strip()
+        line = re.sub(r'<[^>]+>', '', line).strip()
+        line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+        line = re.sub(r'`([^`]+)`', r'\1', line)
+        line = re.sub(r'\*([^*]+)\*',  r'\1', line)
+        if line and not line.startswith('<'):
+            lines.append(line)
+    return lines
+
+
 def parse_markdown(path: str | Path) -> list[Step]:
     content = Path(path).read_text()
     raw_steps = _parse_steps_from_md(content)

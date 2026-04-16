@@ -218,11 +218,15 @@ def main() -> None:
         sys.exit(1)
 
     only_step: int | None = None
+    from_step: int | None = None   # --from-step N  → record steps N, N+1, …
     md_path:   Path | None = None
     i = 0
     while i < len(args):
         if args[i] == "--step" and i + 1 < len(args):
             only_step = int(args[i + 1])
+            i += 2
+        elif args[i] == "--from-step" and i + 1 < len(args):
+            from_step = int(args[i + 1])
             i += 2
         else:
             md_path = Path(args[i])
@@ -255,6 +259,8 @@ def main() -> None:
     saved_gifs: list[Path] = []
     for idx, step in enumerate(steps, 1):
         if only_step is not None and idx != only_step:
+            continue
+        if from_step is not None and idx < from_step:
             continue
         is_last = (idx == len(steps))
         result = _run_step(idx, step, out_dir, theme, is_last_step=is_last)
