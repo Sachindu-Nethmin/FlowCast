@@ -323,6 +323,60 @@ def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
     return False
 
 
+def _get_card_center(arr: np.ndarray, bbox, scale: float = 1.0) -> tuple[int, int] | None:
+    """Return the logical center (x, y) of the card container enclosing bbox.
+
+    Uses the same Canny+contour logic as _is_contained_in_card but returns
+    the center of the smallest qualifying rect instead of a boolean.
+    Returns None if no card boundary is found.
+
+    Cards are grid items in pickers (e.g., Automation, HTTP Service, API).
+    The card is a larger clickable container with icon + title text inside.
+    This function finds that container and returns its center, so clicks land
+    on the card itself, not just on the title text label.
+    """
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    is_light = gray.mean() > 127
+    # More sensitive thresholds than _is_contained_in_card to catch faint borders
+    edges = cv2.Canny(blurred, 20 if is_light else 30, 80 if is_light else 120)
+
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    pt = (int(np.mean(xs)), int(np.mean(ys)))
+    text_area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    h_img, w_img = arr.shape[:2]
+
+    candidates = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w < 80 or h < 40:
+            continue
+        if w > 0.5 * w_img or h > 0.5 * h_img:
+            continue  # exclude full-panel rectangles
+        aspect = w / float(h)
+        if not (0.6 < aspect < 6.0):
+            continue
+        if not (x < pt[0] < x + w and y < pt[1] < y + h):
+            continue
+        if text_area > 0 and (w * h) < 1.5 * text_area:
+            continue  # too small — likely just the text bbox itself
+        candidates.append((w * h, x, y, w, h))
+
+    if not candidates:
+        return None
+
+    # Pick the smallest qualifying rect (the card, not the surrounding panel)
+    candidates.sort(key=lambda c: c[0])
+    _, x, y, w, h = candidates[0]
+    cx = int((x + w / 2) / scale)
+    cy = int((y + h / 2) / scale)
+    return (cx, cy)
+
+
 def _alpha_target(target: str) -> str:
     """Return the most distinctive word from target for OCR anchor matching.
 
@@ -390,6 +444,11 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             is_card = _is_contained_in_card(arr, bbox)
             card_score = 30 if is_card else 0
 
+            # For card elements, click the card center — not the text label center
+            # Cards are grid items (Automation, HTTP Service, API) where the full card is clickable
+            card_center = _get_card_center(arr, bbox, scale=scale) if is_card else None
+            pos = card_center if card_center else (int(cx_img / scale), int(cy_img / scale))
+
             # Blue Check: Highlighter for active elements
             is_blue = _is_blue_background(arr, bbox)
             blue_score = 10 if is_blue else 0
@@ -405,7 +464,7 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
 
             total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
             candidates.append({
-                "pos": (int(cx_img / scale), int(cy_img / scale)),
+                "pos": pos,
                 "score": total_score,
                 "bbox": bbox,
                 "text": text,
