@@ -1,4 +1,9 @@
 {
+  "exact_match_elements": [
+    "Integration",
+    "Create",
+    "Browse"
+  ],
   "screens": {
     "welcome": {
       "name": "Welcome Screen",
@@ -21,7 +26,7 @@
         { "label": "Create Integration", "type": "button", "style": "primary", "position": "bottom-right submit", "action": "Create the project", "hint": "Primary colored button at bottom right. Label changes to 'Create Workspace' when workspace mode is on." },
         { "label": "Create Workspace", "type": "button", "style": "primary", "position": "bottom-right submit (workspace mode)", "action": "Create the workspace project" },
         { "label": "Project Structure", "type": "collapsible_section", "position": "optional config area, first collapsible", "action": "Expand/collapse workspace options" },
-        { "label": "Package Information", "type": "collapsible_section", "position": "optional config area, second collapsible", "action": "Expand/collapse package fields" }
+        { "label": "Advanced Configuration", "type": "collapsible_section", "position": "optional config area, below form fields", "action": "Expand/collapse organization, package, and version fields" }
       ],
       "fields": [
         {
@@ -142,18 +147,34 @@
         },
         {
           "label": "Organization Name",
-          "type": "text",
+          "type": "text_or_dropdown",
           "placeholder": null,
           "default_value": null,
           "autofocus": false,
           "required": false,
           "tab_order": 9,
-          "screen_position": "Inside expanded 'Package Information' collapsible section, first field",
+          "screen_position": "Inside expanded 'Advanced Configuration' or 'Package Information' section, first field",
           "can_type_without_click": false,
-          "note": "Must first click 'Package Information' header to expand",
+          "note": "Can be a text field or dropdown list. Shows autocomplete suggestions for available organizations. Must first click section header to expand.",
           "helper_text": "The organization that owns this Ballerina package.",
           "conditional": true,
-          "condition": "Package Information section is expanded"
+          "condition": "Advanced Configuration section is expanded"
+        },
+        {
+          "label": "Project Handle",
+          "type": "text",
+          "placeholder": "project-handle",
+          "default_value": null,
+          "autofocus": false,
+          "required": false,
+          "tab_order": 10,
+          "screen_position": "Inside expanded 'Advanced Configuration' section, below Organization Name",
+          "can_type_without_click": false,
+          "note": "Cloud projects only. Auto-suggested based on integration name. Alphanumeric and hyphens only.",
+          "validation": "/^[a-zA-Z0-9_-]*$/",
+          "helper_text": "Unique handle for this project in the cloud",
+          "conditional": true,
+          "condition": "Advanced Configuration section is expanded and cloud mode is enabled"
         },
         {
           "label": "Package Version",
@@ -162,12 +183,12 @@
           "default_value": null,
           "autofocus": false,
           "required": false,
-          "tab_order": 10,
-          "screen_position": "Inside 'Package Information' section, below Organization Name",
+          "tab_order": 11,
+          "screen_position": "Inside 'Advanced Configuration' or 'Package Information' section, below Organization Name or Project Handle",
           "can_type_without_click": false,
           "helper_text": "Version of the Ballerina package.",
           "conditional": true,
-          "condition": "Package Information section is expanded"
+          "condition": "Advanced Configuration section is expanded"
         }
       ]
     },
@@ -519,39 +540,46 @@
     "Package Name": "Second text input, auto-populated from Integration Name. Below Integration Name.",
     "Select Path": "Directory selector label above the path input + Browse button combo. Has placeholder 'Enter path or browse to select a folder...'",
     "Project Structure": "Collapsible section header with folder icon, in optional config area. Click to expand.",
+    "Advanced Configuration": "Collapsible section header below form fields. Contains organization, package name, version, and project handle fields. Click to expand.",
     "Package Information": "Collapsible section header with package icon, below Project Structure. Click to expand.",
     "Create as workspace": "Checkbox inside expanded Project Structure section",
     "Workspace Name": "Text field with placeholder 'Enter workspace name', appears after checking 'Create as workspace'",
     "Standard Integration (Default)": "First radio button in Project Type selector inside Project Structure section",
     "Library Project": "Second radio button in Project Type selector inside Project Structure section",
-    "Organization Name": "Text field inside Package Information section, no placeholder",
-    "Package Version": "Text field inside Package Information section, placeholder '0.1.0'",
+    "Organization Name": "Text field or dropdown inside Advanced Configuration section. Autocomplete suggestions for available organizations. No placeholder.",
+    "Project Handle": "Text field inside Advanced Configuration section, placeholder 'project-handle'. Alphanumeric and hyphens only. Auto-suggested based on integration name.",
+    "Package Version": "Text field inside Advanced Configuration section, placeholder '0.1.0'",
     "WSO2 Integrator: MI runtime version": "Dropdown in MI creation form, auto-filled with latest version",
     "Group Id": "Text field in MI Advanced Options, default 'com.microintegrator.projects'",
     "Artifact Id": "Text field in MI Advanced Options, auto-populated from Integration Name",
     "Version": "Text field in MI Advanced Options, default '1.0.0'",
     "Folder Name": "Text field in multi-project configure form, placeholder 'Enter folder name', auto-focused when visible",
+    "Integration": "Item in the left sidebar project explorer (under the project name in the tree view). Appears as a clickable label. When clicked, opens the Integration design view where '+ Add Artifact' button is located. NOT the help text mentioning 'integrations'.",
+    "+ Add Artifact": "Blue button in the design canvas view with a plus icon prefix. Located in the center-right area of the canvas, near the top. Opens the artifact picker to select artifact types (Automation, HTTP Service, API). If not found by OCR, check that you're in the Integration design view.",
     "Add Artifact": "Button in the design canvas view after a project is created. Usually prominent in the center or top of the canvas.",
     "Automation": {
       "label": "Automation",
       "type": "card",
       "position": "Add Artifact picker panel — center grid",
-      "icon": "blue background or blue icon",
-      "note": "Card/option in the Add Artifact picker. Click the card (not just the text). OCR finds the text label, click center of card. Do NOT match text in the file tree or breadcrumbs."
+      "icon": "automation-artifact",
+      "click_offset": { "x": -30, "y": -20 },
+      "note": "Card in the Add Artifact picker. Detected via icon template matching. Click offset moves from text center to card center."
     },
     "HTTP Service": {
       "label": "HTTP Service",
       "type": "card",
       "position": "Add Artifact picker panel — center grid",
-      "icon": "multicolor or service icon",
-      "note": "Card/option in the Add Artifact picker. Click the entire card (not just the text)."
+      "icon": "http-service-artifact",
+      "click_offset": { "x": -40, "y": -20 },
+      "note": "Card in the Add Artifact picker. Detected via icon template matching. Click offset moves from text center to card center."
     },
     "API": {
       "label": "API",
       "type": "card",
       "position": "Add Artifact picker panel — center grid",
-      "icon": "multicolor or API icon",
-      "note": "Card/option in the Add Artifact picker. Click the entire card (not just the text)."
+      "icon": "api-artifact",
+      "click_offset": { "x": -30, "y": -20 },
+      "note": "Card in the Add Artifact picker. Detected via icon template matching. Click offset moves from text center to card center."
     },
     "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
     "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
@@ -710,7 +738,8 @@
       "Database Name": "Name of the database to connect",
       "User": "Database username",
       "Username": "Database username",
-      "Password": "Database user password"
+      "Password": "Database user password",
+      "Project Handle": "project-handle"
     }
   },
   "autofocus_fields": {

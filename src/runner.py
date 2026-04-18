@@ -280,7 +280,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
     if kind == "search":
         # Find the search input placeholder by field_target label
         from src.detector import find_search_field
-        result = find_search_field(_screenshot(), action["field_target"])
+        result = find_search_field(_screenshot(), action["field_target"], hint=action.get("hint"))
         if result:
             return {**action, "x": result[0], "y": result[1]}
         # Fallback: try find_element for the placeholder text
@@ -396,7 +396,7 @@ def fire(action: dict[str, Any]) -> None:
             # No coords — use find_search_field which tries the magnify icon first
             from src.detector import find_search_field
             field_label = action.get("field_target", "Search")
-            result = find_search_field(_screenshot(), field_label)
+            result = find_search_field(_screenshot(), field_label, hint=action.get("hint"))
             if result:
                 sx, sy = result
                 pyautogui.moveTo(sx, sy, duration=0.2)

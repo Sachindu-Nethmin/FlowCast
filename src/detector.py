@@ -285,39 +285,49 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
 
 def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
     """Detect if the element is inside a WSO2 'ButtonCard' container.
-    
-    Identifies rectangles with ~4px border-radius and specific aspect ratios (1:1 or 4:1).
+
+    WSO2 artifact picker cards (Automation, AI Chat Agent, HTTP Service, etc.) are
+    thin, wide rounded rectangles:
+      - Logical pixel size: ~28px tall × ~238px wide  → aspect ratio ~8.5
+      - Physical (Retina 2x):  ~56px tall × ~476px wide → aspect ratio ~8.5
+
+    Uses theme-aware Canny thresholds — dark mode cards have subtle borders.
     """
     import cv2
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-    edges = cv2.Canny(blurred, 30, 150)
-    
+    is_light = gray.mean() > 127
+    # Dark Mode: borders are subtle (low contrast) — use lower thresholds.
+    # Light Mode: borders are higher contrast — higher thresholds are fine.
+    edges = cv2.Canny(blurred, 10 if is_light else 15, 60 if is_light else 80)
+
     xs = [p[0] for p in bbox]
     ys = [p[1] for p in bbox]
     pt = (int(np.mean(xs)), int(np.mean(ys)))
-    
+
     contours, hierarchy = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None: return False
-    
+
     for i, cnt in enumerate(contours):
-        # 1. Geometry: Perimeter and Area
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        
-        # 2. Rectangularity: Approx size for cards in WSO2 UI
+        # Rectangularity: Approx size for cards in WSO2 UI
         x, y, w, h = cv2.boundingRect(cnt)
-        if w < 100 or h < 40: continue
-        
+        # Minimum size: cards are at least 80px wide and 20px tall (physical pixels)
+        if w < 80 or h < 20: continue
+
         aspect_ratio = w / float(h)
-        # Large Card (e.g. Automation) is typically wide (~4:1)
-        # Small Card (Square) is ~1:1
-        is_card_shape = (0.8 < aspect_ratio < 1.2) or (2.5 < aspect_ratio < 6.0)
-        
+        # WSO2 artifact picker cards are WIDE and THIN (~8.5:1 aspect ratio).
+        # Square Card  (welcome screen):   ~1:1   → (0.8 – 1.2)
+        # Medium Card  (3-col row):         ~5–6:1 → (4.0 – 6.5)
+        # Wide Card    (1 or 2-col row):    ~8–10:1→ (6.5 – 12.0)
+        is_card_shape = (
+            (0.8 < aspect_ratio < 1.2) or    # square cards (welcome screen)
+            (4.0 < aspect_ratio < 12.0)        # wide/medium picker cards (main target)
+        )
+
         if is_card_shape:
-            # 3. Containment Check
+            # Containment Check
             if x < pt[0] < x + w and y < pt[1] < y + h:
-                # 4. Complexity Check: Buttons/Cards usually have internal icons/text (children)
+                # Complexity Check: Buttons/Cards usually have internal icons/text (children)
                 has_child = hierarchy[0][i][2] != -1
                 return True if has_child else False
     return False
@@ -339,8 +349,9 @@ def _get_card_center(arr: np.ndarray, bbox, scale: float = 1.0) -> tuple[int, in
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     is_light = gray.mean() > 127
-    # More sensitive thresholds than _is_contained_in_card to catch faint borders
-    edges = cv2.Canny(blurred, 20 if is_light else 30, 80 if is_light else 120)
+    # More sensitive thresholds than _is_contained_in_card to catch faint borders.
+    # Light Mode (gray.mean() > 127) requires even lower thresholds for subtle cards.
+    edges = cv2.Canny(blurred, 10 if is_light else 30, 60 if is_light else 120)
 
     xs = [p[0] for p in bbox]
     ys = [p[1] for p in bbox]
@@ -353,12 +364,17 @@ def _get_card_center(arr: np.ndarray, bbox, scale: float = 1.0) -> tuple[int, in
     candidates = []
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if w < 80 or h < 40:
+        # Minimum size: cards are at least 80px wide and 20px tall (physical pixels).
+        # WSO2 artifact picker cards ~56px tall (physical) at 2x Retina.
+        if w < 80 or h < 20:
             continue
-        if w > 0.5 * w_img or h > 0.5 * h_img:
+        if w > 0.8 * w_img or h > 0.5 * h_img:
             continue  # exclude full-panel rectangles
         aspect = w / float(h)
-        if not (0.6 < aspect < 6.0):
+        # WSO2 picker cards are WIDE and THIN:
+        #   Square (welcome screen):    ~1:1   → 0.6 – 1.4
+        #   Wide picker cards:          ~8.5:1 → 4.0 – 12.0
+        if not (0.6 < aspect < 1.4 or 4.0 < aspect < 12.0):
             continue
         if not (x < pt[0] < x + w and y < pt[1] < y + h):
             continue
@@ -411,6 +427,10 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
     _kb_data = json.loads(_kb_path.read_text()) if _kb_path.exists() else {}
     exact_match_elements = set(e.lower() for e in _kb_data.get("exact_match_elements", []))
     require_exact = target.lower() in exact_match_elements
+    # Check if this target is KB-declared as a card (e.g. "Automation", "HTTP Service")
+    _kb_hints = _kb_data.get("element_hints", {})
+    _kb_entry_target = _kb_hints.get(target, {})
+    is_kb_card = (isinstance(_kb_entry_target, dict) and _kb_entry_target.get("type") == "card")
 
     clean_target = _alpha_target(target)
     candidates: list[dict] = []
@@ -440,12 +460,13 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             dist_from_v_center = abs(cy_img - h/2) / (h/2)
             centrality_score = (15 if in_workspace else 0) + (10 * (1 - dist_from_v_center))
 
-            # Card Check: Professional UI cards have higher score
+            # Card Check: Visually confirmed cards (Canny detects surrounding box) get a big bonus.
+            # Do NOT set is_card=True for ALL hits just because KB says it's a card type —
+            # that would boost the section heading "Automation" equally with the card button.
             is_card = _is_contained_in_card(arr, bbox)
-            card_score = 30 if is_card else 0
+            card_score = 80 if is_card else 0
 
-            # For card elements, click the card center — not the text label center
-            # Cards are grid items (Automation, HTTP Service, API) where the full card is clickable
+            # For visually-confirmed card elements, click the card center — not the text label center.
             card_center = _get_card_center(arr, bbox, scale=scale) if is_card else None
             pos = card_center if card_center else (int(cx_img / scale), int(cy_img / scale))
 
@@ -459,8 +480,9 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             exact_score = 50 if is_exact else 0
             case_bonus = 20 if is_case_match else 0
 
-            # Sidebar Suppression: Penalize the leftmost 30% of the screen
-            sidebar_penalty = -50 if min(xs) < (w * 0.30) else 0
+            # Sidebar Suppression: Penalize the leftmost 30% of the screen heavily
+            # If the hit is in the explorer tree, it should never beat a central picker card.
+            sidebar_penalty = -150 if min(xs) < (w * 0.30) else 0
 
             total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
             candidates.append({
@@ -468,6 +490,7 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
                 "score": total_score,
                 "bbox": bbox,
                 "text": text,
+                "cy_img": cy_img,
                 "is_card": is_card,
                 "is_blue": is_blue,
                 "is_exact": is_exact,
@@ -475,7 +498,32 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             })
 
     if candidates:
-        # Heavily prioritize cards in the workspace
+        if is_kb_card:
+            # --- KB-card special selection logic ---
+            # In the WSO2 "Add Artifact" picker, the clickable card button always appears BELOW its
+            # section heading. Both share the same text (e.g. "Automation"), but:
+            #   • Section heading: plain text, not enclosed in a rectangle → is_card=False
+            #   • Card button: enclosed in a dark rounded rectangle with icon → is_card=True
+            #
+            # Step 1: Prefer visually-confirmed card hits (is_card=True) in the workspace.
+            visual_cards = [c for c in candidates if c["is_card"] and c["score"] > -100]
+            if visual_cards:
+                visual_cards.sort(key=lambda c: c["score"], reverse=True)
+                best = visual_cards[0]
+                print(f"[detector] KB-card '{target}': Using VISUAL card hit at {best['pos']} ({best['debug']})")
+                return best["pos"]
+
+            # Step 2: No visual card found (Canny missed borders in dark mode).
+            # Among non-sidebar candidates, pick the BOTTOM-MOST (highest cy_img).
+            # The card button is always BELOW the section heading — lowest position = the card.
+            non_sidebar = [c for c in candidates if c["score"] > -100]
+            if non_sidebar:
+                non_sidebar.sort(key=lambda c: c["cy_img"], reverse=True)  # highest y = lowest on screen
+                best = non_sidebar[0]
+                print(f"[detector] KB-card '{target}': Canny missed borders. Picking bottom-most hit at {best['pos']} ({best['debug']})")
+                return best["pos"]
+
+        # Standard (non-card) element — sort by score, highest wins
         candidates.sort(key=lambda c: c["score"], reverse=True)
         best = candidates[0]
         if len(candidates) > 1:
@@ -2429,41 +2477,52 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
 
 
 
-def _find_search_by_magnify_icon(screenshot: Image.Image) -> tuple[int, int] | None:
+def _find_search_by_magnify_icon(screenshot: Image.Image, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
     """Find the magnifying glass icon and return coordinates to its right.
     
     This strategy works when the search field is identified by a magnifying icon
     rather than literal 'Search' text.
     """
-    scale = _scale(screenshot)
-    h_l = int(screenshot.height / scale)
-    w_l = int(screenshot.width / scale)
-    # Skip the top 10% of the screen where the global IDE search bar resides.
-    top_cutoff = int(h_l * 0.10)
-
     # 1. Theme-aware template matching for the magnify icon
+    # Templates are 'magnify_dark' and 'magnify_white'
     for target in ["magnify_dark", "magnify_white"]:
-        pos = _find_template(screenshot, target, search_region=(0, top_cutoff, w_l, h_l))
+        pos = _find_template(screenshot, target, search_region=search_region)
         if pos:
-            # Click offset: to the right of the icon (+20 pixels) to focus the input field
+            # Click offset: to the right of the icon (+30 pixels) to focus the input field
             cx, cy = pos
-            return (cx + 20, cy)
+            print(f"[detector] Magnify icon found for '{target}' at {pos}")
+            return (cx + 30, cy)
             
     return None
 
 
-def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> tuple[int, int] | None:
+def find_search_field(screenshot: Image.Image, field_label: str = "Search", hint: str | None = None) -> tuple[int, int] | None:
     """Locate a search input box by its placeholder text or label.
 
     Strategy:
-      1. OCR the screenshot for the exact placeholder text (e.g. 'Search', 'Search connectors').
-      2. If found, return the center of the detected region — that IS the clickable input.
-      3. Fallback: look for a contour-shaped search box in the upper half of the screen.
-
-    Returns logical (x, y) to click, or None if not found.
+      1. Use hints to restrict search area (e.g. 'right panel').
+      2. Try magnifying icon strategy first (template matching).
+      3. OCR the screenshot for the exact placeholder text.
+      4. Fallback: look for a contour-shaped search box.
     """
+    scale = _scale(screenshot)
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
+
+    # Define search region based on hint or default (excluding top 10% bar)
+    search_region = (0, int(h_l * 0.10), w_l, int(h_l * 0.6))  # default upper half
+    
+    if hint and "right panel" in hint.lower():
+        # Right 30% of screen
+        search_region = (int(w_l * 0.7), int(h_l * 0.10), w_l, h_l)
+        print(f"[detector] Restricted search for '{field_label}' to right panel region: {search_region}")
+    elif hint and "left panel" in hint.lower():
+        # Left 30% of screen
+        search_region = (0, int(h_l * 0.10), int(w_l * 0.3), h_l)
+        print(f"[detector] Restricted search for '{field_label}' to left panel region: {search_region}")
+
     # 1. Try magnifying icon strategy first (most reliable for icon-only search bars)
-    icon_pos = _find_search_by_magnify_icon(screenshot)
+    icon_pos = _find_search_by_magnify_icon(screenshot, search_region=search_region)
     if icon_pos:
         print(f"[detector] Search field '{field_label}' found via magnify icon at {icon_pos}")
         return icon_pos

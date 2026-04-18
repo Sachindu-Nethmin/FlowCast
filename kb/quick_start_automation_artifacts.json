@@ -1,0 +1,449 @@
+{
+  "version": 1,
+  "workflow": "quick-start-automation",
+  "steps": {
+    "step_1_create_project": {
+      "title": "Create the project",
+      "artifacts": {
+        "integration_name_field": {
+          "type": "input_field",
+          "label": "Integration Name",
+          "placeholder": "Enter an integration name",
+          "detection_methods": [
+            {
+              "method": "label_offset",
+              "strategy": "ocr_corrected",
+              "label_text": "Integration Name",
+              "confidence_threshold": 0.75
+            },
+            {
+              "method": "placeholder",
+              "placeholder_text": "Enter an integration name",
+              "confidence_threshold": 0.70
+            },
+            {
+              "method": "visual_pattern",
+              "description": "Light gray input box below Integration Name label",
+              "hsv_range": {
+                "h": [0, 255],
+                "s": [0, 30],
+                "v": [200, 255]
+              }
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Focus the field"},
+            {"action": "select_all", "description": "Clear existing text"},
+            {"action": "type", "value": "Get Started", "description": "Type integration name"}
+          ],
+          "expected_location": {"x": 320, "y": 120}
+        },
+        "project_name_field": {
+          "type": "input_field",
+          "label": "Project Name",
+          "placeholder": "Enter project name",
+          "detection_methods": [
+            {
+              "method": "label_offset",
+              "strategy": "ocr_corrected",
+              "label_text": "Project Name",
+              "confidence_threshold": 0.75
+            },
+            {
+              "method": "template",
+              "template_asset": "input.svg",
+              "threshold": 0.60,
+              "description": "Match input field SVG template"
+            },
+            {
+              "method": "visual_pattern",
+              "description": "Light gray input box",
+              "hsv_range": {
+                "h": [0, 255],
+                "s": [0, 30],
+                "v": [200, 255]
+              }
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Focus the field"},
+            {"action": "select_all", "description": "Clear existing text"},
+            {"action": "type", "value": "Automation", "description": "Type project name"}
+          ],
+          "expected_location": {"x": 320, "y": 200}
+        },
+        "browse_button": {
+          "type": "button",
+          "label": "Browse",
+          "detection_methods": [
+            {
+              "method": "ocr_label",
+              "text": "Browse",
+              "confidence_threshold": 0.80
+            },
+            {
+              "method": "template",
+              "template_asset": "button_browse.svg",
+              "threshold": 0.65
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Open directory selector"}
+          ],
+          "expected_location": {"x": 450, "y": 260}
+        },
+        "create_integration_button": {
+          "type": "button",
+          "label": "Create Integration",
+          "description": "Primary action button at bottom of form - BLUE color, exclusive from other buttons",
+          "detection_methods": [
+            {
+              "method": "region_scan",
+              "region": "form_buttons",
+              "search_text": "Create Integration",
+              "confidence_threshold": 0.85,
+              "description": "Search bottom form area only (avoids Advanced Settings confusion)"
+            },
+            {
+              "method": "blue_button",
+              "description": "Blue button in lower portion of form",
+              "search_region": "bottom_half",
+              "min_y": 400,
+              "confidence_threshold": 0.75
+            },
+            {
+              "method": "ocr_label",
+              "text": "Create Integration",
+              "confidence_threshold": 0.90,
+              "position_constraint": {"min_y": 400},
+              "description": "Direct text match in button area, high confidence to avoid false positives"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Create the integration project"}
+          ],
+          "expected_location": {"x": 400, "y": 500}
+        }
+      }
+    },
+    "step_2_add_automation_artifact": {
+      "title": "Add an automation artifact",
+      "artifacts": {
+        "get_started_selector": {
+          "type": "project_selector",
+          "label": "Get Started",
+          "detection_methods": [
+            {
+              "method": "ocr_label",
+              "text": "Get Started",
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "card_label",
+              "description": "Card with 'Get Started' project name"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Select the Get Started project"}
+          ],
+          "expected_location": {"x": 200, "y": 150}
+        },
+        "add_artifact_button": {
+          "type": "button",
+          "label": "+ Add Artifact",
+          "detection_methods": [
+            {
+              "method": "ocr_label",
+              "text": "Add Artifact",
+              "confidence_threshold": 0.80
+            },
+            {
+              "method": "plus_button",
+              "description": "Button with + icon and 'Add Artifact' text"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Open artifact selector"}
+          ],
+          "expected_location": {"x": 350, "y": 280}
+        },
+        "automation_artifact_card": {
+          "type": "artifact_card",
+          "label": "Automation",
+          "icon": "bi-task",
+          "description": "Automation artifact card with task icon",
+          "detection_methods": [
+            {
+              "method": "card_with_icon",
+              "icon_patterns": ["dark-bi-task.svg", "light-bi-task.svg"],
+              "label_text": "Automation",
+              "threshold": 0.60,
+              "description": "Match task icon with Automation label - theme-aware"
+            },
+            {
+              "method": "ocr_label",
+              "text": "Automation",
+              "confidence_threshold": 0.85,
+              "description": "Fallback: OCR text match only"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Select Automation artifact"}
+          ],
+          "expected_location": {"x": 300, "y": 350}
+        },
+        "create_button": {
+          "type": "button",
+          "label": "Create",
+          "detection_methods": [
+            {
+              "method": "ocr_label",
+              "text": "Create",
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "blue_button",
+              "description": "Blue 'Create' button"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Create the automation artifact"}
+          ],
+          "expected_location": {"x": 400, "y": 450}
+        }
+      }
+    },
+    "step_3_add_logic": {
+      "title": "Add logic",
+      "artifacts": {
+        "plus_button": {
+          "type": "node_button",
+          "label": "+",
+          "description": "Plus button after Start node",
+          "detection_methods": [
+            {
+              "method": "plus_after_node",
+              "anchor_text": "Start",
+              "offset": [50, 0],
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "template",
+              "template_asset": "plus_button.svg",
+              "threshold": 0.65
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Open node panel"}
+          ],
+          "expected_location": {"x": 200, "y": 200}
+        },
+        "call_function_node": {
+          "type": "node_card",
+          "label": "Call Function",
+          "detection_methods": [
+            {
+              "method": "card_with_label",
+              "label_text": "Call Function",
+              "confidence_threshold": 0.80
+            },
+            {
+              "method": "template",
+              "template_asset": "call-function-node.svg",
+              "threshold": 0.65
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Add Call Function node"}
+          ],
+          "expected_location": {"x": 300, "y": 250}
+        },
+        "println_node": {
+          "type": "node_card",
+          "label": "Println",
+          "detection_methods": [
+            {
+              "method": "card_with_label",
+              "label_text": "Println",
+              "confidence_threshold": 0.80
+            },
+            {
+              "method": "template",
+              "template_asset": "println-node.svg",
+              "threshold": 0.65
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Add Println node"}
+          ],
+          "expected_location": {"x": 300, "y": 300}
+        },
+        "initialize_array_node": {
+          "type": "node_card",
+          "label": "Initialize Array",
+          "detection_methods": [
+            {
+              "method": "card_with_label",
+              "label_text": "Initialize Array",
+              "confidence_threshold": 0.80
+            },
+            {
+              "method": "template",
+              "template_asset": "initialize-array-node.svg",
+              "threshold": 0.65
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Add Initialize Array node"}
+          ],
+          "expected_location": {"x": 300, "y": 350}
+        },
+        "values_field": {
+          "type": "input_field",
+          "label": "Values",
+          "placeholder": "Enter values",
+          "detection_methods": [
+            {
+              "method": "label_offset",
+              "label_text": "Values",
+              "confidence_threshold": 0.75
+            },
+            {
+              "method": "visual_pattern",
+              "description": "Input field below Values label",
+              "hsv_range": {
+                "h": [0, 255],
+                "s": [0, 30],
+                "v": [200, 255]
+              }
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Focus the field"},
+            {"action": "type", "value": "[\"Hello World\"]", "description": "Enter array value"}
+          ],
+          "expected_location": {"x": 320, "y": 400}
+        },
+        "save_button": {
+          "type": "button",
+          "label": "Save",
+          "detection_methods": [
+            {
+              "method": "ocr_label",
+              "text": "Save",
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "blue_button",
+              "description": "Blue 'Save' button"
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Save the configuration"}
+          ],
+          "expected_location": {"x": 400, "y": 450}
+        }
+      }
+    },
+    "step_4_run_and_test": {
+      "title": "Run and test",
+      "artifacts": {
+        "run_button": {
+          "type": "button",
+          "label": "Run",
+          "icon": "play.svg",
+          "detection_methods": [
+            {
+              "method": "green_play_button",
+              "description": "Green play button in toolbar"
+            },
+            {
+              "method": "ocr_label",
+              "text": "Run",
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "template",
+              "template_asset": "play-button.svg",
+              "threshold": 0.70
+            }
+          ],
+          "actions": [
+            {"action": "click", "description": "Execute the automation"}
+          ],
+          "expected_location": {"x": 500, "y": 50}
+        },
+        "terminal_output": {
+          "type": "output_text",
+          "label": "Terminal Output",
+          "detection_methods": [
+            {
+              "method": "ocr_text",
+              "search_text": "Hello World",
+              "confidence_threshold": 0.85
+            },
+            {
+              "method": "region_scan",
+              "region": "bottom_terminal",
+              "description": "Scan bottom terminal region for output"
+            }
+          ],
+          "expected_content": "Hello World",
+          "expected_location": {"x": 300, "y": 550}
+        }
+      }
+    }
+  },
+  "detection_strategies": {
+    "label_offset": {
+      "description": "Find input field by OCR label and fixed pixel offset below",
+      "offset_y": 30,
+      "offset_x": 0
+    },
+    "placeholder": {
+      "description": "Find input field by placeholder text via OCR inside the field",
+      "method": "ocr_inside_region"
+    },
+    "visual_pattern": {
+      "description": "Detect elements by HSV color range (light gray inputs, blue buttons, etc.)",
+      "method": "hsv_detection"
+    },
+    "ocr_label": {
+      "description": "Find elements by OCR text matching",
+      "method": "ocr_text_detection"
+    },
+    "template": {
+      "description": "Match SVG or image template from assets",
+      "method": "template_matching"
+    },
+    "blue_button": {
+      "description": "Detect blue buttons by HSV color range",
+      "hsv_range": {
+        "h": [100, 135],
+        "s": [60, 255],
+        "v": [60, 255]
+      }
+    },
+    "green_play_button": {
+      "description": "Detect green play button by color and shape",
+      "hsv_range": {
+        "h": [35, 90],
+        "s": [60, 255],
+        "v": [60, 255]
+      }
+    },
+    "plus_after_node": {
+      "description": "Find + button relative to anchor node",
+      "anchor_search": "ocr_text",
+      "relative_position": "right_of"
+    },
+    "card_with_icon": {
+      "description": "Find artifact card by icon template and label",
+      "method": "icon_and_label_match"
+    },
+    "card_with_label": {
+      "description": "Find node card by label text",
+      "method": "ocr_label_detection"
+    }
+  }
+}

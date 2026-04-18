@@ -224,25 +224,36 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                     "value":        m.group(2),
                 })
 
-        # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
+        # ── Search: "Search **X** [from the Y]" or "Search for `Y`" ───────────
         if not line_actions:
-            # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
-            m = re.search(r'search\s+\*\*([^*]+)\*\*\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+            # 1. New pattern: Search **Println** [from the right panel]
+            # Here, the bolded text is the VALUE to search for.
+            m = re.search(r'search\s+\*\*([^*]+)\*\*(?:\s+from\s+(?:the\s+)?([^*]+))?', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action":       "search",
-                    "field_target": m.group(1).strip(),
-                    "value":        m.group(2).strip(),
+                    "field_target": "Search",
+                    "value":        m.group(1).strip(),
+                    "hint":         "panel:" + m.group(2).strip() if m.group(2) else None
                 })
             else:
-                # Without field name: Search for `api_sales_order_srv`
-                m = re.search(r'search\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+                # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
+                m = re.search(r'search\s+\*\*([^*]+)\*\*\s+for\s+`([^`]+)`', line, re.IGNORECASE)
                 if m:
                     line_actions.append({
                         "action":       "search",
-                        "field_target": "Search",
-                        "value":        m.group(1).strip(),
+                        "field_target": m.group(1).strip(),
+                        "value":        m.group(2).strip(),
                     })
+                else:
+                    # Without field name: Search for `api_sales_order_srv`
+                    m = re.search(r'search\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+                    if m:
+                        line_actions.append({
+                            "action":       "search",
+                            "field_target": "Search",
+                            "value":        m.group(1).strip(),
+                        })
 
         actions.extend(line_actions)
 

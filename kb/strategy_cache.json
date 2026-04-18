@@ -12,9 +12,9 @@
       "last_seen": "2026-04-01T12:37:27.578477+00:00"
     },
     "+": {
-      "winner": "ocr_corrected",
+      "winner": "ocr_after_wait",
       "fail_counts": {},
-      "last_seen": "2026-04-13T05:04:21.747639+00:00"
+      "last_seen": "2026-04-16T15:22:24.522177+00:00"
     },
     "local files": {
       "winner": "ocr_after_wait",
@@ -45,6 +45,21 @@
       "winner": "ocr_after_wait",
       "fail_counts": {},
       "last_seen": "2026-04-13T06:35:31.429910+00:00"
+    },
+    "automation": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-04-17T20:00:28.603671+00:00"
+    },
+    "advanced configuration": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-04-18T00:00:00.000000+00:00"
+    },
+    "project handle": {
+      "winner": "ocr_after_wait",
+      "fail_counts": {},
+      "last_seen": "2026-04-18T00:00:00.000000+00:00"
     }
   }
 }

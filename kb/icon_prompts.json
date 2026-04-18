@@ -207,6 +207,36 @@
       "icon_file": "magnify_white.png",
       "prefer_template": true,
       "match_threshold": 0.7
+    },
+    {
+      "id": "automation-artifact",
+      "element_label": "Automation",
+      "screen": "add_artifact_picker",
+      "position_hint": "center grid card in artifact picker panel",
+      "action": "Select Automation artifact type",
+      "icon_file": "automation-artifact.png",
+      "prefer_template": true,
+      "match_threshold": 0.55
+    },
+    {
+      "id": "http-service-artifact",
+      "element_label": "HTTP Service",
+      "screen": "add_artifact_picker",
+      "position_hint": "center grid card in artifact picker panel",
+      "action": "Select HTTP Service artifact type",
+      "icon_file": "http-service-artifact.png",
+      "prefer_template": true,
+      "match_threshold": 0.55
+    },
+    {
+      "id": "api-artifact",
+      "element_label": "API",
+      "screen": "add_artifact_picker",
+      "position_hint": "center grid card in artifact picker panel",
+      "action": "Select API artifact type",
+      "icon_file": "api-artifact.png",
+      "prefer_template": true,
+      "match_threshold": 0.55
     }
   ]
 }
