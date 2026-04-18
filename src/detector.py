@@ -619,20 +619,18 @@ def _load_icon_prompts() -> list:
 def _kb_entry(label: str) -> dict | None:
     """Find a field entry in kb/ui_elements.json by label.
 
-    Searches across all screens in the knowledge base.
+    Priority:
+      1. Global element_hints (highest priority - allows global overrides)
+      2. Screen-specific field definitions
+      3. Global field_placeholders
     """
     p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
     if not p.exists():
         return None
     data = json.loads(p.read_text())
     l_target = label.lower().strip()
-    for screen in data.get("screens", {}).values():
-        for field in screen.get("fields", []):
-            l_field = field.get("label", "").lower().strip()
-            if l_field == l_target or (len(l_field) > 3 and l_field in l_target):
-                return field
-                
-    # Fallback to element_hints if no proper field definition found
+
+    # 1. Global element_hints override
     hints = data.get("element_hints", {})
     for hint_label, val in hints.items():
         if hint_label.lower().strip() == l_target:
@@ -640,7 +638,14 @@ def _kb_entry(label: str) -> dict | None:
                 return {**val, "label": hint_label}
             return {"label": hint_label, "hint": val}
 
-    # Check top-level field_placeholders
+    # 2. Screen-specific fields
+    for screen in data.get("screens", {}).values():
+        for field in screen.get("fields", []):
+            l_field = field.get("label", "").lower().strip()
+            if l_field == l_target or (len(l_field) > 3 and l_field in l_target):
+                return field
+                
+    # 3. Global field_placeholders fallback
     fp = data.get("field_placeholders", {}).get("fields", {})
     if label in fp:
         return {"label": label, "placeholder": fp[label]}
@@ -1384,7 +1389,8 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str, exact_only:
                 num_words = len(text.split())
                 # For single words, allow ~16px per character (min 120px) to handle
                 # longer labels like "Database" (~122px on Retina) without rejection.
-                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 100 * num_words
+                # Use 150px per word for multi-word labels to accommodate long strings.
+                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 150 * num_words
                 if bbox_width > max_width:
                     print(f"[detector] Rejecting '{text}' label: bbox too wide ({bbox_width}px > {max_width}px for {num_words} words). Likely OCR artifact.")
                     continue
@@ -1421,7 +1427,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str, exact_only:
                     continue
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
                 num_words = len(text.split())
-                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 100 * num_words
+                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 150 * num_words
                 if bbox_width > max_width:
                     print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > {max_width}px). Likely OCR artifact.")
                     continue
@@ -1864,8 +1870,8 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
             # Validate width to ensure we didn't accidentally merge with the field
             bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
             num_words = len(text.split())
-            # Stricter width allowance (80px for single word labels like 'User')
-            max_width = 80 if num_words == 1 else 100 * num_words
+            # Relaxed width allowance (150px per word)
+            max_width = 120 if num_words == 1 else 150 * num_words
             if bbox_width <= max_width:
                 candidates.append((bbox, bbox_width))
     
@@ -2293,13 +2299,14 @@ def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, in
     if result:
         return result
 
-    # Method 5: Label 30px — find label via OCR, click 30px below label bottom.
-    result = _find_input_by_label_30px(screenshot, field_label)
+    # Method 5: Label-offset fallback: configurable per-field offset from KB.
+    # This MUST run before the blind 30px guess because it relies on explicit KB configuration.
+    result = _find_input_by_label_offset(screenshot, field_label)
     if result:
         return result
 
-    # Label-offset fallback: configurable per-field offset from KB.
-    result = _find_input_by_label_offset(screenshot, field_label)
+    # Method 6: Label 30px — find label via OCR, click 30px below label bottom.
+    result = _find_input_by_label_30px(screenshot, field_label)
     if result:
         return result
 

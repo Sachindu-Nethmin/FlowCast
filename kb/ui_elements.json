@@ -536,7 +536,12 @@
     "Configure": "Settings gear icon button at top-right of welcome screen",
     "Open": "Blue link text after 'Already have a project?' on welcome screen",
     "View all": "Blue link text next to 'Recent projects' header",
-    "Integration Name": "First text input field, auto-focused on BI creation and configure project screens. Click to focus on MI form.",
+    "Integration Name": {
+      "label": "Integration Name",
+      "anchor_label": "Integration Name*",
+      "click_offset": { "x": 50, "y": 20 },
+      "note": "First text input field, auto-focused on BI creation and configure project screens. Click to focus on MI form."
+    },
     "Package Name": "Second text input, auto-populated from Integration Name. Below Integration Name.",
     "Select Path": "Directory selector label above the path input + Browse button combo. Has placeholder 'Enter path or browse to select a folder...'",
     "Project Structure": "Collapsible section header with folder icon, in optional config area. Click to expand.",
@@ -635,7 +640,12 @@
     "Clone Project": "Primary colored button in the cloud project confirmation screen",
     "Back to project list": "Blue link text below the Clone Project button",
     "Sign Out": "Red sign-out icon button in the account popover",
-    "Project Name": "Text input field with placeholder 'Enter a project name' on BI project creation form",
+    "Project Name": {
+      "label": "Project Name",
+      "anchor_label": "Project Name*",
+      "click_offset": { "x": 50, "y": 20 },
+      "note": "Text input field with placeholder 'Enter a project name' on BI project creation form"
+    },
     "Library Name": "Text input field with placeholder 'Enter a library name' on BI library creation form",
     "Create Project": "Primary colored submit button at bottom-right of the BI project creation form",
     "Create Library": "Primary colored submit button at bottom-right of the BI library creation form",
