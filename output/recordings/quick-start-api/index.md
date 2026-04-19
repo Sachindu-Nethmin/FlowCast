@@ -39,7 +39,7 @@
 2. Select **GET**.
 3. Set the **Resource Path** to `greeting`.
 4. Select **Save**.
-5. Select **+** inside the resource flow.
+5. Select **+**.
 6. Select **Add Connection**.
 7. Select **HTTP Service**.
 8. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.

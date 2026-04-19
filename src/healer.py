@@ -156,7 +156,8 @@ def _best_ocr_similarity(target: str, ocr_results: list) -> tuple[str, float]:
         if len(t_words) == 1:
             for word in text_words:
                 w_ratio = SequenceMatcher(None, t, word).ratio()
-                if len(t) <= 2 and len(word) > len(t):
+                # Heavy penalty if matching a single-char symbol against a multi-char blob
+                if len(t) <= 2 and len(text_l) > len(t):
                     w_ratio *= 0.1
                 if w_ratio > best_ratio:
                     best_ratio, best_text = w_ratio, text

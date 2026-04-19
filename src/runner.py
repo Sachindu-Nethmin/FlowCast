@@ -583,22 +583,27 @@ def _reveal_plus_on_error_handler(ax: int, ay: int) -> tuple[int, int] | None:
     
     if eh_pos:
         ex, ey = eh_pos
-        # Step 1 Click: 40px above the shield (the blue connector line)
-        # The blue line is centered above the shield icon, no extra x-offset needed.
-        print(f"[runner] Reveal Step: Clicking 40px above EH Icon at ({ex}, {ey - 40})")
-        pyautogui.click(ex, ey - 40)
+        # Step 1 Click: 60px above the shield (on the blue connector line)
+        # EH node height is ~80px, so 60px above center ensures we hit the line, not the node.
+        print(f"[runner] Reveal Step: Clicking 60px above EH Icon at ({ex}, {ey - 60})")
+        pyautogui.click(ex, ey - 60)
         time.sleep(1.0) # Wait for animation
         
         # Step 2: Scan for revealed '+'
-        # Use a slightly more relaxed threshold in the localized revealed zone
-        plus_region = (ex - 60, ey - 90, ex + 60, ey - 10)
-        plus_pos = find_template_on_screen(_screenshot(), icons_dir / "plus.png", threshold=0.55, search_region=plus_region)
+        # Use a significantly taller search region (250px above EH) to handle sparse flows.
+        plus_region = (ex - 80, ey - 250, ex + 80, ey - 30)
+        from src.detector import _is_light_mode
+        is_light = _is_light_mode(_screenshot())
+        plus_icon = "plus_light.png" if is_light else "plus.png"
+        
+        plus_pos = find_template_on_screen(_screenshot(), icons_dir / plus_icon, threshold=0.4, search_region=plus_region)
         if plus_pos:
-            print(f"[runner] SUCCESS: Found revealed '+' icon at {plus_pos}")
+            print(f"[runner] SUCCESS: Found revealed '+' icon ({plus_icon}) at {plus_pos}")
             return plus_pos
         else:
-            print(f"[runner] '+' icon not seen after reveal. Using predicted coordinate ({ex}, {ey - 40}).")
-            return (ex, ey - 40)
+            # Fallback coordinate: move slightly higher if icon not seen
+            print(f"[runner] '+' icon not seen after reveal in region {plus_region}. Using predicted coordinate ({ex}, {ey - 80}).")
+            return (ex, ey - 80)
     else:
         # Fallback: OCR 'Error Handler' text is to the right of the icon.
         # Shifting ax by -80px to the left aligns the click with the icon/blue-line area.

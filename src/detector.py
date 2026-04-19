@@ -187,7 +187,10 @@ def _merge_ocr_results(results: list) -> list:
     
     # Common UI labels that should NOT be merged with adjacent helper text or field data
     # to avoid creating corrupted blobs like "Usertabase"
-    PROTECTED_LABELS = {"User", "Username", "Host", "Port", "Database", "Password", "Project"}
+    PROTECTED_LABELS = {
+        "User", "Username", "Host", "Port", "Database", "Password", "Project",
+        "Values", "Configurations", "Connection", "Service"
+    }
 
     # Sort primarily by y (top) and secondarily by x
     sorted_res = sorted(results, key=lambda r: (min(p[1] for p in r[0]), min(p[0] for p in r[0])))
@@ -1060,13 +1063,16 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
     return (cx, cy)
 
 
-def _icon_entry_for(target: str) -> dict | None:
+def _icon_entry_for(target: str, theme: str | None = None) -> dict | None:
     t = target.lower().strip()
     prompts = _load_icon_prompts()
     
     # Exact match first
     for entry in prompts:
         if entry.get("element_label", "").lower().strip() == t:
+            # If entry has a theme, it MUST match the current theme
+            if theme and entry.get("theme") and entry.get("theme") != theme:
+                continue
             return entry
 
     # Fuzzy: label contained in target or target contained in label.
@@ -1075,12 +1081,16 @@ def _icon_entry_for(target: str) -> dict | None:
         label = entry.get("element_label", "").lower().strip()
         if len(label) <= 2:
             if label in t or t in label:
+                if theme and entry.get("theme") and entry.get("theme") != theme:
+                    continue
                 return entry
         else:
             # Word-based fuzzy match: label must be one of the words in t, or vice versa
             t_words = set(t.split())
             label_words = set(label.split())
             if label_words == t_words and label_words:
+                if theme and entry.get("theme") and entry.get("theme") != theme:
+                    continue
                 return entry
     
     return None
@@ -2137,7 +2147,7 @@ def _find_input_by_global_scan(screenshot: Image.Image, field_label: str) -> tup
         return None
 
     # Label position in screen space
-    label_lx     = min(p[0] for p in label_bbox) / scale
+    label_left   = min(p[0] for p in label_bbox) / scale
     label_cx     = (min(p[0] for p in label_bbox) + max(p[0] for p in label_bbox)) / (2 * scale)
     label_bottom = max(p[1] for p in label_bbox) / scale
 
@@ -2479,9 +2489,12 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None, 
             return result
         raise ElementNotFoundError(f"Could not find '+' to the right of '{anchor}' via OCR.")
 
+    # Determine theme
+    theme = "light" if _is_light_mode(screenshot) else "dark"
+
     # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
     # For all other targets, try OCR first and fall back to template match.
-    icon_entry = _icon_entry_for(target)
+    icon_entry = _icon_entry_for(target, theme=theme)
     # Skip OCR for short symbols or entries that explicitly prefer template matching
     skip_ocr = (len(target.strip()) <= 2 and icon_entry is not None) or \
                (icon_entry is not None and icon_entry.get("prefer_template", False))
@@ -2500,12 +2513,15 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None, 
             # Match HSV search zone: y=25 to 100 (full VS Code toolbar area), right 12% (88-100%)
             search_region = (int(w_l * 0.88), 25, w_l, 100)
 
-    # For canvas + button: anchor to Start node for reliable position
+    # For canvas + button: find reliable anchor (Start for main flow, GET/POST etc. for resource flow)
     if target.strip() == "+" and canvas_only:
-        result = _find_plus_below_node(screenshot, anchor_text="Start")
-        if result:
-            return result
-        print(f"[detector] Anchor-based + detection failed, falling back to template match...")
+        # Try a sequence of common anchors for integration flows
+        for potential_anchor in ["Start", "GET", "POST", "Resource", "root"]:
+            print(f"[detector] Attempting to find '+' below anchor '{potential_anchor}'...")
+            result = _find_plus_below_node(screenshot, anchor_text=potential_anchor)
+            if result:
+                return result
+        print(f"[detector] Anchor-based + detection failed for all common labels. Falling back to template match...")
 
     if skip_ocr:
         print(f"[detector] '{target}' — skipping OCR, using template match first")
