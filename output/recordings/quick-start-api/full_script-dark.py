@@ -39,20 +39,20 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': 'Hello_World_API'})
 _run({'action': 'click', 'target': 'Add Artifact'})
-_run({'action': 'click', 'target': 'HTTP Service'})
+_run({'action': 'click', 'target': 'HTTP Service', 'hint': 'under:Integration as API'})
 _run({'action': 'type', 'field_target': 'Service Base Path', 'value': '/hello'})
 _run({'action': 'click', 'target': 'Create'})
 
 # ──────────────────────────────────────────────────────────
 # Step 3: Design the integration flow
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': '+ Add Resouses'})
+_run({'action': 'click', 'target': '+ Add Resources'})
 _run({'action': 'click', 'target': 'GET'})
 _run({'action': 'type', 'field_target': 'Resource Path', 'value': 'greeting'})
 _run({'action': 'click', 'target': 'Save'})
 _run({'action': 'click', 'target': '+'})
 _run({'action': 'click', 'target': 'Add Connection'})
-_run({'action': 'click', 'target': 'HTTP'})
+_run({'action': 'click', 'target': 'HTTP Service'})
 _run({'action': 'type', 'field_target': 'Url', 'value': 'https://apis.wso2.com/zvdz/mi-qsg/v1.0'})
 _run({'action': 'type', 'field_target': 'Connection Name', 'value': 'externalApi'})
 _run({'action': 'click', 'target': 'Save Connection'})
@@ -61,11 +61,10 @@ _run({'action': 'click', 'target': 'externalApi'})
 # ──────────────────────────────────────────────────────────
 # Step 4: Configure HTTP
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Get'})
+_run({'action': 'click', 'target': 'Get', 'hint': 'under:externalApi'})
 _run({'action': 'type', 'field_target': 'Path', 'value': '/'})
 _run({'action': 'type', 'field_target': 'Result', 'value': 'response'})
 _run({'action': 'type', 'field_target': 'Target Type', 'value': 'json'})
-_run({'action': 'click', 'target': 'Target Type'})
 _run({'action': 'click', 'target': 'Save'})
 
 # ──────────────────────────────────────────────────────────
@@ -80,5 +79,5 @@ _run({'action': 'click', 'target': 'Save'})
 # Step 6: Run and test
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': 'Run'})
-_run({'action': 'click', 'target': 'Try it'})
-_run({'action': 'click', 'target': 'Execute Cell'})
+_run({'action': 'click', 'target': 'Try It'})
+_run({'action': 'click', 'target': 'Run All'})

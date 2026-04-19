@@ -29,7 +29,7 @@ from typing import Any
 _CACHE_PATH = Path(__file__).parent.parent / "kb" / "strategy_cache.json"
 _DEBUG_DIR = Path(__file__).parent.parent / "output" / "heal_debug"
 _MAX_PHASES = 4
-_SIMILARITY_MD_THRESHOLD = 0.75   # above this → likely MD typo
+_SIMILARITY_MD_THRESHOLD = 0.82   # Increased from 0.75 to prevent false matches on common suffixes
 _SIMILARITY_ABSENT_THRESHOLD = 0.5  # below this → element not on screen
 
 
@@ -132,36 +132,43 @@ def _best_ocr_similarity(target: str, ocr_results: list) -> tuple[str, float]:
     best_text, best_ratio = "", 0.0
     t = target.lower().strip()
     for _, text, _ in ocr_results:
-        # Penalize overall length mismatch to avoid correcting short symbols
-        # (like '+') to longer noisy strings (like '+ @ C').
         text_l = text.lower().strip()
-        for word in text_l.split():
-            ratio = SequenceMatcher(None, t, word).ratio()
-            # If the target is very short (<= 2 chars), require exact length match
-            # or apply a heavy penalty for mismatched length.
-            if len(t) <= 2 and len(word) > len(t):
-                ratio *= 0.1
-            
-            if ratio > best_ratio:
-                best_ratio, best_text = ratio, text
         
-        # Also check the full OCR string
+        # 1. Full string match
         ratio = SequenceMatcher(None, t, text_l).ratio()
+        
+        # Penalty for word mismatches: if the target has multiple words, 
+        # ensure the first significant word matches somewhat.
+        t_words = t.split()
+        text_words = text_l.split()
+        if len(t_words) > 1 and len(text_words) > 1:
+            # If the first words are completely different (0 matches), penalize heavily
+            if SequenceMatcher(None, t_words[0], text_words[0]).ratio() < 0.4:
+                ratio *= 0.8
+        
         if len(t) <= 2 and len(text_l) > len(t):
             ratio *= 0.1
             
         if ratio > best_ratio:
             best_ratio, best_text = ratio, text
+            
+        # 2. Individual word match (only if target is a single word)
+        if len(t_words) == 1:
+            for word in text_words:
+                w_ratio = SequenceMatcher(None, t, word).ratio()
+                if len(t) <= 2 and len(word) > len(t):
+                    w_ratio *= 0.1
+                if w_ratio > best_ratio:
+                    best_ratio, best_text = w_ratio, text
+                    
     return best_text, best_ratio
 
 
 def diagnose(target: str, ocr_results: list, screenshot: Any | None = None) -> DiagnosisResult:
     """Analyse why an element was not found."""
-    # Use longest alpha word as the representative token (same as detector)
-    words = [w for w in target.split() if w.isalpha()]
-    keyword = max(words, key=len) if words else target
-
-    best_text, best_ratio = _best_ocr_similarity(keyword, ocr_results)
+    # Use full target for similarity comparison to avoid misidentifying common
+    # keywords (e.g., "Service" shouldn't match "MCP Service" if target is "HTTP Service").
+    best_text, best_ratio = _best_ocr_similarity(target, ocr_results)
 
     if best_ratio >= _SIMILARITY_MD_THRESHOLD:
         return DiagnosisResult(

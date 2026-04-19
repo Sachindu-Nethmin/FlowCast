@@ -23,6 +23,7 @@ _FIELD_ALIASES: dict[str, str] = {
     "connection name":   "Connection Name",
     "response variable": "Response Variable",
     "response type":     "Response Type",
+    "target type":       "Target Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
     "service base path": "Service Base Path",
@@ -100,15 +101,15 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                 "hint": "next_to:" + m.group(1).strip(),
             })
 
-        # ── Click: "Select **X** in **Y**" ───────────────────────────────────
-        # e.g. "Select **Expression** in **Path**" → click Expression to the right of Path label
+        # ── Click: "Select **X** under/in **Y**" ──────────────────────────────
+        # e.g. "Select **GET** under **externalApi**" → click X with scoped search below Y
         if not line_actions:
-            m = re.search(r'select\s+\*\*([^*]+)\*\*\s+in\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            m = re.search(r'select\s+\*\*([^*]+)\*\*\s+(?:under|in|inside)\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action": "click",
                     "target": m.group(1).strip(),
-                    "hint": "right_of:" + m.group(2).strip(),
+                    "hint": f"under:{m.group(2).strip()}",
                 })
 
         # ── Scroll + Click: "Scroll down and select **X**" ───────────────────

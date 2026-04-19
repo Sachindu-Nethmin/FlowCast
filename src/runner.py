@@ -51,6 +51,21 @@ def _kb() -> dict:
     return _KB
 
 
+def _get_kb_entry(label: str) -> dict:
+    """Retrieve KB metadata for a label using case-insensitive matching."""
+    kb = _kb()
+    if label in kb:
+        return kb[label] if isinstance(kb[label], dict) else {}
+    
+    # Fallback: Case-insensitive search
+    l_lower = label.lower()
+    for k, v in kb.items():
+        if k.lower() == l_lower:
+            return v if isinstance(v, dict) else {}
+            
+    return {}
+
+
 def _is_autofocus(field_label: str) -> bool:
     for f in _kb().get("autofocus_fields", {}).get("fields", []):
         if f["label"].lower() == field_label.lower():
@@ -227,11 +242,40 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
         kb = _kb().get("element_hints", {}).get(target, {})
+        
+        # PROACTIVE REVEAL: For '+' buttons that require a hover/click to appear (e.g. near Error Handler),
+        # perform the reveal action BEFORE attempting to find the target.
+        if target.strip() == "+" and isinstance(kb, dict) and "reveal_anchor" in kb:
+            anchor = kb["reveal_anchor"]
+            print(f"[runner] Proactively revealing '+' via anchor '{anchor}'...")
+            try:
+                # We need to find the anchor node first via OCR to get center coords for the reveal helper
+                ax, ay = find_element(_screenshot(), anchor)
+                result = _reveal_plus_on_error_handler(ax, ay)
+                if result:
+                    rx, ry = result
+                    return {
+                        **action,
+                        "x": rx, "y": ry,
+                        "_reveal_anchor_x": ax, "_reveal_anchor_y": ay,
+                        "reveal_anchor": anchor,
+                        "_needs_reveal_hover": False # Already revealed!
+                    }
+            except Exception as e:
+                print(f"[runner] Proactive reveal failed: {e}. Falling back to normal detection.")
+
+        # OCR text offset (e.g. Execute Cell -> find '[ ]', click above)
         if isinstance(kb, dict) and kb.get("type") == "ocr_text_offset":
             ocr_label = kb["label"]
             offset = kb.get("click_offset", {"x": 0, "y": 0})
-            print(f"[runner] Finding '{ocr_label}' on screen for '{target}'")
-            x, y = _find(ocr_label, action=action)
+            print(f"[runner] Finding '{ocr_label}' on screen for '{target}' (offset: {offset})")
+            try:
+                x, y = _find(ocr_label, action=action)
+            except Exception:
+                print(f"[runner] OCR failed for '{ocr_label}', trying icon template for '{target}'...")
+                # Try template match for target name if OCR label failed
+                x, y = _find(target, action=action)
+            
             return {**action, "x": x + offset["x"], "y": y + offset["y"]}
 
         # Handle card elements (e.g., Automation, HTTP Service, API cards in picker)
@@ -250,7 +294,37 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             print(f"[runner] WARNING: Source code check failed. '{target}' is unclickable text (e.g. input label). OpenCV might pick a wild field. Skipping click!")
             return {**action, "x": None, "y": None, "_needs_click": False, "_skip": True}
 
-        x, y = _find(target, action.get("hint"), action=action)
+        x, y = None, None
+        try:
+            x, y = _find(target, action.get("hint"), action=action)
+        except Exception:
+            # Fallback check for hover-reveal items (like the '+' button revealed by Error Handler)
+            if kb and isinstance(kb, dict) and "reveal_anchor" in kb:
+                anchor = kb["reveal_anchor"]
+                offset = kb.get("reveal_offset", {"x": 0, "y": 0})
+                print(f"[runner] '{target}' not found. Attempting reveal via anchor '{anchor}'...")
+                try:
+                    ax, ay = _find(anchor, action=action)
+                    # Return anchor position with flag and offset
+                    return {
+                        **action, 
+                        "x": ax + offset["x"], 
+                        "y": ay + offset["y"],
+                        "_reveal_anchor_x": ax,
+                        "_reveal_anchor_y": ay,
+                        "reveal_anchor": anchor,
+                        "reveal_offset": offset,
+                        "_needs_reveal_hover": True
+                    }
+                except Exception as e:
+                    print(f"[runner] Reveal fallback failed: anchor '{anchor}' also not found.")
+                    raise e
+        # Final pass: Apply any click offsets defined in KB (e.g. Execute Cell)
+        if isinstance(kb, dict) and "click_offset" in kb:
+            off = kb["click_offset"]
+            x += off.get("x", 0)
+            y += off.get("y", 0)
+
         return {**action, "x": x, "y": y}
 
     if kind == "type":
@@ -320,7 +394,57 @@ def fire(action: dict[str, Any]) -> None:
 
     elif kind == "click":
         _trigger_pre_move()
-        pyautogui.moveTo(x, y, duration=0.3)  # wait for hover-reveal buttons (e.g. flow canvas +)
+        if action.get("_needs_reveal_hover"):
+            ax, ay = action["_reveal_anchor_x"], action["_reveal_anchor_y"]
+            # Use reveal offset from KB if available, fallback to -35 (blue connector line)
+            offset = action.get("reveal_offset", {"x": 0, "y": -35})
+            reveal_x = ax + offset.get("x", 0)
+            reveal_y = ay + offset.get("y", 0)
+
+            print(f"[runner] Hover-to-reveal: targeting reveal point at ({reveal_x}, {reveal_y})")
+            pyautogui.moveTo(reveal_x, reveal_y, duration=0.4)
+            time.sleep(0.6)  # Wait for hover animation/popup to appear
+
+            # Real-time visual scan for the newly revealed target (e.g. '+' button)
+            target_label = action.get("target", "+")
+            visual_found = False
+
+            # SPECIAL CASE: For '+' button revealed by 'Error Handler', use the fixed 40px offset 
+            # as requested to ensure absolute precision (every time, skip visual jitter).
+            is_error_handler_plus = (target_label == "+" and action.get("reveal_anchor") == "Error Handler")
+
+            if is_error_handler_plus:
+                result = _reveal_plus_on_error_handler(ax, ay)
+                if result:
+                    x, y = result
+                    visual_found = True
+            else:
+                detection_attempts = 0
+                max_attempts = 3
+
+                while detection_attempts < max_attempts:
+                    try:
+                        # Attempt visual re-detection with fresh screenshot
+                        rx, ry = find_element(_screenshot(), target_label, action.get("hint"))
+                        x, y = rx, ry
+                        print(f"[runner] Visual scan found '{target_label}' at ({x}, {y}) on attempt {detection_attempts + 1}")
+                        visual_found = True
+                        break
+                    except Exception as e:
+                        detection_attempts += 1
+                        if detection_attempts < max_attempts:
+                            print(f"[runner] Visual scan attempt {detection_attempts} failed, retrying...")
+                            time.sleep(0.2)
+
+            if not visual_found:
+                # Fallback: use the reveal offset from KB
+                print(f"[runner] Visual scan exhausted ({max_attempts} attempts). Using predicted offset coordinates.")
+                offset = action.get("reveal_offset", {"x": 0, "y": 0})
+                x = ax + offset.get("x", 0)
+                y = ay + offset.get("y", 0)
+                print(f"[runner] Fallback to offset coordinates: ({x}, {y})")
+
+        pyautogui.moveTo(x, y, duration=0.3)
         pyautogui.click(x, y)
 
     elif kind == "type":
@@ -346,17 +470,32 @@ def fire(action: dict[str, Any]) -> None:
 
         # Always select-all to clear any pre-filled content before pasting
         pyautogui.hotkey("command", "a")
-        time.sleep(0.1)
+        time.sleep(0.3)
         _paste(action["value"])
 
-        # ── Verify the typed text is actually visible in the field ──────────
-        # Warn if text is not visible, but continue execution (no retry).
-        _verify_x = x if x is not None else 0
-        _verify_y = y if y is not None else 0
-        _check_token = action["value"].split()[0] if action["value"].split() else action["value"][:12]
-        time.sleep(0.3)
-        if _check_token and not is_text_visible_near(pyautogui.screenshot(), _check_token, _verify_x, _verify_y):
-            print(f"[runner] WARNING: Typed text '{_check_token}' not visible near ({_verify_x}, {_verify_y}) — continuing without retry")
+        # ─────────────────────────────────────────────────────────────────────
+        
+        # ── 3. Post-type dismissal (e.g. for dropdowns that cover Save) ──────
+        # Fail-safe: Detect if this is Target Type or Response Type via string matching
+        # as well as Knowledge Base lookup.
+        label = action.get("field_target", "")
+        kb_entry = _get_kb_entry(label)
+        
+        is_target_type = any(key in label.lower() for key in ["target type", "response type"])
+        
+        if label:
+            offset_y = None
+            if "post_type_click_offset" in kb_entry:
+                offset_y = kb_entry["post_type_click_offset"].get("y")
+            elif is_target_type:
+                offset_y = -20 # Fallback default for known sticky dropdowns
+                
+            if offset_y is not None and x is not None and y is not None:
+                dismiss_x = x
+                dismiss_y = y + offset_y
+                print(f"[runner] Targeted field '{label}' detected. Performing mandatory dismissal click at ({dismiss_x}, {dismiss_y})")
+                pyautogui.click(dismiss_x, dismiss_y)
+                time.sleep(0.3)
         # ─────────────────────────────────────────────────────────────────────
 
     elif kind == "select":
@@ -417,3 +556,51 @@ def fire(action: dict[str, Any]) -> None:
 
     else:
         print(f"[runner] Unknown action type: '{kind}'")
+
+def _reveal_plus_on_error_handler(ax: int, ay: int) -> tuple[int, int] | None:
+    """Specialized 2-step interaction to reveal and click the '+' button near an Error Handler node.
+    
+    Step 1: Locates the Error Handler icon (shield) via theme-aware template matching with a left-bias.
+    Step 2: Clicks 40px above the shield to reveal the '+'.
+    Step 3: Performs a visual scan for the '+' button in the revealed zone.
+    """
+    from src.detector import find_template_on_screen
+    # Update screenshot for fresh detection
+    screen = _screenshot()
+    eh_pos = None
+    icons_dir = Path(__file__).parent.parent / "kb" / "icons"
+    
+    # Biased search: EH icon is to the LEFT of the text.
+    # Ensure we use a wide enough region to find the shield.
+    search_region = (ax - 280, ay - 120, ax + 100, ay + 120)
+    
+    # Theme-aware detection: try both but prefer strict matching
+    for icon_name in ["error_handler_dark.png", "error_handler_light.png"]:
+        eh_pos = find_template_on_screen(screen, icons_dir / icon_name, threshold=0.65, search_region=search_region)
+        if eh_pos:
+            print(f"[runner] SUCCESS: Found EH icon ({icon_name}) at {eh_pos}")
+            break
+    
+    if eh_pos:
+        ex, ey = eh_pos
+        # Step 1 Click: 40px above the shield (the blue connector line)
+        # The blue line is centered above the shield icon, no extra x-offset needed.
+        print(f"[runner] Reveal Step: Clicking 40px above EH Icon at ({ex}, {ey - 40})")
+        pyautogui.click(ex, ey - 40)
+        time.sleep(1.0) # Wait for animation
+        
+        # Step 2: Scan for revealed '+'
+        # Use a slightly more relaxed threshold in the localized revealed zone
+        plus_region = (ex - 60, ey - 90, ex + 60, ey - 10)
+        plus_pos = find_template_on_screen(_screenshot(), icons_dir / "plus.png", threshold=0.55, search_region=plus_region)
+        if plus_pos:
+            print(f"[runner] SUCCESS: Found revealed '+' icon at {plus_pos}")
+            return plus_pos
+        else:
+            print(f"[runner] '+' icon not seen after reveal. Using predicted coordinate ({ex}, {ey - 40}).")
+            return (ex, ey - 40)
+    else:
+        # Fallback: OCR 'Error Handler' text is to the right of the icon.
+        # Shifting ax by -80px to the left aligns the click with the icon/blue-line area.
+        print(f"[runner] EH icon NOT found near anchor. Falls back to -80px offset from OCR text at ({ax-80}, {ay-40}).")
+        return (ax - 80, ay - 40)

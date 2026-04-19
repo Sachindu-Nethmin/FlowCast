@@ -588,7 +588,11 @@
     },
     "Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area. Has a plus (+) icon prefix.",
     "+ Add Resources": "Blue button labeled '+ Add Resources' in the HTTP service design view. Located above or near the resource list area.",
-    "Resource Path": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens.",
+    "Resource Path": {
+      "label": "Resource Path",
+      "anchor_label": "Resource Path*",
+      "note": "Text input field in the Add Resource dialog for the URL path segment e.g. /greeting. Usually auto-focused when the dialog opens."
+    },
     "Service Base Path": "Text input field in the HTTP Service creation form. Has a pre-filled '/'. Click the input to focus it, select all to remove '/', then paste the new value.",
     "Listener port": "Text input field in HTTP Service creation form for the port number e.g. 9090.",
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
@@ -598,10 +602,9 @@
     "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
     "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
     "Execute Cell": {
-      "label": "[ ]",
-      "type": "ocr_text_offset",
-      "click_offset": { "x": 0, "y": -20 },
-      "note": "Find the text '[ ]' on screen via OCR, move mouse to it, move up 10px, click."
+      "type": "icon",
+      "click_offset": { "x": 0, "y": -10 },
+      "note": "Icon-only detection for the [ ] button in Try-It view. Clicks 10px above found icon."
     },
     "Values": {
       "label": "Values",
@@ -609,16 +612,41 @@
       "search_region": { "height": 120, "x_offset_left": 50, "x_offset_right": 1000 },
       "note": "In Light Mode, the field border might be faint. Using lower Canny thresholds."
     },
-    "+": "Small circular plus button inside the resource flow in design view. Adds a new node to the integration flow.",
+    "+": {
+      "label": "+",
+      "hint": "Small circular plus button inside the resource flow in design view.",
+      "reveal_anchor": "Error Handler",
+      "reveal_offset": { "x": 0, "y": -40 },
+      "note": "Hidden until parent node (e.g. Error Handler) is hovered."
+    },
+    "Error Handler": {
+      "label": "Error Handler",
+      "hint": "Yellow shield icon node in the flow diagram canvas.",
+      "type": "icon"
+    },
     "HTTP": "Connection type card in the connection picker dialog. Click to create a new HTTP connection.",
     "Base URL": "Text input field in the new HTTP connection dialog. Enter the full external base URL here.",
     "Connection Name": "Text input field in the connection dialog for naming the connection e.g. externalApi.",
     "Save": "Primary submit/save button in dialogs such as connection dialog, action dialog, and resource dialog.",
     "get": "Action option in the connection action picker. Represents the HTTP GET action to call.",
     "Response Variable": "Text input field in the action configuration dialog. Located to the RIGHT of the 'Response Variable' label. Used for naming the result variable e.g. response.",
-    "Response Type": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json.",
+    "Response Type": {
+      "label": "Response Type",
+      "post_type_click_offset": { "x": 0, "y": -20 },
+      "note": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Response Type' label. Used for setting the response data type e.g. json. Selection covers the Save button, so click 20px above to dismiss."
+    },
+    "Target Type": {
+      "label": "Target Type",
+      "post_type_click_offset": { "x": 0, "y": -20 },
+      "note": "Dropdown selector in the action configuration dialog. Located to the RIGHT of the 'Target Type' label. Used for setting the response data type e.g. json. Selection covers the Save button, so click 20px above to dismiss."
+    },
     "json": "Option in the Response Type dropdown inside action configuration dialog.",
-    "Return": "Node type button in the flow editor toolbar or add-node menu. Adds a return/response node to the flow.",
+    "Return": {
+      "label": "Return",
+      "type": "card",
+      "position": "mediator palette / connector popover",
+      "hint": "Node type button in the mediator palette. Adds a return/response node to the flow."
+    },
     "Type:": "Inline dropdown at the top of the creation form showing current project type (WSO2: BI or WSO2: MI) with a chevron icon.",
     "WSO2: BI": "Option in the Type: dropdown selector at the top of the creation form. Selects Ballerina Integration type.",
     "WSO2: MI": "Option in the Type: dropdown selector at the top of the creation form. Selects Micro Integrator type.",

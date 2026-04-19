@@ -14,29 +14,28 @@
 2. In the design view, select **Add Artifact**.
 3. Select **HTTP Service** under **Integration as API**.
 4. Keep **Service contract** as **Design from scratch**.
-5. Set **Service base path** to `/hello`.
+5. Set **Service Base Path** to `/hello`.
 6. Select **Create**.
 
 ## Step 3: Design the integration flow
 
-1. In the HTTP service design view, select **+ Add Resouses** resource.
+1. In the HTTP service design view, select **+ Add Resources**.
 2. Select **GET**.
-2. Set the **resource path** to `greeting`.
-3. Select **Save**.
-4. Select **+** inside the resource flow.
-5. Select **Add Connection**.
-6. Select **HTTP**.
-1. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
-2. Set the **Connection Name** to `externalApi` and select **Save Connection**.
-3. Select **externalApi**.
+3. Set the **Resource Path** to `greeting`.
+4. Select **Save**.
+5. Select **+** inside the resource flow.
+6. Select **Add Connection**.
+7. Select **HTTP Service**.
+8. Set the **Url** to `https://apis.wso2.com/zvdz/mi-qsg/v1.0`.
+9. Set the **Connection Name** to `externalApi` and select **Save Connection**.
+10. Select **externalApi**.
 
 ## Step 4: Configure HTTP
 
-1. Select **Get**.
+1. Select **Get** under **externalApi**.
 2. Set **Path** to `/`.
 3. Set **Result** to `response`
 4. Set **Target Type** to `json`.
-5. Select **Target Type**.
 5. Select **Save**.
 
 ## Step 5: Return the response
@@ -49,6 +48,6 @@
 ## Step 6: Run and test
 
 1. Select **Run**.
-2. Select **Try it**.
-2. Select **Execute Cell**.  
+2. Select **Try It**.
+3. Select **Run All**.  
 4. The automation executes immediately and give 200 response "Hello World".
