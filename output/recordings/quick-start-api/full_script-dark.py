@@ -71,6 +71,7 @@ _run({'action': 'click', 'target': 'Save'})
 # Step 5: Return the response
 # ──────────────────────────────────────────────────────────
 _run({'action': 'click', 'target': '+'})
+_run({'action': 'search', 'field_target': 'Search', 'value': 'Return', 'hint': 'panel:right panel.'})
 _run({'action': 'click', 'target': 'Return'})
 _run({'action': 'type', 'field_target': 'Expression', 'value': 'response'})
 _run({'action': 'click', 'target': 'Save'})

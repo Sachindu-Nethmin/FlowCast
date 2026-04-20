@@ -41,9 +41,10 @@
 ## Step 5: Return the response
 
 1. Select **+** inside the resource flow.
-2. Select **Return** node.
-3. Set **Expression** to `response`.
-4. Select **Save**.
+2. Search **Return** from the right panel.
+3. Select **Return** node.
+4. Set **Expression** to `response`.
+5. Select **Save**.
 
 ## Step 6: Run and test
 

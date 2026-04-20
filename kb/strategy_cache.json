@@ -70,6 +70,11 @@
       "winner": "ocr_corrected",
       "fail_counts": {},
       "last_seen": "2026-04-18T16:40:12.298591+00:00"
+    },
+    "save": {
+      "winner": "ocr_corrected",
+      "fail_counts": {},
+      "last_seen": "2026-04-20T04:28:21.045116+00:00"
     }
   }
 }

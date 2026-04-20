@@ -421,6 +421,46 @@ def _alpha_target(target: str) -> str:
     return max(words, key=lambda w: sum(c.isalpha() for c in w))
 
 
+def _is_inside_input(arr: np.ndarray, bbox, is_light: bool) -> bool:
+    """Return True if the element's bounding box is inside an input-shaped contour.
+    
+    Used to penalize 'echoed' text in search bars/input fields when looking for 
+    clickable targets (buttons/cards).
+    """
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    
+    # Adaptive thresholding to handle subtle dark-mode borders
+    if is_light:
+        t1, t2 = 10, 40
+    else:
+        t1, t2 = 5, 25 # even more sensitive for dark mode
+        
+    edges = cv2.Canny(blurred, t1, t2)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    pt = (int(np.mean(xs)), int(np.mean(ys)))
+    
+    for cnt in contours:
+        # 1. Shape check (must be a rectangle-like box)
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+        if len(approx) < 4:
+            continue
+
+        x, y, w, h = cv2.boundingRect(cnt)
+        # 2. Size check: Input shape is wide and short
+        # Buttons like 'Create' are typically small (~80-120px)
+        # Search/Input fields are typically > 180px
+        if (180 < w < 2000) and (25 < h < 48) and (w > h * 2.5):
+            if x < pt[0] < x + w and y < pt[1] < y + h:
+                return True
+    return False
+
+
 def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
     arr = np.array(screenshot)
     results = _ocr().readtext(arr)
@@ -443,6 +483,7 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
     # Top-bar cutoff: IDE chrome (tabs, toolbar, search bar) sits in the top ~8%.
     # Form/canvas elements never live there — treat any hit in this strip as noise.
     top_bar_cutoff_ocr = int(h * 0.08)
+    is_light = _is_light_mode(screenshot)
 
     for bbox, text, conf in results:
         if require_exact:
@@ -490,7 +531,12 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
             # If the hit is in the explorer tree, it should never beat a central picker card.
             sidebar_penalty = -150 if min(xs) < (w * 0.30) else 0
 
-            total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
+            # Input Field Penalty: Penalize text inside search bars/inputs
+            # This prevents clicking the typed text in a search box.
+            in_input = _is_inside_input(arr, bbox, is_light)
+            input_penalty = -250 if in_input else 0
+
+            total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty + input_penalty
             candidates.append({
                 "pos": pos,
                 "score": total_score,
@@ -500,7 +546,7 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
                 "is_card": is_card,
                 "is_blue": is_blue,
                 "is_exact": is_exact,
-                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} text='{text}'"
+                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} input:{input_penalty} text='{text}'"
             })
 
     if candidates:
@@ -2685,8 +2731,17 @@ def find_search_field(screenshot: Image.Image, field_label: str = "Search", hint
         x, y, w, h = cv2.boundingRect(cnt)
         # Search boxes: wide relative to height, reasonable size
         if 200 < w < 1200 and 15 < h < 50 and w > h * 4:
-            if search_box is None or w > search_box[2]:
+            # Preference: prefer the box that is HIGHER up in the panel. 
+            # Search bars are almost always at the top.
+            if search_box is None:
                 search_box = (x, y, w, h)
+            else:
+                # If a new box is significantly higher (more than 50px higher), pick it.
+                # Else pick the wider one if they are at a similar height.
+                if y < search_box[1] - 50:
+                    search_box = (x, y, w, h)
+                elif abs(y - search_box[1]) < 50 and w > search_box[2]:
+                    search_box = (x, y, w, h)
 
     if search_box:
         x, y, w, h = search_box

@@ -598,9 +598,25 @@
     "Service contract": "Dropdown in HTTP Service creation form. Default option visible is 'Design from scratch'.",
     "Design from scratch": "Option in the Service contract dropdown inside HTTP Service creation form.",
     "GET": "Resource type button or badge in the HTTP service design view. Represents an HTTP GET method resource.",
-    "Call Function": "Card/option in the node panel inside the automation diagram view. Labeled 'Call Function'. Located in the center grid of the panel.",
-    "Println": "Card/option in the node panel inside the automation diagram view. Labeled 'Println'. May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
-    "Initialize Array": "Card/option in the node panel inside the automation diagram view. Labeled 'Initialize Array'. Used for creating data arrays.",
+    "Call Function": {
+      "label": "Call Function",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "note": "Card/option labeled 'Call Function'. Located in the center grid of the panel."
+    },
+    "Println": {
+      "label": "Println",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "hint": "May be read by OCR as 'Print' or 'Print ln'. Used for terminal output.",
+      "note": "Card/option labeled 'Println'. Located in the center grid of the panel."
+    },
+    "Initialize Array": {
+      "label": "Initialize Array",
+      "type": "card",
+      "position": "Add Artifact picker panel — center grid",
+      "note": "Card/option labeled 'Initialize Array'. Used for creating data arrays."
+    },
     "Execute Cell": {
       "type": "icon",
       "click_offset": { "x": 0, "y": -10 },
