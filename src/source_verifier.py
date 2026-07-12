@@ -30,7 +30,7 @@ def is_clickable(label: str) -> bool:
                 path = Path(root) / f
                 try:
                     lines = path.read_text(encoding='utf-8').splitlines()
-                except UnicodeDecodeError:
+                except (UnicodeDecodeError, FileNotFoundError, PermissionError):
                     continue
                 
                 for i, line in enumerate(lines):

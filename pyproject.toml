@@ -7,6 +7,7 @@ dependencies = [
     "pillow>=10.3.0",
     "python-dotenv>=1.0.1",
     "pyobjc-framework-Quartz>=10.3.1",
+    "pyobjc-framework-Vision>=10.3.1",
     "pyobjc-core>=10.3.1",
     "easyocr>=1.7.1",
     "numpy>=1.26.0",
@@ -15,9 +16,23 @@ dependencies = [
     "customtkinter>=5.2.2",
 ]
 
+[project.optional-dependencies]
+# DOM-based detection via Chrome DevTools Protocol (FLOWCAST_CDP_PORT)
+dom = [
+    "requests>=2.32.0",
+    "websocket-client>=1.8.0",
+]
+# FlowCast v2 — fully local pipeline (Ollama + Playwright/CDP + Piper + OBS)
+v2 = [
+    "playwright>=1.45.0",
+    "requests>=2.32.0",
+    "obsws-python>=1.7.0",
+    "piper-tts>=1.2.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src", "v2"]

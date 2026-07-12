@@ -622,6 +622,18 @@
       "click_offset": { "x": 0, "y": -10 },
       "note": "Icon-only detection for the [ ] button in Try-It view. Clicks 10px above found icon."
     },
+    "Run": {
+      "type": "icon",
+      "icon": "play",
+      "position": { "x": 1382, "y": 86 },
+      "note": "Alias for Play — green play button icon in the top-right corner of the automation canvas."
+    },
+    "Play": {
+      "type": "icon",
+      "icon": "play",
+      "position": { "x": 1382, "y": 86 },
+      "note": "Green play button icon in the top-right corner of the automation canvas. Used to run/test the automation."
+    },
     "Values": {
       "label": "Values",
       "hint": "Text input field inside the Initialize Array action dialog. Found below or to the right of the 'Values' label.",

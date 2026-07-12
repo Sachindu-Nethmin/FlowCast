@@ -37,6 +37,10 @@ _APP_PATH = "/Users/sachindu/Applications/WSO2 Integrator.app"
 
 _KB: dict | None = None
 
+# Outcome report of the last fire() call. Keys:
+#   blue_selection — typed text ended up blue-highlighted (wrong field focus)
+LAST_REPORT: dict = {}
+
 
 # Enable visual debugging for input detection
 from src import detector
@@ -114,6 +118,67 @@ def _activate() -> None:
     time.sleep(0.3)
 
 
+def ensure_fullscreen(force: bool = False) -> None:
+    """ALWAYS make sure the WSO2 Integrator window fills the screen.
+
+    Uses multiple strategies: set position+size, AXFullScreen, and green button.
+    Never gives up — always retries on every call.
+    """
+    _activate()
+    w, h = pyautogui.size()
+
+    # IMPORTANT: target the LARGEST window, not "window 1". VS Code-based apps
+    # keep tiny auxiliary windows (tooltips/panels — e.g. a 1512x33 strip) that
+    # can be "window 1"; resizing that one loops forever while the real window
+    # is untouched. Also: coerce AppleScript numbers with "as integer as text"
+    # — `(item 1 of s) & "x"` builds a LIST ("1512, x…"), which broke parsing.
+    script = f'''
+    tell application "System Events" to tell process "{_TARGET_APP}"
+        set best to missing value
+        set bestArea to 0
+        repeat with win in windows
+            set s to size of win
+            set a to (item 1 of s) * (item 2 of s)
+            if a > bestArea then
+                set bestArea to a
+                set best to win
+            end if
+        end repeat
+        if best is missing value then return "nowin"
+        set s to size of best
+        if (item 1 of s) < {int(w * 0.90)} or (item 2 of s) < {int(h * 0.85)} then
+            set position of best to {{0, 0}}
+            delay 0.2
+            set size of best to {{{w}, {h}}}
+            delay 0.2
+            set s2 to size of best
+            return "resized:" & ((item 1 of s2) as integer as text) & "x" & ((item 2 of s2) as integer as text)
+        end if
+        return "ok:" & ((item 1 of s) as integer as text) & "x" & ((item 2 of s) as integer as text)
+    end tell'''
+    try:
+        result = subprocess.run(["osascript", "-e", script],
+                                capture_output=True, text=True, timeout=10)
+        out = result.stdout.strip()
+        if result.returncode != 0:
+            print(f"[runner] Fullscreen enforcement failed: {result.stderr.strip()}")
+        elif out.startswith("resized:"):
+            new_size = out.split(":", 1)[1]
+            print(f"[runner] Window was not full screen — maximized to {new_size}")
+            time.sleep(0.5)
+            try:
+                nw, nh = (int(v) for v in new_size.split("x"))
+                if nw < int(w * 0.90) or nh < int(h * 0.85):
+                    print(f"[runner] WARNING: main window stuck at {new_size} "
+                          f"(screen {w}x{h}) — check Stage Manager / display settings")
+            except ValueError:
+                pass
+        elif out == "nowin":
+            print("[runner] Fullscreen: no window found for the app")
+    except Exception as e:
+        print(f"[runner] Fullscreen enforcement failed: {e}")
+
+
 def detect_theme() -> str:
     """Identify if the target app is in 'light' or 'dark' mode."""
     from src.detector import _is_light_mode
@@ -121,9 +186,56 @@ def detect_theme() -> str:
     return "light" if _is_light_mode(screenshot) else "dark"
 
 
+def screen_size() -> tuple[int, int]:
+    return pyautogui.size()
+
+
 def _find(target: str, hint: str | None = None, action: dict | None = None,
           step_title: str = "", action_index: int = 0) -> tuple[int, int]:
     screenshot = _screenshot()
+
+    # Element hints FIRST: hardcoded positions/icons take priority over
+    # learned KB positions (which can be wrong from bad past runs).
+    # Case-insensitive lookup: "play" matches "Play".
+    hints = _kb().get("element_hints", {})
+    kb = hints.get(target, {})
+    if not kb:
+        target_low = target.lower().strip()
+        for k, v in hints.items():
+            if k.lower().strip() == target_low:
+                kb = v
+                break
+    if isinstance(kb, dict) and kb.get("type") == "icon" and "position" in kb:
+        pos = kb["position"]
+        print(f"[runner] Icon '{target}' at hardcoded position ({pos['x']}, {pos['y']})")
+        return (pos["x"], pos["y"])
+
+    # Learned KB: if a previous run already learned what this target
+    # means on THIS screen, use it.
+    #   1. Alias (doc label → actual UI label, e.g. 'Get Started' → 'Skip for
+    #      now'): re-resolved by OCR each run — robust to layout changes.
+    #   2. Position (verified via nearby OCR for text targets; symbols like
+    #      '+' trust the learned point directly).
+    try:
+        from src import kb_learn
+        alias = kb_learn.lookup_alias(screenshot, target)
+        if alias:
+            try:
+                pos = find_element(screenshot, alias, hint)
+                print(f"[runner] Learned alias: '{target}' → '{alias}' at {pos}")
+                return pos
+            except ElementNotFoundError:
+                print(f"[runner] Alias '{alias}' not on screen — trying other strategies")
+        learned = kb_learn.lookup(screenshot, target, screen_size())
+        if learned:
+            if len(target.strip()) <= 2 or is_text_visible_near(
+                    screenshot, target, learned[0], learned[1], radius=150):
+                print(f"[runner] Using learned position for '{target}': {learned}")
+                return learned
+            print(f"[runner] Learned position for '{target}' failed OCR verification — re-detecting")
+    except Exception:
+        pass
+
     try:
         return find_element(screenshot, target, hint)
     except ElementNotFoundError:
@@ -132,9 +244,9 @@ def _find(target: str, hint: str | None = None, action: dict | None = None,
     # OCR failed — hand off to healer for diagnosis + escalating retry
     from src import healer
     import numpy as np
-    from src.detector import _ocr
+    from src.detector import _read_ocr
     arr = np.array(screenshot)
-    ocr_results = _ocr().readtext(arr)
+    ocr_results = _read_ocr(arr)
     ctx = healer.HealContext(
         action=action or {"target": target},
         screenshot=screenshot,
@@ -191,14 +303,23 @@ def _ui_changed(before: Image.Image, after: Image.Image) -> bool:
     return float((np.abs(a - b).mean(axis=2) > 10).mean()) > 0.001
 
 
-def wait_ui_change(timeout: float = 5.0) -> bool:
-    """Wait until the screen visually changes from its current state.
+def wait_ui_change(timeout: float = 5.0, baseline: Image.Image | None = None) -> bool:
+    """Wait until the screen visually changes.
 
     Returns True if a change was detected, False if timeout elapsed with no change.
-    Use this after firing an action to confirm the UI has actually responded
-    before moving on to detect/fire the next action.
+
+    IMPORTANT: pass the PRE-ACTION screenshot as *baseline* when verifying an
+    action. Without it, the baseline is captured NOW — after the action — so a
+    fast UI transition that already finished looks like "no change" (false
+    failure). With a pre-action baseline, an already-completed transition is
+    detected immediately.
     """
-    baseline = pyautogui.screenshot()
+    if baseline is None:
+        baseline = pyautogui.screenshot()
+    else:
+        # The transition may have already happened — check instantly first.
+        if _ui_changed(baseline, pyautogui.screenshot()):
+            return True
     deadline = time.time() + timeout
     while time.time() < deadline:
         time.sleep(0.1)
@@ -237,15 +358,37 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
     if kind == "open_app":
         return action
 
+    # Always make the app full screen before any change (30s-memoized, no-op
+    # when the window is already maximized).
+    if kind not in ("wait", "hotkey"):
+        ensure_fullscreen()
+
     if kind == "click":
         target = action["target"]
 
         # Check for OCR text with click offset (e.g. "Execute Cell" → find "[ ]", click above)
-        kb = _kb().get("element_hints", {}).get(target, {})
+        # Case-insensitive lookup
+        hints = _kb().get("element_hints", {})
+        kb = hints.get(target, {})
+        if not kb:
+            target_low = target.lower().strip()
+            for k, v in hints.items():
+                if k.lower().strip() == target_low:
+                    kb = v
+                    break
+
+        # ICON ELEMENT: If KB has a hardcoded position, use it directly.
+        if isinstance(kb, dict) and kb.get("type") == "icon" and "position" in kb:
+            pos = kb["position"]
+            print(f"[runner] Icon '{target}' at hardcoded position ({pos['x']}, {pos['y']})")
+            return {**action, "x": pos["x"], "y": pos["y"]}
         
         # PROACTIVE REVEAL: For '+' buttons that require a hover/click to appear (e.g. near Error Handler),
         # perform the reveal action BEFORE attempting to find the target.
-        if target.strip() == "+" and isinstance(kb, dict) and "reveal_anchor" in kb:
+        # Skipped when the action carries a spatial hint (below:/next_to:/...) —
+        # the hint names WHERE the '+' is, which beats the KB reveal guess.
+        if target.strip() == "+" and isinstance(kb, dict) and "reveal_anchor" in kb \
+                and not action.get("hint"):
             anchor = kb["reveal_anchor"]
             print(f"[runner] Proactively revealing '+' via anchor '{anchor}'...")
             try:
@@ -319,6 +462,12 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
                 except Exception as e:
                     print(f"[runner] Reveal fallback failed: anchor '{anchor}' also not found.")
                     raise e
+
+        # Never return a click with no coordinates — firing would click at the
+        # CURRENT mouse position (a phantom click on a random spot).
+        if x is None or y is None:
+            raise ElementNotFoundError(f"Could not find '{target}' — refusing blind click")
+
         # Final pass: Apply any click offsets defined in KB (e.g. Execute Cell)
         if isinstance(kb, dict) and "click_offset" in kb:
             off = kb["click_offset"]
@@ -379,6 +528,9 @@ def fire(action: dict[str, Any]) -> None:
 
     kind = action["action"]
     x, y = action.get("x"), action.get("y")
+
+    # Reset the outcome report for this action (read by callers/teach mode)
+    LAST_REPORT.clear()
 
     if kind == "open_app":
         app_path = action.get("app_path", "") or _APP_PATH
@@ -473,8 +625,22 @@ def fire(action: dict[str, Any]) -> None:
         time.sleep(0.3)
         _paste(action["value"])
 
+        # ── Wrong-field detection: blue selection band after typing ──────────
+        # If the typed text (or surrounding text) is fully blue-highlighted,
+        # the value was entered without the correct field focused.
+        try:
+            from src.detector import is_text_selected_blue
+            time.sleep(0.3)
+            if x is not None and y is not None and \
+                    is_text_selected_blue(pyautogui.screenshot(), x, y):
+                LAST_REPORT["blue_selection"] = True
+                print("[runner] WARNING: blue selection detected after typing — "
+                      "value likely went to the wrong place")
+        except Exception:
+            pass
+
         # ─────────────────────────────────────────────────────────────────────
-        
+
         # ── 3. Post-type dismissal (e.g. for dropdowns that cover Save) ──────
         # Fail-safe: Detect if this is Target Type or Response Type via string matching
         # as well as Knowledge Base lookup.
@@ -605,7 +771,30 @@ def _reveal_plus_on_error_handler(ax: int, ay: int) -> tuple[int, int] | None:
             print(f"[runner] '+' icon not seen after reveal in region {plus_region}. Using predicted coordinate ({ex}, {ey - 80}).")
             return (ex, ey - 80)
     else:
-        # Fallback: OCR 'Error Handler' text is to the right of the icon.
-        # Shifting ax by -80px to the left aligns the click with the icon/blue-line area.
-        print(f"[runner] EH icon NOT found near anchor. Falls back to -80px offset from OCR text at ({ax-80}, {ay-40}).")
-        return (ax - 80, ay - 40)
+        # Fallback: EH icon template not found — use OCR anchor with offsets.
+        # The '+' is 220px above and 100px left of the 'Error Handler' OCR text.
+        # Fallback: 80px above.
+        from src.detector import _is_light_mode
+        is_light = _is_light_mode(_screenshot())
+        plus_icon = "plus_light.png" if is_light else "plus.png"
+        icons_dir = Path(__file__).parent.parent / "kb" / "icons"
+
+        # Attempt 1: 200px above + 90px left of OCR text
+        x1, y1 = ax - 90, ay - 200
+        search1 = (x1 - 60, y1 - 60, x1 + 60, y1 + 60)
+        plus_pos = find_template_on_screen(_screenshot(), icons_dir / plus_icon, threshold=0.4, search_region=search1)
+        if plus_pos:
+            print(f"[runner] SUCCESS: Found '+' at 220px above + 100px left of OCR at {plus_pos}")
+            return plus_pos
+
+        # Attempt 2: 80px above OCR text
+        y2 = ay - 80
+        search2 = (ax - 120, y2 - 60, ax + 120, y2 + 60)
+        plus_pos = find_template_on_screen(_screenshot(), icons_dir / plus_icon, threshold=0.4, search_region=search2)
+        if plus_pos:
+            print(f"[runner] SUCCESS: Found '+' at 80px above OCR at {plus_pos}")
+            return plus_pos
+
+        # Attempt 3: coordinate guess at 200px above + 90px left
+        print(f"[runner] '+' icon not found via template. Clicking at ({x1}, {y1}).")
+        return (x1, y1)

@@ -1,0 +1,187 @@
+{
+  "1": {
+    "digest": "c53b398bdfaad5b1",
+    "title": "Create the project",
+    "actions": [
+      {
+        "action": "click",
+        "target": "Skip for now"
+      },
+      {
+        "action": "wait",
+        "seconds": 3,
+        "reason": "Wait for workbench to load after skip"
+      },
+      {
+        "action": "hotkey",
+        "keys": "Meta+Shift+P"
+      },
+      {
+        "action": "type",
+        "target": "",
+        "value": "WSO2 Integrator: Open Welcome Page"
+      },
+      {
+        "action": "hotkey",
+        "keys": "Enter"
+      },
+      {
+        "action": "wait",
+        "seconds": 10,
+        "reason": "Welcome page loads in webview"
+      },
+      {
+        "action": "click",
+        "target": "**Create**"
+      },
+      {
+        "action": "type",
+        "target": "**Integration Name**",
+        "value": "HelloWorld"
+      },
+      {
+        "action": "type",
+        "target": "**Project Name**",
+        "value": "QuickStart"
+      },
+      {
+        "action": "click",
+        "target": "**Browse**"
+      },
+      {
+        "action": "wait",
+        "seconds": 3,
+        "reason": "..."
+      },
+      {
+        "action": "click",
+        "target": "**Open**"
+      },
+      {
+        "action": "click",
+        "target": "**Create Integration**"
+      }
+    ],
+    "narration": "Now open WSO2 Integrator on your computer. Next, click on Create in the top left corner of the screen. In the new window that appears, enter HelloWorld into the field labeled Integration Name and QuickStart into the Project Name field. Click Browse to select a location for your project. Choose a folder and then click Open. Finally, click Create Integration to start building your integration."
+  },
+  "2": {
+    "digest": "8fbf9b7ddb18c99a",
+    "title": "Add an automation artifact",
+    "actions": [
+      {
+        "action": "click",
+        "target": "**Get Started**"
+      },
+      {
+        "action": "click",
+        "target": "**+ Add Artifact**"
+      },
+      {
+        "action": "select",
+        "target": "**Automation** artifact"
+      },
+      {
+        "action": "click",
+        "target": "**Create**"
+      }
+    ],
+    "narration": "Now select Get Started on the welcome page. Next, switch to the design view and click the plus sign in the top right corner to add a new artifact. From the dropdown menu, choose Automation. Select Create to start building your automation, which will take you to the automation diagram view."
+  },
+  "3": {
+    "digest": "71737f3c791d8357",
+    "title": "Add logic",
+    "actions": [
+      {
+        "action": "click",
+        "target": "**+** after the **Start** node",
+        "hint": "in the graph"
+      },
+      {
+        "action": "wait",
+        "seconds": 2,
+        "reason": "...panel opens"
+      },
+      {
+        "action": "type",
+        "target": "",
+        "value": "Println"
+      },
+      {
+        "action": "hotkey",
+        "keys": "Enter"
+      },
+      {
+        "action": "click",
+        "target": "**Println**"
+      },
+      {
+        "action": "wait",
+        "seconds": 2,
+        "reason": "...panel opens"
+      },
+      {
+        "action": "type",
+        "target": "",
+        "value": "Initialize Array"
+      },
+      {
+        "action": "hotkey",
+        "keys": "Enter"
+      },
+      {
+        "action": "click",
+        "target": "**Println**"
+      },
+      {
+        "action": "wait",
+        "seconds": 2,
+        "reason": "...panel opens"
+      },
+      {
+        "action": "type",
+        "target": "",
+        "value": "Hello World"
+      },
+      {
+        "action": "hotkey",
+        "keys": "Tab"
+      },
+      {
+        "action": "type",
+        "target": "**Values**",
+        "value": ""
+      },
+      {
+        "action": "click",
+        "target": "**Save**"
+      }
+    ],
+    "narration": "Now select the plus sign after the Start node, which will open up a new panel on the right-hand side of your screen. In this panel, search for Println by typing it in the search bar. Select Println from the results that appear. Next, look for Initialize Array and select it as well."
+  },
+  "4": {
+    "digest": "fffa1dc5f3602edf",
+    "title": "Run and test",
+    "actions": [
+      {
+        "action": "click",
+        "target": "**Run**"
+      },
+      {
+        "action": "wait",
+        "seconds": 1,
+        "reason": "..."
+      },
+      {
+        "action": "wait",
+        "seconds": 3,
+        "reason": "..."
+      },
+      {
+        "action": "wait",
+        "seconds": 3,
+        "reason": "..."
+      }
+    ],
+    "narration": "Now select Run from the top menu bar. This will execute your automation right away, and you'll see the results in the terminal window below. Take a look at what's printed out there - it should include the words Hello World."
+  }
+}

@@ -49,32 +49,22 @@
     "automation": {
       "winner": "ocr_corrected",
       "fail_counts": {},
-      "last_seen": "2026-04-18T16:13:11.117416+00:00"
+      "last_seen": "2026-04-17T06:48:47.569451+00:00"
     },
-    "advanced configuration": {
+    "browse": {
       "winner": "ocr_after_wait",
       "fail_counts": {},
-      "last_seen": "2026-04-18T00:00:00.000000+00:00"
+      "last_seen": "2026-07-12T03:08:54.999759+00:00"
     },
-    "project handle": {
+    "println": {
       "winner": "ocr_after_wait",
       "fail_counts": {},
-      "last_seen": "2026-04-18T00:00:00.000000+00:00"
+      "last_seen": "2026-07-12T09:02:07.057939+00:00"
     },
-    "hello_world_api": {
-      "winner": "ocr_corrected",
+    "initialize array": {
+      "winner": "ocr_after_wait",
       "fail_counts": {},
-      "last_seen": "2026-04-18T16:38:35.470389+00:00"
-    },
-    "http service": {
-      "winner": "ocr_corrected",
-      "fail_counts": {},
-      "last_seen": "2026-04-18T16:40:12.298591+00:00"
-    },
-    "save": {
-      "winner": "ocr_corrected",
-      "fail_counts": {},
-      "last_seen": "2026-04-20T04:28:21.045116+00:00"
+      "last_seen": "2026-07-12T09:02:19.826324+00:00"
     }
   }
 }

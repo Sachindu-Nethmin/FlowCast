@@ -153,6 +153,13 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
+        # ── Hotkey: "Press **X+Y**" ─────────────────────────────────────────
+        if not line_actions:
+            m = re.search(r'\bPress\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                keys = re.split(r'[+\s]+', m.group(1).strip())
+                line_actions.append({"action": "hotkey", "keys": [k for k in keys if k]})
+
         # ── Type: "Set [the] [base] **X** to `Y`" or "Set **X** to **Y**"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
         if m:

@@ -12,6 +12,9 @@ load_dotenv()
 
 from src import runner
 
+# Always run the app full screen before making changes
+runner.ensure_fullscreen(force=True)
+
 
 def _run(action):
     resolved = runner.resolve(action)
@@ -27,9 +30,10 @@ def _run(action):
 # Step 1: Create the project
 # ──────────────────────────────────────────────────────────
 _run({'action': 'open_app', 'app_name': 'WSO2 Integrator', 'app_path': '/Users/sachindu/Applications/WSO2 Integrator.app'})
+_run({'action': 'click', 'target': 'Skip for now'})
 _run({'action': 'click', 'target': 'Create'})
-_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'Get Started'})
-_run({'action': 'type', 'field_target': 'Project Name', 'value': 'Automation'})
+_run({'action': 'type', 'field_target': 'Integration Name', 'value': 'HelloWorld'})
+_run({'action': 'type', 'field_target': 'Project Name', 'value': 'QuickStart'})
 _run({'action': 'click', 'target': 'Browse'})
 _run({'action': 'click', 'target': 'Open'})
 _run({'action': 'click', 'target': 'Create Integration'})
@@ -37,8 +41,8 @@ _run({'action': 'click', 'target': 'Create Integration'})
 # ──────────────────────────────────────────────────────────
 # Step 2: Add an automation artifact
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Get Started'})
-_run({'action': 'click', 'target': '+ Add Artifact'})
+_run({'action': 'click', 'target': 'HelloWorld'})
+_run({'action': 'click', 'target': 'Add Artifact'})
 _run({'action': 'click', 'target': 'Automation'})
 _run({'action': 'click', 'target': 'Create'})
 
@@ -55,4 +59,4 @@ _run({'action': 'click', 'target': 'Save'})
 # ──────────────────────────────────────────────────────────
 # Step 4: Run and test
 # ──────────────────────────────────────────────────────────
-_run({'action': 'click', 'target': 'Run'})
+_run({'action': 'click', 'target': 'Play'})

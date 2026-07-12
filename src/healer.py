@@ -226,7 +226,7 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
         ElementNotFoundError,
         _find_ocr,
         _scale,
-        _ocr,
+        _read_ocr,
         find_element,
     )
     import numpy as np
@@ -262,7 +262,7 @@ def heal(ctx: HealContext) -> tuple[int, int] | None:
     import pyautogui
     fresh_screenshot = pyautogui.screenshot()
     arr = np.array(fresh_screenshot)
-    fresh_ocr = _ocr().readtext(arr)
+    fresh_ocr = _read_ocr(arr)
     hint = ctx.action.get("hint")
 
     try:
