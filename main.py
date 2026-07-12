@@ -7,6 +7,7 @@ Usage:
   uv run python main.py workflow.md --step 2
   uv run python main.py workflow.md --guide
   uv run python main.py --guide              # author a brand-new workflow
+  uv run python main.py --guide --voice      # ...same, but push-to-talk (hold →)
 
 Outputs (inside output/recordings/<workflow-slug>/):
   step-01-<slug>-<theme>.gif   — per-step animated GIF
@@ -25,6 +26,14 @@ Guide mode (--guide) with NO workflow.md:
   Asks for a workflow name first, then lets you teach it step by step from
   scratch using the same interactive loop. When done, writes a brand-new
   workflows/<slug>.md and produces the full set of outputs above.
+
+Voice mode (--voice, implies --guide):
+  Replaces the typed "what next>" / step-title prompts with push-to-talk:
+  hold the RIGHT ARROW key, speak the command, release to send. Transcribed
+  via the Groq Whisper API (GROQ_API_KEY in .env). Esc at any prompt falls
+  back to typing — use it for exact values (hostnames, ports, JSON) that are
+  a poor fit for dictation. Requires: uv sync --extra voice
+  See src/voice.py for setup details and required macOS permissions.
 """
 from __future__ import annotations
 
@@ -229,6 +238,7 @@ def main() -> None:
     only_step: int | None = None
     from_step: int | None = None   # --from-step N  → record steps N, N+1, …
     guide_mode: bool = False       # --guide → interactive tutorial recording
+    voice_mode: bool = False       # --voice → push-to-talk instead of typed input
     md_path:   Path | None = None
     i = 0
     while i < len(args):
@@ -241,6 +251,10 @@ def main() -> None:
         elif args[i] == "--guide":
             guide_mode = True
             i += 1
+        elif args[i] == "--voice":
+            voice_mode = True
+            guide_mode = True  # --voice implies --guide
+            i += 1
         else:
             md_path = Path(args[i])
             i += 1
@@ -248,12 +262,13 @@ def main() -> None:
     # ── --guide with no workflow.md: author a brand-new workflow ──────────
     if md_path is None:
         if not guide_mode:
-            print("Usage: python main.py workflow.md [--step N] [--guide]", file=sys.stderr)
-            print("       python main.py --guide           (author a brand-new workflow)",
+            print("Usage: python main.py workflow.md [--step N] [--guide] [--voice]",
+                  file=sys.stderr)
+            print("       python main.py --guide [--voice]  (author a brand-new workflow)",
                   file=sys.stderr)
             sys.exit(1)
         from src.guide import run_guide_new
-        run_guide_new(Path("workflows"), OUTPUT_DIR)
+        run_guide_new(Path("workflows"), OUTPUT_DIR, voice=voice_mode)
         return
 
     if not md_path.exists():
@@ -288,7 +303,7 @@ def main() -> None:
     # ── Guide mode: interactive tutorial recording ────────────────────────
     if guide_mode:
         from src.guide import run_guide
-        run_guide(steps, out_dir, slug, theme)
+        run_guide(steps, out_dir, slug, theme, voice=voice_mode)
         return
 
     # Always regenerate artifacts (script, themed markdown) early so they 

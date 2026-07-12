@@ -60,6 +60,19 @@ def _stop_recording() -> Path | None:
         return None
 
 
+def _prompt_next(voice: bool, label: str = "what next") -> str:
+    """Get the next command/title, either typed or (--voice) push-to-talk.
+
+    Both paths return the identical shape of string, so everything
+    downstream (parse_command, control-word checks) is unaware of the
+    source — voice mode is purely an input-capture swap.
+    """
+    if voice:
+        from src import voice as voice_mod
+        return voice_mod.push_to_talk(label)
+    return input(f"{label}> ").strip()
+
+
 # ── Execute one user command ─────────────────────────────────────────────────
 
 def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
@@ -155,7 +168,8 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
 # ── Per-step guide loop ──────────────────────────────────────────────────────
 
 def _guide_step(step: Step, step_idx: int, out_dir: Path,
-                tmp_dir: Path, theme: str = "light") -> tuple[Path | None, dict]:
+                tmp_dir: Path, theme: str = "light",
+                voice: bool = False) -> tuple[Path | None, dict]:
     """Guide one step: loop on 'what next>' until the user types 'ok'.
 
     Returns (step_mov, meta). meta also carries "actions" (the ordered list
@@ -190,7 +204,7 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
 
     while True:
         try:
-            raw = input("what next> ").strip()
+            raw = _prompt_next(voice)
         except (EOFError, KeyboardInterrupt):
             print()
             return None, {"status": "aborted"}
@@ -363,17 +377,23 @@ def _save_guide_meta_and_kb(out_dir: Path, slug: str, theme: str,
 
 # ── Main entry point (guide an EXISTING workflow) ────────────────────────────
 
-def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str) -> None:
+def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str,
+              voice: bool = False) -> None:
     """Walk through every step, executing + recording each command."""
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = Path(tempfile.mkdtemp(prefix="guide_"))
 
     print(f"\n{'═' * 60}")
-    print(f"  GUIDE MODE  |  {len(steps)} steps  |  theme: {theme}")
+    print(f"  GUIDE MODE  |  {len(steps)} steps  |  theme: {theme}"
+          + ("  |  🎙  VOICE" if voice else ""))
     print(f"  Output: {out_dir}")
     print(f"{'═' * 60}")
-    print(f"  For each step, type what to do (e.g. 'click Create').")
-    print(f"  Type 'ok' when the step is done to move to the next one.")
+    if voice:
+        print(f"  For each step, hold → and speak what to do (e.g. 'click Create').")
+        print(f"  Say 'ok' when the step is done. Esc at any prompt to type instead.")
+    else:
+        print(f"  For each step, type what to do (e.g. 'click Create').")
+        print(f"  Type 'ok' when the step is done to move to the next one.")
     print(f"  Commands: skip / abort / where / undo / help")
     print(f"{'═' * 60}")
 
@@ -383,7 +403,7 @@ def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str) -> None:
     all_meta: list[dict] = []
 
     for idx, step in enumerate(steps, 1):
-        mov, meta = _guide_step(step, idx, out_dir, tmp_dir, theme)
+        mov, meta = _guide_step(step, idx, out_dir, tmp_dir, theme, voice)
         all_meta.append(meta)
         if mov:
             step_movs.append(mov)
@@ -430,21 +450,28 @@ def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str) -> None:
 
 # ── New entry point (author a BRAND-NEW workflow from scratch) ──────────────
 
-def run_guide_new(workflows_dir: Path, output_root: Path) -> None:
+def run_guide_new(workflows_dir: Path, output_root: Path, voice: bool = False) -> None:
     """Ask for a workflow name, then teach steps from scratch.
 
     Uses the same "what next>" command loop as run_guide(), but step titles
-    are entered live (type 'done' once the whole workflow is taught). When
-    finished, writes workflows/<slug>.md and produces the same outputs a
-    normal run would (per-step GIF/MOV, full-<theme>.mov, full_script-<theme>.py,
-    themed index.md), using the knowledge base (kb_learn / user_inputs) the
-    same way run() and run_guide() already do via runner.resolve().
+    are entered live (say/type 'done' once the whole workflow is taught).
+    When finished, writes workflows/<slug>.md and produces the same outputs
+    a normal run would (per-step GIF/MOV, full-<theme>.mov,
+    full_script-<theme>.py, themed index.md), using the knowledge base
+    (kb_learn / user_inputs) the same way run() and run_guide() already do
+    via runner.resolve().
+
+    With voice=True, step titles and "what next>" commands are captured via
+    push-to-talk (src/voice.push_to_talk) instead of input(). The workflow
+    name itself is always typed — it becomes a filename, so it needs to be
+    exact rather than dictated.
     """
     print(f"\n{'═' * 60}")
-    print(f"  GUIDE MODE — new workflow")
+    print(f"  GUIDE MODE — new workflow" + ("  |  🎙  VOICE" if voice else ""))
     print(f"{'═' * 60}")
 
     # ── 1. Ask for the workflow name FIRST, before touching the screen ────
+    # (always typed — this becomes a filename, so it must be exact)
     while True:
         try:
             name = input("workflow name> ").strip()
@@ -476,10 +503,16 @@ def run_guide_new(workflows_dir: Path, output_root: Path) -> None:
 
     print(f"\n{'═' * 60}")
     print(f"  Teaching '{name}'  →  {md_path}")
-    print(f"  For each step: give it a title, then type what to do")
-    print(f"  (e.g. 'click Create'). Type 'ok' to finish the step.")
-    print(f"  Type 'done' at the step-title prompt to finish the workflow,")
-    print(f"  or 'abort' to cancel without saving anything.")
+    if voice:
+        print(f"  For each step: give it a title, then hold → and speak what to do")
+        print(f"  (e.g. 'click Create'). Say 'ok' to finish the step.")
+        print(f"  Say 'done' at the step-title prompt to finish the workflow,")
+        print(f"  'abort' to cancel without saving, or press Esc at any prompt to type.")
+    else:
+        print(f"  For each step: give it a title, then type what to do")
+        print(f"  (e.g. 'click Create'). Type 'ok' to finish the step.")
+        print(f"  Type 'done' at the step-title prompt to finish the workflow,")
+        print(f"  or 'abort' to cancel without saving anything.")
     print(f"{'═' * 60}")
 
     all_meta: list[dict] = []
@@ -488,7 +521,7 @@ def run_guide_new(workflows_dir: Path, output_root: Path) -> None:
 
     while True:
         try:
-            title = input(f"\nstep {idx + 1} title (or 'done')> ").strip()
+            title = _prompt_next(voice, label=f"step {idx + 1} title (or say 'done')")
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -501,13 +534,13 @@ def run_guide_new(workflows_dir: Path, output_root: Path) -> None:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
         if not title:
-            print("  (type a step title, 'done' to finish, or 'abort' to cancel)")
+            print("  (give a step title, say/type 'done' to finish, or 'abort' to cancel)")
             continue
 
         idx += 1
         placeholder = Step(title=title, gif_filename=f"{_slug(title)}.gif",
                             actions=[], raw_instructions="")
-        mov, meta = _guide_step(placeholder, idx, out_dir, tmp_dir, theme)
+        mov, meta = _guide_step(placeholder, idx, out_dir, tmp_dir, theme, voice)
         all_meta.append(meta)
         if mov:
             step_movs.append(mov)
