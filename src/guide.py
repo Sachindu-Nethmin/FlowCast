@@ -75,12 +75,87 @@ def _prompt_next(voice: bool, label: str = "what next") -> str:
 
 # ── Execute one user command ─────────────────────────────────────────────────
 
+class _Attempt:
+    """Outcome of one resolve → fire → verify cycle."""
+    def __init__(self) -> None:
+        self.status: str = ""    # "ok" | "skip" | "resolve_error" | "fire_error" | "blue" | "no_change"
+        self.error: str = ""
+        self.clip: Path | None = None
+        self.x: int | None = None
+        self.y: int | None = None
+        self.shot_before: object | None = None
+        self.alt_positions: list[tuple[int, int]] = []
+
+
+def _attempt(command: dict, clip_name: str, tmp_dir: Path) -> _Attempt:
+    """One resolve → fire → verify cycle for a click/type/select/search
+    command, with its own recording clip. Does NOT touch the knowledge base
+    or decide retries — that's the caller's job, so it can try this same
+    command again (e.g. after invalidating a bad learned position), or try
+    a specific runner-up position via a.alt_positions."""
+    a = _Attempt()
+    target = command.get("target") or command.get("field_target", "")
+
+    runner.set_pre_move_callback(lambda: recorder.start(clip_name, tmp_dir))
+    a.shot_before = _screenshot()
+
+    try:
+        if command.get("_direct"):
+            resolved = dict(command)  # already has x, y — e.g. a runner-up position
+        else:
+            resolved = runner.resolve(command)
+    except Exception as e:
+        runner.set_pre_move_callback(None)
+        if recorder._proc is not None:
+            recorder.stop().unlink(missing_ok=True)
+        a.status, a.error = "resolve_error", str(e)
+        return a
+
+    if resolved.get("_skip"):
+        runner.set_pre_move_callback(None)
+        a.status = "skip"
+        return a
+
+    try:
+        runner.fire(resolved)
+    except Exception as e:
+        runner.set_pre_move_callback(None)
+        if recorder._proc is not None:
+            recorder.stop().unlink(missing_ok=True)
+        a.status, a.error = "fire_error", str(e)
+        return a
+
+    ui_changed = runner.wait_ui_change(timeout=4.0, baseline=a.shot_before)
+    runner.wait_ui_settle()
+    runner.set_pre_move_callback(None)
+    a.clip = _stop_recording()
+    a.x, a.y = resolved.get("x"), resolved.get("y")
+    a.alt_positions = list(resolved.get("_alt_positions") or [])
+
+    kind = command.get("action", "click")
+    if runner.LAST_REPORT.get("blue_selection"):
+        a.status = "blue"
+        return a
+    if kind == "click" and not ui_changed:
+        a.status = "no_change"
+        return a
+
+    a.status = "ok"
+    return a
+
+
 def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
                      step_idx: int) -> tuple[bool, Path | None]:
     """Parse → fire → verify one user-typed command.  Returns (success, clip).
 
     Each command gets its own recording clip so the tutorial video shows
-    every action the user taught.
+    every action the user taught. On a click that lands on nothing (no UI
+    change), the bad position is unlearned and — instead of just giving up
+    and asking the user for exact coordinates — resolution is retried once
+    automatically: with the bad KB entry now invalidated, that retry falls
+    through to fresh OCR detection and, if needed, the healer's escalating
+    strategies (closest-OCR-match auto-correct), which is effectively
+    "try other visible text" without hardcoding anything.
     """
     target = command.get("target") or command.get("field_target", "")
     kind = command.get("action", "click")
@@ -105,64 +180,79 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
             runner.wait_ui_settle()
         return True, None
 
-    # ── Start recording ───────────────────────────────────────────────────
-    clip_name = f"guide_{step_idx:02d}_{clip_idx:03d}"
-    runner.set_pre_move_callback(lambda n=clip_name: recorder.start(n, tmp_dir))
-    shot_before = _screenshot()
+    next_command = command
+    retry_reason = ""
+    for attempt_num in (1, 2):
+        clip_name = f"guide_{step_idx:02d}_{clip_idx:03d}" + ("_retry" if attempt_num == 2 else "")
+        a = _attempt(next_command, clip_name, tmp_dir)
 
-    try:
-        resolved = runner.resolve(command)
-    except Exception as e:
-        runner.set_pre_move_callback(None)
-        if recorder._proc is not None:
-            recorder.stop().unlink(missing_ok=True)
-        print(f"  ✗ cannot find '{target}': {e}")
-        return False, None
+        if a.status == "resolve_error":
+            print(f"  ✗ cannot find '{target}': {a.error}")
+            return False, None
 
-    if resolved.get("_skip"):
-        runner.set_pre_move_callback(None)
-        print("  ○ nothing to do (auto-populated)")
-        return True, None
+        if a.status == "skip":
+            print("  ○ nothing to do (auto-populated)")
+            return True, None
 
-    try:
-        runner.fire(resolved)
-    except Exception as e:
-        runner.set_pre_move_callback(None)
-        if recorder._proc is not None:
-            recorder.stop().unlink(missing_ok=True)
-        print(f"  ✗ failed: {e}")
-        return False, None
+        if a.status == "fire_error":
+            print(f"  ✗ failed: {a.error}")
+            return False, None
 
-    # ── Verify ────────────────────────────────────────────────────────────
-    ui_changed = runner.wait_ui_change(timeout=4.0, baseline=shot_before)
-    runner.wait_ui_settle()
-    runner.set_pre_move_callback(None)
-    clip = _stop_recording()
+        if a.status == "blue":
+            print("  ✗ blue-highlighted text — wrong field. Undoing…")
+            pyautogui.hotkey("command", "z")
+            time.sleep(0.4)
+            if a.x is not None and kind in ("click", "type", "select", "search"):
+                kb_learn.record(a.shot_before, target, kind, (a.x, a.y),
+                                runner.screen_size(), success=False)
+            if a.clip:
+                a.clip.unlink(missing_ok=True)
+            return False, None
 
-    # Blue selection = wrong field
-    if runner.LAST_REPORT.get("blue_selection"):
-        print("  ✗ blue-highlighted text — wrong field. Undoing…")
-        pyautogui.hotkey("command", "z")
-        time.sleep(0.4)
-        if clip:
-            clip.unlink(missing_ok=True)
-        return False, None
+        if a.status == "no_change":
+            print(f"  ✗ UI did not change — '{target}' was clicked at "
+                  f"({a.x}, {a.y}), probably the wrong spot.{retry_reason}")
+            if a.x is not None:
+                # Unlearn this position so it isn't reused (and re-fail) —
+                # a later manual retry falls through to fresh detection
+                # instead of the bad cache.
+                kb_learn.record(a.shot_before, target, kind, (a.x, a.y),
+                                runner.screen_size(), success=False)
+            if a.clip:
+                a.clip.unlink(missing_ok=True)
 
-    # Click with no UI change = probably a label / wrong place
-    if kind == "click" and not ui_changed:
-        print("  ✗ UI did not change — may be wrong place.")
-        if clip:
-            clip.unlink(missing_ok=True)
-        return False, None
+            if attempt_num == 1:
+                if a.alt_positions:
+                    # This label appeared more than once on screen (e.g. two
+                    # "Automation" cards) — try the next-closest occurrence
+                    # directly, at the exact position already found, rather
+                    # than re-running detection blind.
+                    ax, ay = a.alt_positions[0]
+                    print(f"     trying the other occurrence of '{target}' at ({ax}, {ay})…")
+                    next_command = {**command, "action": kind, "target": target,
+                                    "x": ax, "y": ay, "_direct": True}
+                    retry_reason = " (this was the other occurrence)"
+                else:
+                    print("     trying fresh detection instead of the cached position…")
+                    next_command = command
+                    retry_reason = " (after fresh detection)"
+                continue  # one automatic retry
 
-    # ── Learn ─────────────────────────────────────────────────────────────
-    x, y = resolved.get("x"), resolved.get("y")
-    if x is not None and kind in ("click", "type", "select", "search"):
-        kb_learn.record(shot_before, target, kind, (x, y),
-                        runner.screen_size(), success=True)
+            print("     retry also missed — say/type 'at <x>,<y>' with the "
+                  "correct pixel coordinates, or 'where' to see what's on screen.")
+            return False, None
 
-    print(f"  ✓ {kind} '{target}'")
-    return True, clip
+        # status == "ok"
+        if a.x is not None and kind in ("click", "type", "select", "search"):
+            kb_learn.record(a.shot_before, target, kind, (a.x, a.y),
+                            runner.screen_size(), success=True)
+        if attempt_num == 2:
+            print(f"  ✓ {kind} '{target}' — succeeded at ({a.x}, {a.y}) on retry")
+        else:
+            print(f"  ✓ {kind} '{target}'")
+        return True, a.clip
+
+    return False, None  # unreachable, keeps type-checkers happy
 
 
 # ── Per-step guide loop ──────────────────────────────────────────────────────

@@ -10,7 +10,8 @@ import numpy as np
 import pyautogui
 from PIL import Image
 
-from src.detector import ElementNotFoundError, find_element, find_input_field, is_text_visible_near
+from src.detector import (ElementNotFoundError, find_element, find_element_candidates,
+                          find_input_field, is_text_visible_near)
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.3
@@ -429,7 +430,28 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
             x, y = _find(card_label, action=action)
             # Card click is slightly offset to ensure we hit the card, not just the text
             offset = kb.get("click_offset", {"x": 0, "y": 0})
-            return {**action, "x": x + offset["x"], "y": y + offset["y"]}
+            x, y = x + offset["x"], y + offset["y"]
+
+            # Best-effort: this label can legitimately appear MORE THAN ONCE on
+            # screen (e.g. two "Automation" cards). Surface the runner-up
+            # position(s) so a caller whose click on (x, y) turns out to be the
+            # wrong occurrence can try the other one directly, instead of
+            # re-running full detection from scratch. Never lets a detection
+            # hiccup here break the primary click above.
+            alt_positions: list[tuple[int, int]] = []
+            try:
+                offset_pos = (x, y)
+                candidates = find_element_candidates(_screenshot(), card_label, max_results=3)
+                for cx, cy in candidates:
+                    cand = (cx + offset["x"], cy + offset["y"])
+                    if cand != offset_pos and all(
+                            ((cand[0] - p[0]) ** 2 + (cand[1] - p[1]) ** 2) ** 0.5 > 20
+                            for p in [offset_pos, *alt_positions]):
+                        alt_positions.append(cand)
+            except Exception as e:
+                print(f"[runner] (non-fatal) could not compute alt positions for '{card_label}': {e}")
+
+            return {**action, "x": x, "y": y, "_alt_positions": alt_positions}
 
         # Verify clickability via WSO2 Integrator React source code
         from src.source_verifier import is_clickable

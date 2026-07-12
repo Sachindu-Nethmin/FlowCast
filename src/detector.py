@@ -611,7 +611,17 @@ def is_text_selected_blue(screenshot: Image.Image, cx: int, cy: int,
     return False
 
 
-def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
+def _compute_ocr_candidates(screenshot: Image.Image, target: str,
+                             search_region: tuple[int, int, int, int] | None = None
+                             ) -> tuple[list[dict], bool]:
+    """Build the scored OCR candidate list for `target` (extracted out of
+    _find_ocr so the candidates — not just the single winner — are available
+    for multi-candidate lookups like find_element_candidates()).
+
+    Returns (candidates, is_kb_card). Pure extraction: computes exactly what
+    _find_ocr always computed internally before picking a winner — no
+    scoring/selection behavior changed here.
+    """
     arr = np.array(screenshot)
     results = _read_ocr(arr)
     scale = _scale(screenshot)
@@ -679,7 +689,7 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
             exact_score = 50 if is_exact else 0
             # Case bonus is now the highest priority (200), ensuring exact casing wins over position biases.
             case_bonus = 200 if is_case_match else 0
-            
+
             # Sidebar Suppression: Penalize the leftmost 30% of the screen heavily
             # If the hit is in the explorer tree, it should never beat a central picker card.
             sidebar_penalty = -150 if min(xs) < (w * 0.30) else 0
@@ -701,6 +711,12 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
                 "is_exact": is_exact,
                 "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} input:{input_penalty} text='{text}'"
             })
+
+    return candidates, is_kb_card
+
+
+def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
+    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target, search_region)
 
     if candidates:
         if is_kb_card:
@@ -814,6 +830,101 @@ def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, in
             return (cx, cy)
 
     return None
+
+
+# ── Multi-candidate lookup (for duplicated on-screen elements) ──────────────
+
+def _cursor_pos() -> tuple[int, int] | None:
+    try:
+        p = pyautogui.position()
+        return (p.x, p.y)
+    except Exception:
+        return None
+
+
+def _dist(a: tuple[int, int], b: tuple[int, int]) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+
+def _rank_with_cursor_tiebreak(sorted_candidates: list[dict], tie_epsilon: float = 15.0
+                                ) -> list[dict]:
+    """Re-order the leading near-tied group of an already score-sorted
+    candidate list by distance to the current mouse cursor.
+
+    Only kicks in when there's genuine ambiguity: candidates whose score is
+    within `tie_epsilon` of the top score (e.g. two visually-identical
+    "Automation" cards). A clear single winner (next-best score more than
+    tie_epsilon lower) is completely unaffected — this never changes which
+    element wins, only which of several *equally good* matches gets tried
+    first.
+    """
+    if len(sorted_candidates) < 2:
+        return sorted_candidates
+    cursor = _cursor_pos()
+    if cursor is None:
+        return sorted_candidates
+
+    top_score = sorted_candidates[0]["score"]
+    tied = [c for c in sorted_candidates if top_score - c["score"] <= tie_epsilon]
+    rest = [c for c in sorted_candidates if top_score - c["score"] > tie_epsilon]
+    if len(tied) < 2:
+        return sorted_candidates
+
+    tied.sort(key=lambda c: _dist(c["pos"], cursor))
+    print(f"[detector] {len(tied)} near-tied candidates (within {tie_epsilon} pts) — "
+          f"trying nearest to cursor {cursor} first: "
+          + ", ".join(f"{c['pos']}" for c in tied))
+    return tied + rest
+
+
+def find_element_candidates(screenshot: Image.Image, target: str, hint: str | None = None,
+                             search_region: tuple[int, int, int, int] | None = None,
+                             max_results: int = 3) -> list[tuple[int, int]]:
+    """Like find_element(), but returns UP TO max_results ranked positions
+    instead of just the best one — for elements that can legitimately appear
+    more than once on screen (e.g. two "Automation" cards in the artifact
+    picker). The first entry is always what find_element() itself would
+    return; extra entries are runner-up candidates a caller can fall back to
+    if the first one turns out to be the wrong occurrence.
+
+    Only the plain OCR / KB-card path supports multiple candidates (that's
+    the case duplicated elements actually hit). Hint-based / template-match
+    paths fall back to a single find_element() result, unchanged.
+    """
+    if hint or search_region:
+        try:
+            return [find_element(screenshot, target, hint, search_region)]
+        except ElementNotFoundError:
+            return []
+
+    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target)
+    if not candidates:
+        try:
+            return [find_element(screenshot, target, hint)]
+        except ElementNotFoundError:
+            return []
+
+    if is_kb_card:
+        pool = [c for c in candidates if c["is_card"] and c["score"] > -100]
+        if not pool:
+            pool = [c for c in candidates if c["score"] > -100]
+            pool.sort(key=lambda c: c["cy_img"], reverse=True)
+            return [c["pos"] for c in pool[:max_results]]
+    else:
+        pool = candidates
+
+    pool = sorted(pool, key=lambda c: c["score"], reverse=True)
+    pool = _rank_with_cursor_tiebreak(pool)
+
+    # De-duplicate near-identical positions (same physical element hit twice
+    # by OCR, e.g. wrapped text) — keep the first (best-ranked) occurrence.
+    ranked: list[tuple[int, int]] = []
+    for c in pool:
+        if all(_dist(c["pos"], p) > 20 for p in ranked):
+            ranked.append(c["pos"])
+        if len(ranked) >= max_results:
+            break
+    return ranked
 
 
 # ── Knowledge base loaders ────────────────────────────────────────────────────

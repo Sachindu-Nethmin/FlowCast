@@ -30,9 +30,10 @@ Guide mode (--guide) with NO workflow.md:
 Voice mode (--voice, implies --guide):
   Replaces the typed "what next>" / step-title prompts with push-to-talk:
   hold the RIGHT ARROW key, speak the command, release to send. Transcribed
-  via the Groq Whisper API (GROQ_API_KEY in .env). Esc at any prompt falls
-  back to typing — use it for exact values (hostnames, ports, JSON) that are
-  a poor fit for dictation. Requires: uv sync --extra voice
+  fully on-device via macOS's built-in Speech framework — no API key, no
+  network call. Esc at any prompt falls back to typing — use it for exact
+  values (hostnames, ports, JSON) that are a poor fit for dictation.
+  Requires: uv sync --extra voice
   See src/voice.py for setup details and required macOS permissions.
 """
 from __future__ import annotations

@@ -140,13 +140,24 @@
         "skip for now": {
           "kind": "click",
           "label": "Skip for now",
-          "wins": 11,
+          "wins": 12,
           "fails": 0,
           "pos_rel": [
             0.7097,
             0.6161
           ],
-          "last_used": "2026-07-12T10:13:45+00:00"
+          "last_used": "2026-07-12T11:42:33+00:00"
+        },
+        "skip home now": {
+          "kind": "click",
+          "label": "Skip home now",
+          "wins": 1,
+          "fails": 0,
+          "pos_rel": [
+            0.7103,
+            0.6191
+          ],
+          "last_used": "2026-07-12T11:13:24+00:00"
         }
       }
     },
@@ -236,6 +247,28 @@
             0.2067
           ],
           "last_used": "2026-07-12T10:16:10+00:00"
+        },
+        "inter integration name sachi": {
+          "kind": "click",
+          "label": "Inter integration name Sachi",
+          "wins": 1,
+          "fails": 0,
+          "pos_rel": [
+            0.7189,
+            0.6741
+          ],
+          "last_used": "2026-07-12T11:14:59+00:00"
+        },
+        "ente automation in integration name": {
+          "kind": "click",
+          "label": "Ente automation in integration name",
+          "wins": 1,
+          "fails": 0,
+          "pos_rel": [
+            0.7189,
+            0.6741
+          ],
+          "last_used": "2026-07-12T11:43:07+00:00"
         }
       }
     },
@@ -389,13 +422,24 @@
         "add artifact": {
           "kind": "click",
           "label": "Add Artifact",
+          "wins": 2,
+          "fails": 0,
+          "pos_rel": [
+            0.4709,
+            0.5713
+          ],
+          "last_used": "2026-07-12T11:43:53+00:00"
+        },
+        "at artifact": {
+          "kind": "click",
+          "label": "at artifact",
           "wins": 1,
           "fails": 0,
           "pos_rel": [
             0.4709,
             0.5713
           ],
-          "last_used": "2026-07-12T04:09:28+00:00"
+          "last_used": "2026-07-12T11:15:48+00:00"
         }
       }
     },
@@ -1166,13 +1210,24 @@
         "create": {
           "kind": "click",
           "label": "Create",
-          "wins": 6,
+          "wins": 9,
           "fails": 0,
           "pos_rel": [
             0.0847,
             0.5611
           ],
-          "last_used": "2026-07-12T09:18:15+00:00"
+          "last_used": "2026-07-12T11:42:44+00:00"
+        },
+        "play": {
+          "kind": "click",
+          "label": "Play",
+          "wins": 1,
+          "fails": 0,
+          "pos_rel": [
+            0.914,
+            0.0876
+          ],
+          "last_used": "2026-07-12T11:13:35+00:00"
         }
       }
     },
@@ -1830,6 +1885,96 @@
             0.5611
           ],
           "last_used": "2026-07-12T10:14:13+00:00"
+        }
+      }
+    },
+    "53abecfeb4b0a0d7": {
+      "name": "",
+      "texts": [
+        "01 integrations are icpenabled",
+        "a wso2 integrator x wso2 integrator default",
+        "add integrations  libraries  generate with al",
+        "default project v q listeners",
+        "deploy your project integrations to",
+        "document your project integrations and libraries",
+        "e icp stopped ballerina 2201133202604111752006a2a1e46 swan lake update 13",
+        "enable icp for all integrations",
+        "integration control plane",
+        "monitor the deployment runtime using",
+        "wso2 cloud learn more untitled",
+        "wso2 integration control plane"
+      ],
+      "targets": {
+        "untitled": {
+          "kind": "click",
+          "label": "Untitled",
+          "wins": 2,
+          "fails": 0,
+          "pos_rel": [
+            0.3155,
+            0.3289
+          ],
+          "last_used": "2026-07-12T11:43:44+00:00"
+        }
+      }
+    },
+    "ca1b7cb48fde9183": {
+      "name": "",
+      "texts": [
+        "artifacts add a new artifact to your integration v g connections",
+        "cdc for microsoft sol server github beta solace",
+        "create an automation that can be invoked periodically or manually",
+        "create an integration that can be exposed as an api in the specified protocol",
+        "create an integration that can be triggered by an event",
+        "create an integration that connects your system with al capabilities",
+        "e icp stopped ballerina 2201133202604111752006a2a1e46 swan lake update 13",
+        "eg tcp service http service graphql service beta beta",
+        "mcp service al chat agent",
+        "salesforce azure service bus",
+        "untitled  artifacts",
+        "wso2 integrator default"
+      ],
+      "targets": {
+        "automation": {
+          "kind": "click",
+          "label": "automation",
+          "wins": 1,
+          "fails": 1,
+          "pos_rel": [
+            0.291,
+            0.3147
+          ],
+          "last_used": "2026-07-12T11:44:14+00:00"
+        }
+      }
+    },
+    "8468f4014eda017b": {
+      "name": "",
+      "texts": [
+        "advanced configurations",
+        "automation an automation that can be invoked periodically or manually v g connections",
+        "b configurations",
+        "create new automation",
+        "e icp stopped ballerina 2201133202604111752006a2a1e46 swan lake update 13",
+        "periodic invocation should be scheduled in an external system such as cronjob k8s or wso2 cloud",
+        "untitled  artifacts  automation",
+        "v  data mappers",
+        "v f functions",
+        "v o entry points",
+        "v q listeners",
+        "wso2 integrator x wso2 integrator default"
+      ],
+      "targets": {
+        "create": {
+          "kind": "click",
+          "label": "Create",
+          "wins": 1,
+          "fails": 0,
+          "pos_rel": [
+            0.6138,
+            0.3707
+          ],
+          "last_used": "2026-07-12T11:44:33+00:00"
         }
       }
     }

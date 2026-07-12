@@ -29,6 +29,12 @@ v2 = [
     "obsws-python>=1.7.0",
     "piper-tts>=1.2.0",
 ]
+# --voice guide mode: push-to-talk (right arrow) + on-device macOS Speech
+# recognition (no API key, no network, no model download)
+voice = [
+    "pyobjc-framework-Speech>=10.3.1",
+    "pynput>=1.7.7",
+]
 
 [build-system]
 requires = ["hatchling"]
