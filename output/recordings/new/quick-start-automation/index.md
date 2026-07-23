@@ -19,9 +19,10 @@
 
 ## Step 2: Add an automation artifact
 
-1. In the design view, select **+ Add Artifact**.
-2. Select **Automation** artifact.
-3. Select **Create** to create an automation. This directs you to the automation diagram view.
+1. Select **HelloWorld**
+2. Select **Add Artifact**
+3. Select **Automation** artifact.
+4. Select **Create** to create an automation. This directs you to the automation diagram view.
 
 <ThemedImage
     alt="Add an automation artifact"
@@ -49,7 +50,7 @@
 
 ## Step 4: Run and test
 
-1. Select **Run**.
+1. Select **Play**.
 2. The automation executes immediately and prints output to the terminal.
 3. Check the terminal output for `Hello World`.
 

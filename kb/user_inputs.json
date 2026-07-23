@@ -59,7 +59,8 @@
       "user_input": "click Automation",
       "screen_fp": "719db3f268593579",
       "timestamp": "2026-07-12T08:56:23+00:00",
-      "use_count": 0
+      "use_count": 9,
+      "last_used": "2026-07-21T17:23:55+00:00"
     },
     {
       "workflow": "quick-start-automation.md",
@@ -89,6 +90,96 @@
       "user_input": "click Automation",
       "screen_fp": "719db3f268593579",
       "timestamp": "2026-07-12T09:39:18+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T14:40:43+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T15:02:19+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T15:25:43+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T15:52:39+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T16:08:24+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T16:22:58+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T16:49:28+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T17:06:55+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-07-21T17:24:02+00:00",
       "use_count": 0
     }
   ]

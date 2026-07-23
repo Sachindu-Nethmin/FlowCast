@@ -1,0 +1,45 @@
+# FlowCast natural narration — quick-start-automation
+#
+# One line per SUB-STEP, in the order the actions happen. When you re-record
+# with `main.py`, FlowCast writes the exact time of each action to timings.json
+# and these lines snap onto them 1:1 (sentence-by-sentence, action-by-action).
+# You can also pin any line yourself by starting it with '@<seconds>'.
+#
+# [intro]/[outro] play over a frozen first/last frame (the video is paused).
+# '#' lines are comments and are ignored.
+
+[intro]
+Let's build our very first automation in WSO2 Integrator. In just a few
+minutes we'll go from an empty project to a running task. Let's dive in.
+
+[step 1]
+Open WSO2 Integrator.
+Skip the sign-in for now.
+Click Create.
+Set the Integration Name to HelloWorld.
+Set the Project Name to QuickStart.
+Click Browse.
+Pick a folder and click Open.
+Click Create Integration to scaffold the project.
+
+[step 2]
+Select the HelloWorld integration.
+Click Add Artifact.
+Choose the Automation artifact.
+Click Create to open the automation diagram.
+
+[step 3]
+Click the plus button after the Start node.
+Search for Println in the panel.
+Select Println.
+Choose Initialize Array.
+Set the Values to Hello World.
+Click Save.
+
+[step 4]
+Click Play. The automation runs immediately and prints Hello World to the
+terminal.
+
+[outro]
+And just like that, you've built and run your first automation in WSO2
+Integrator. Thanks for watching.

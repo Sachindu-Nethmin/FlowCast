@@ -35,6 +35,32 @@ Voice mode (--voice, implies --guide):
   values (hostnames, ports, JSON) that are a poor fit for dictation.
   Requires: uv sync --extra voice
   See src/voice.py for setup details and required macOS permissions.
+
+Dub mode (--dub):
+  uv run python main.py workflow.md --dub
+  Post-process ONLY — run this after you already have recordings (from any
+  mode above). Narrates each step's instructions with macOS's built-in,
+  fully offline `say` and muxes it onto the existing step-*.mov files,
+  writing step-*-dubbed.mov (originals are untouched) plus a rebuilt
+  full-<theme>-dubbed.mov. GIFs/scripts/markdown are not touched.
+  See src/dub.py for voice/rate customization via env vars.
+
+Natural voiceover (ON by default):
+  uv run python main.py workflow.md
+  After recording the workflow (following the .md), a NATURAL, conversational
+  voiceover is added automatically — a young male Enhanced macOS voice (Evan by
+  default), reading a friendly tutorial script instead of the raw click steps,
+  with each line timed to the on-screen action. Produces full-<theme>-narrated.mov.
+  Works with --guide too. If a narration.txt (blocks keyed by [step N]) exists
+  next to the recordings it is used verbatim; otherwise one is auto-generated
+  for you to edit. Override the voice with FLOWCAST_DUB_VOICE or run
+  tools/dub_natural.py directly. Free, offline, commercial-safe.
+
+  Turn it OFF with --no-narrate (alias --silent). If `say`/ffmpeg or a voice
+  isn't available, narration is skipped with a warning — recordings are safe.
+
+  Note: --dub (below) is the older, separate post-process that reads the raw
+  click steps; the default voiceover above is the natural one.
 """
 from __future__ import annotations
 
@@ -208,11 +234,21 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
             print(f"[WARN] No clips recorded for step {step_index}")
             return None
 
+        step_mov = out_dir / f"step-{step_index:02d}-{_slug(step.title)}-{theme}.mov"
+
+        # Capture per-action data BEFORE combining — recorder.combine() deletes
+        # its input clips, so the exact offsets and the separate per-action clips
+        # (used for the action-by-action voiceover) must be saved first.
+        try:
+            from src import narrate
+            narrate.save_action_clips(out_dir, step_mov.name, clips, step.actions)
+            narrate.save_action_timings(out_dir, step_mov.name, clips, step.actions)
+        except Exception as e:  # noqa: BLE001 — never fatal to the recording
+            print(f"   [timing] could not save per-action data: {e}", file=sys.stderr)
+
         # Combine clips → step MOV (kept permanently) → GIF
         combined_tmp = tmp_dir / "combined.mov"
         recorder.combine(clips, combined_tmp)
-
-        step_mov = out_dir / f"step-{step_index:02d}-{_slug(step.title)}-{theme}.mov"
         shutil.move(str(combined_tmp), str(step_mov))
 
         gif_name = f"{Path(step.gif_filename).stem}-{theme}.gif"
@@ -224,6 +260,21 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+# ── Natural voiceover ─────────────────────────────────────────────────────────
+
+def _do_narrate(out_dir: Path, theme: str, steps: list[Step]) -> None:
+    """Add a natural, conversational voiceover to the recordings just made,
+    using a young male Enhanced macOS voice (see src/narrate.py). Never fatal —
+    a narration failure must not lose the recordings already on disk."""
+    try:
+        from src import narrate
+        print("\n  Adding natural voiceover (young male Enhanced voice)…")
+        full = narrate.narrate_workflow(out_dir, theme=theme, steps=steps)
+        print(f"  Narrated video → {full}")
+    except Exception as e:  # noqa: BLE001 — recordings must survive any TTS error
+        print(f"[narrate] skipped ({e})", file=sys.stderr)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -240,6 +291,8 @@ def main() -> None:
     from_step: int | None = None   # --from-step N  → record steps N, N+1, …
     guide_mode: bool = False       # --guide → interactive tutorial recording
     voice_mode: bool = False       # --voice → push-to-talk instead of typed input
+    dub_mode: bool = False         # --dub → post-process: narrate existing .mov files
+    narrate_mode: bool = True      # natural voiceover is ON by default (--no-narrate to skip)
     md_path:   Path | None = None
     i = 0
     while i < len(args):
@@ -256,6 +309,15 @@ def main() -> None:
             voice_mode = True
             guide_mode = True  # --voice implies --guide
             i += 1
+        elif args[i] == "--dub":
+            dub_mode = True
+            i += 1
+        elif args[i] == "--narrate":
+            narrate_mode = True    # explicit (already the default)
+            i += 1
+        elif args[i] in ("--no-narrate", "--silent"):
+            narrate_mode = False   # opt out of the default voiceover
+            i += 1
         else:
             md_path = Path(args[i])
             i += 1
@@ -270,15 +332,39 @@ def main() -> None:
             sys.exit(1)
         from src.guide import run_guide_new
         run_guide_new(Path("workflows"), OUTPUT_DIR, voice=voice_mode)
+        if narrate_mode:
+            print("\n  Recordings saved. To add the natural voiceover, run:\n"
+                  "    python tools/dub_natural.py --dir output/recordings/<workflow-slug>")
         return
 
     if not md_path.exists():
         print(f"[ERROR] File not found: {md_path}", file=sys.stderr)
         sys.exit(1)
 
+    slug = _slug(md_path.stem)
+
+    # ── Dub mode: post-process existing recordings — never touches the
+    # screen/app at all, so it can run standalone, offline, any time after
+    # a recording session (any mode) has already produced .mov files.
+    if dub_mode:
+        from src import dub
+        out_dir = OUTPUT_DIR / slug
+        theme = dub.detect_theme_from_output(out_dir)
+        print(f"  Dubbing '{md_path.name}' ({theme.upper()} theme, offline via macOS 'say')")
+        result = dub.dub_workflow(md_path, out_dir, theme)
+        print(f"\n{'='*60}")
+        print(f"  Dubbed {len(result['steps'])} step video(s)")
+        for s in result["steps"]:
+            print(f"    {Path(s['mov']).name}")
+        if result.get("skipped"):
+            print(f"  Skipped (not recorded yet): {', '.join(result['skipped'])}")
+        if result.get("full"):
+            print(f"  Full dubbed video → {result['full']}")
+        print(f"{'='*60}")
+        return
+
     steps   = parse_markdown(md_path)
-    slug    = _slug(md_path.stem)
-    
+
     # Make the app full screen BEFORE any screenshot/theme detection
     runner.ensure_fullscreen(force=True)
 
@@ -305,6 +391,8 @@ def main() -> None:
     if guide_mode:
         from src.guide import run_guide
         run_guide(steps, out_dir, slug, theme, voice=voice_mode)
+        if narrate_mode:
+            _do_narrate(out_dir, theme, steps)
         return
 
     # Always regenerate artifacts (script, themed markdown) early so they 
@@ -333,6 +421,9 @@ def main() -> None:
     # Always regenerate full video from all existing step MOVs (including any
     # recorded in previous runs so individual --step runs accumulate correctly).
     full_mov = build_full_video(out_dir, theme)
+
+    if narrate_mode:
+        _do_narrate(out_dir, theme, steps)
 
     print(f"\n{'='*60}")
     print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")
