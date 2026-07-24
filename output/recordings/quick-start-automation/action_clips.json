@@ -1,0 +1,82 @@
+{
+  "step-01-create-the-project-dark.mov": [
+    {
+      "clip": "step-01-create-the-project-dark-a00.mov",
+      "label": "Click Skip for now."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a01.mov",
+      "label": "Click Create."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a02.mov",
+      "label": "Set Integration Name to HelloWorld."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a03.mov",
+      "label": "Set Project Name to QuickStart."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a04.mov",
+      "label": "Click Browse."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a05.mov",
+      "label": "Click Open."
+    },
+    {
+      "clip": "step-01-create-the-project-dark-a06.mov",
+      "label": "Click Create Integration."
+    }
+  ],
+  "step-02-add-an-automation-artifact-dark.mov": [
+    {
+      "clip": "step-02-add-an-automation-artifact-dark-a00.mov",
+      "label": "Click HelloWorld."
+    },
+    {
+      "clip": "step-02-add-an-automation-artifact-dark-a01.mov",
+      "label": "Click Add Artifact."
+    },
+    {
+      "clip": "step-02-add-an-automation-artifact-dark-a02.mov",
+      "label": ""
+    },
+    {
+      "clip": "step-02-add-an-automation-artifact-dark-a03.mov",
+      "label": "Click Create."
+    }
+  ],
+  "step-03-add-logic-dark.mov": [
+    {
+      "clip": "step-03-add-logic-dark-a00.mov",
+      "label": "Click the plus button."
+    },
+    {
+      "clip": "step-03-add-logic-dark-a01.mov",
+      "label": "Search for Println."
+    },
+    {
+      "clip": "step-03-add-logic-dark-a02.mov",
+      "label": "Click Println."
+    },
+    {
+      "clip": "step-03-add-logic-dark-a03.mov",
+      "label": "Click Initialize Array."
+    },
+    {
+      "clip": "step-03-add-logic-dark-a04.mov",
+      "label": "Set Values to Hello World."
+    },
+    {
+      "clip": "step-03-add-logic-dark-a05.mov",
+      "label": "Click Save."
+    }
+  ],
+  "step-04-run-and-test-dark.mov": [
+    {
+      "clip": "step-04-run-and-test-dark-a00.mov",
+      "label": "Click Play."
+    }
+  ]
+}

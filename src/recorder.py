@@ -7,8 +7,9 @@ import tempfile
 import time
 from pathlib import Path
 
-FPS = 10
-WIDTH = 1280
+FPS = 30
+WIDTH = 1920
+MENU_BAR_H = 70  # logical pixels — macOS menu bar + border
 
 _proc: subprocess.Popen | None = None
 _mov_path: Path | None = None
@@ -37,7 +38,6 @@ def _get_screen_index() -> str:
     return _screen_idx
 
 
-
 def start(name: str, output_dir: Path) -> None:
     global _proc, _mov_path, _stderr_tmp
 
@@ -47,7 +47,6 @@ def start(name: str, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     _mov_path = output_dir / f"{name}.mov"
 
-    MENU_BAR_H = 70  # logical pixels — macOS menu bar + border
     idx = _get_screen_index()
     # crop removes the menu bar, then resample fps and scale
     vf = f"crop=in_w:in_h-{MENU_BAR_H}:0:{MENU_BAR_H},fps={FPS},scale={WIDTH}:-2:flags=lanczos"
@@ -60,7 +59,7 @@ def start(name: str, output_dir: Path) -> None:
         "-pixel_format", "uyvy422",      # avfoundation native format — avoids fallback warning
         "-i", f"{idx}:none",
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "0",
         str(_mov_path),
     ]
     for attempt in range(2):
@@ -80,6 +79,7 @@ def start(name: str, output_dir: Path) -> None:
             time.sleep(2.0)
             continue
         raise RuntimeError(f"Recorder exited early:\n{err}")
+    
     print(f"[recorder] Recording → {_mov_path.name}")
 
 
@@ -143,38 +143,25 @@ def stop() -> Path:
 
 
 def trim(mov_path: Path) -> Path:
-    """Remove near-identical frames (idle time) using ffmpeg mpdecimate.
-    
-    This effectively speeds up periods of inactivity while preserving real motion.
-    """
+    """Re-encode at full quality without removing frames (keeps real-time speed)."""
     if not mov_path.exists() or mov_path.stat().st_size == 0:
         return mov_path
 
-    # We use a temporary file for the trimmed version
     trimmed_path = mov_path.parent / f"{mov_path.stem}_trimmed{mov_path.suffix}"
-
-    # mpdecimate: drops frames that don't change much from the previous one.
-    # setpts: re-timestamps the remaining frames to be contiguous at the target FPS.
-    # This prevents the video from 'stalling' during playback and keeps it concise.
-    vf = f"mpdecimate,setpts=N/{FPS}/TB"
 
     cmd = [
         "ffmpeg", "-y",
         "-i", str(mov_path),
-        "-vf", vf,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "0",
         str(trimmed_path),
     ]
 
     try:
-        # Run ffmpeg to perform the decimation
-        result = subprocess.run(cmd, capture_output=True, check=True)
-        # If successful, replace the original with the trimmed version
+        subprocess.run(cmd, capture_output=True, check=True)
         mov_path.unlink()
         trimmed_path.rename(mov_path)
     except Exception as e:
-        # Fallback: if trimming fails for any reason, keep the original recording
-        print(f"[recorder] Trimming failed for {mov_path.name}: {e}")
+        print(f"[recorder] Re-encode failed for {mov_path.name}: {e}")
         if trimmed_path.exists():
             trimmed_path.unlink()
 
@@ -183,8 +170,16 @@ def trim(mov_path: Path) -> Path:
 
 def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
     """Concatenate .mov clips into a single .mov file."""
+    # Filter out missing clips (files that were deleted or never created)
+    valid = [c for c in clips if c.exists() and c.stat().st_size > 0]
+    if len(valid) < len(clips):
+        missing = [c for c in clips if not c.exists()]
+        if missing:
+            print(f"[recorder] WARNING: {len(missing)} clip(s) missing, skipping: {[m.name for m in missing]}")
+    clips = valid
+
     if not clips:
-        raise ValueError("No clips to combine")
+        raise ValueError("No clips to combine (all missing)")
     if len(clips) == 1:
         if keep_inputs:
             shutil.copy2(clips[0], output)
@@ -192,27 +187,38 @@ def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
             clips[0].rename(output)
         return output
 
+    # Copy clips to a stable directory next to the output to avoid temp-dir cleanup issues
+    stable_dir = output.parent / "_clips"
+    stable_dir.mkdir(exist_ok=True)
+    stable_clips = []
+    for i, clip in enumerate(clips):
+        stable = stable_dir / f"clip_{i:03d}{clip.suffix}"
+        shutil.copy2(clip, stable)
+        stable_clips.append(stable)
+
     list_file = output.parent / f"{output.stem}_concat.txt"
     with list_file.open("w") as f:
-        for clip in clips:
+        for clip in stable_clips:
             f.write(f"file '{clip.resolve()}'\n")
 
     result = subprocess.run([
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0",
         "-i", str(list_file),
-        # Re-encode to fix discontinuous PTS across avfoundation clips
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "0",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "0",
         str(output),
     ], capture_output=True)
+
+    # Clean up
+    list_file.unlink(missing_ok=True)
+    shutil.rmtree(stable_dir, ignore_errors=True)
+
     if result.returncode != 0:
-        list_file.unlink(missing_ok=True)
         raise RuntimeError(
             f"ffmpeg concat failed (exit {result.returncode}):\n"
             + result.stderr.decode(errors="replace")
         )
 
-    list_file.unlink(missing_ok=True)
     if not keep_inputs:
         for clip in clips:
             clip.unlink(missing_ok=True)
@@ -221,7 +227,6 @@ def combine(clips: list[Path], output: Path, keep_inputs: bool = False) -> Path:
 
 
 def to_gif(mov: Path, gif: Path) -> Path:
-    # frames already cropped/scaled during recording — just resample fps and palette
     vf = f"fps={FPS},scale={WIDTH}:-2:flags=lanczos"
     palette = gif.parent / f"{gif.stem}_palette.png"
 

@@ -1,0 +1,150 @@
+{
+  "workflow_step": {
+    "file": "workflows/quick-start-automation.md",
+    "step_number": 4,
+    "step_title": "Set Project Name",
+    "description": "Set **Project Name** to `Automation`",
+    "target_value": "Automation"
+  },
+  
+  "element_detection": {
+    "element_name": "Project Name",
+    "element_type": "text_input_field",
+    "screen": "BI Project Creation View",
+    
+    "detection_methods": [
+      {
+        "method": "template_matching",
+        "template_file": "input.svg",
+        "template_category": "ui_components",
+        "threshold": 0.60,
+        "confidence": "medium"
+      },
+      {
+        "method": "ocr_label_detection",
+        "label_text": "Project Name",
+        "label_confidence": 0.80,
+        "search_region": "above_input_field"
+      },
+      {
+        "method": "visual_pattern",
+        "pattern": "light_gray_input_box",
+        "color_range": "HSV(0-255, 0-30, 200-255)",
+        "characteristics": [
+          "Light background",
+          "Border around field",
+          "Text cursor when active"
+        ]
+      }
+    ],
+    
+    "location_info": {
+      "screen_position": "BI Project Creation form",
+      "relative_position": "Below 'Integration Name' field",
+      "section": "Inside 'Project Structure' collapsible section (when expanded)",
+      "conditional": true,
+      "condition": "Visible only when 'Create within a project' checkbox is checked"
+    },
+    
+    "field_properties": {
+      "placeholder": "Enter a project name",
+      "required": true,
+      "autofocus": false,
+      "validation": "Alphanumeric, hyphens allowed",
+      "max_length": null,
+      "input_method": "keyboard"
+    }
+  },
+  
+  "interaction_steps": [
+    {
+      "step": 1,
+      "action": "detect_field",
+      "method": "template_matching",
+      "expected_result": "Field location identified"
+    },
+    {
+      "step": 2,
+      "action": "verify_label",
+      "method": "ocr",
+      "verify_text": "Project Name",
+      "expected_result": "Label verified near field"
+    },
+    {
+      "step": 3,
+      "action": "click_field",
+      "target": "field_center",
+      "expected_result": "Field receives focus (cursor visible)"
+    },
+    {
+      "step": 4,
+      "action": "clear_existing",
+      "method": "select_all_delete",
+      "keys": ["ctrl+a", "delete"],
+      "expected_result": "Any existing text cleared"
+    },
+    {
+      "step": 5,
+      "action": "type_value",
+      "value": "Automation",
+      "method": "keyboard_input",
+      "expected_result": "Text 'Automation' appears in field"
+    },
+    {
+      "step": 6,
+      "action": "verify_value",
+      "method": "ocr_read_field",
+      "expected_value": "Automation",
+      "confidence_threshold": 0.90
+    }
+  ],
+  
+  "success_criteria": {
+    "field_detected": true,
+    "field_focused": true,
+    "value_entered": "Automation",
+    "value_verified": true,
+    "error_messages": "none"
+  },
+  
+  "error_handling": {
+    "field_not_found": {
+      "cause": "Project Name field not visible",
+      "check": "Is 'Create within a project' checkbox checked?",
+      "recovery": "Check prerequisites, expand Project Structure section"
+    },
+    "field_not_focusable": {
+      "cause": "Field may be disabled or not clickable",
+      "check": "Verify field is enabled in UI",
+      "recovery": "Scroll to field, check for prerequisites"
+    },
+    "text_not_setting": {
+      "cause": "Keyboard input not working",
+      "check": "Verify field has focus, no modal dialogs",
+      "recovery": "Clear field, wait, retry typing"
+    },
+    "verification_failed": {
+      "cause": "OCR could not verify entered value",
+      "check": "Field has correct text visually",
+      "recovery": "Continue to next step, verify in final result"
+    }
+  },
+  
+  "template_references": {
+    "input_field_template": "output/product-integrator-assets/webview-assets/input.svg",
+    "alternative_templates": [
+      "light-input.svg",
+      "dark-input.svg"
+    ]
+  },
+  
+  "workflow_context": {
+    "workflow_name": "quick-start-automation",
+    "workflow_file": "workflows/quick-start-automation.md",
+    "previous_step": 3,
+    "previous_step_description": "Select **Automation** artifact",
+    "next_step": 5,
+    "next_step_description": "Add an Automation artifact",
+    "workflow_purpose": "Create a quick-start automation integration"
+  }
+}

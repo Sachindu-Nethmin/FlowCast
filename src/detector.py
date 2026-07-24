@@ -1,4 +1,5 @@
 import base64
+import difflib
 import io
 import json
 import os
@@ -9,10 +10,16 @@ import time
 from pathlib import Path
 
 import cv2
-import easyocr
 import numpy as np
 import pyautogui
 from PIL import Image, ImageChops, ImageStat
+
+from src import ocr_engine
+
+try:
+    from src import dom_detector
+except Exception:  # missing optional deps must never break OCR detection
+    dom_detector = None
 
 
 class ElementNotFoundError(Exception):
@@ -23,6 +30,8 @@ class ElementNotFoundError(Exception):
 # Confirmed from product-integrator/wi/wi-webviews/src/components/DirectorySelector/DirectorySelector.tsx
 #   `height: 28px;`  (Input and BrowseButton components)
 _FIELD_HEIGHT_PX = 28
+
+_KB_PATH = Path(__file__).parent.parent / "kb" / "ui_elements.json"
 
 # Approximate height of a description/helper-text block below a label.
 # From form.styles.ts: font-size:12px + margin-top/bottom ~8px → ~48px accommodates multi-line info.
@@ -36,9 +45,105 @@ def _ocr():
     global _ocr_reader
     if _ocr_reader is None:
         import easyocr
-        _ocr_reader = easyocr.Reader(["en"], gpu=False)
+        # Use a local directory to avoid global macOS permission issues with ~/.EasyOCR
+        model_dir = Path(__file__).parent.parent / ".easyocr_models"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Also localize user_network_directory to avoid ~/.EasyOCR/user_network conflicts
+        user_network_dir = model_dir / "user_network"
+        user_network_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"[detector] Initializing EasyOCR (models in {model_dir})...")
+        _ocr_reader = easyocr.Reader(["en"], gpu=False, 
+                                     model_storage_directory=str(model_dir),
+                                     user_network_directory=str(user_network_dir))
         print("[detector] EasyOCR ready")
     return _ocr_reader
+
+
+def _read_ocr(image) -> list:
+    """Shared OCR entry point: Apple Vision (if available) with EasyOCR fallback.
+
+    Cached per image so the multi-method fallback chain sees ONE consistent
+    result set instead of re-running OCR (slow, nondeterministic) each time.
+    """
+    return ocr_engine.read_text(image)
+
+
+# ── Input-box detection (morphological) ───────────────────────────────────────
+
+_input_box_cache: dict[tuple, list] = {}
+
+
+def _detect_input_boxes(arr: np.ndarray, is_light: bool) -> list[tuple[int, int, int, int]]:
+    """Find input-shaped rectangles across the whole screenshot (pixel coords).
+
+    More robust than raw Canny contours: a 3x3 dilation closes the 1-2px gaps
+    that anti-aliased rounded borders leave in the edge map (the main reason
+    fields were missed, especially in dark mode). Returns (x1, y1, x2, y2)
+    boxes deduplicated with a simple containment/NMS pass.
+    """
+    key = (arr.shape, int(arr[::97, ::97].sum()))  # cheap content fingerprint
+    if key in _input_box_cache:
+        return _input_box_cache[key]
+
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    t1, t2 = (10, 40) if is_light else (5, 30)
+    edges = cv2.Canny(blurred, t1, t2)
+    # Close broken borders so rounded rects become closed contours
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+
+    boxes: list[tuple[int, int, int, int]] = []
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # WSO2 inputs: wide-and-short rects. Height range covers smart inputs
+        # (~32px logical → ~64px Retina) and textareas.
+        if not (140 < w < 2200 and 24 < h < 120 and w > h * 1.5):
+            continue
+        boxes.append((x, y, x + w, y + h))
+
+    # Merge same-row fragments: a border gap can split one input into two
+    # overlapping rects with (near-)identical vertical extent. Union them.
+    changed = True
+    while changed:
+        changed = False
+        merged: list[tuple[int, int, int, int]] = []
+        for b in boxes:
+            for i, k in enumerate(merged):
+                y_ov = min(b[3], k[3]) - max(b[1], k[1])
+                min_h = max(1, min(b[3] - b[1], k[3] - k[1]))
+                x_ov = min(b[2], k[2]) - max(b[0], k[0])
+                if y_ov / min_h > 0.8 and x_ov > 0:  # same row, overlapping in x
+                    merged[i] = (min(b[0], k[0]), min(b[1], k[1]),
+                                 max(b[2], k[2]), max(b[3], k[3]))
+                    changed = True
+                    break
+            else:
+                merged.append(b)
+        boxes = merged
+
+    # Deduplicate: drop boxes ~identical to (or fully containing) a kept box
+    boxes.sort(key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))  # smallest first
+    kept: list[tuple[int, int, int, int]] = []
+    for b in boxes:
+        bx1, by1, bx2, by2 = b
+        dup = False
+        for k in kept:
+            ix1, iy1 = max(bx1, k[0]), max(by1, k[1])
+            ix2, iy2 = min(bx2, k[2]), min(by2, k[3])
+            inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+            k_area = (k[2] - k[0]) * (k[3] - k[1])
+            if k_area and inter / k_area > 0.85:  # kept box mostly inside b
+                dup = True
+                break
+        if not dup:
+            kept.append(b)
+
+    _input_box_cache.clear()  # keep only the latest screenshot's boxes
+    _input_box_cache[key] = kept
+    return kept
 
 
 def _scale(screenshot: Image.Image) -> float:
@@ -59,6 +164,17 @@ def _fuzzy(detected: str, target: str) -> bool:
 
     # Direct containment check for cleaned versions
     if t_clean == d_clean:
+        return True
+
+    # OCR merge recovery: if detected is a concatenation of target words
+    # (e.g. "Integrationname" matches "Integration Name"), accept it.
+    t_no_space = t_clean.replace(" ", "").lower()
+    d_no_space = d_clean.replace(" ", "").lower()
+    if t_no_space == d_no_space:
+        return True
+    # Prefix recovery: target words concatenated at start of detected
+    # (e.g. "Integrationname" where target is "Integration")
+    if len(t_clean.split()) > 1 and d_no_space.startswith(t_no_space):
         return True
 
     # Word-level matching
@@ -88,10 +204,83 @@ def _fuzzy(detected: str, target: str) -> bool:
 
     # OCR may only capture part of a multi-word target — allow detected ⊂ target
     # But ONLY if it's a significant portion (e.g. "integrator" in "wso2 integrator")
-    if d in t and len(d) > 4:
+    # For single-word targets, require the detected text covers at least 85% of the
+    # target length to prevent "Connect" from matching "Connection".
+    #
+    # SPECIAL EXCEPTION: For very short targets (<=4 chars like "User"), require
+    # whole-word matches to avoid matching "User" inside "Database username".
+    if (d.lower() in t.lower() or t.lower() in d.lower()) and len(d) > 3:
+        if len(t) <= 4:
+            # Standalone word check — strip punctuation first so "User" matches "User*"
+            d_clean_tokens = re.sub(r'[^\w\s]', ' ', d.lower()).split()
+            if t.lower() in d_clean_tokens:
+                return True
+            
+            # ALLOW PREFIX RECOVERY: If OCR merged "User" and "Database" into "Usertabase",
+            # accept it if the target is at the start and the next char is a Capital or symbol.
+            if d.lower().startswith(t.lower()):
+                next_char = d[len(t):len(t)+1]
+                if next_char and (next_char.isupper() or not next_char.isalnum()):
+                    return True
+            
+            # Debugging log for rejection
+            print(f"[detector] Fuzzy rejection: '{t}' is not a standalone word in '{d}'")
+            return False
+        
+        if len(t_words) == 1 and len(d_words) == 1:
+            threshold = 0.5 if (len(t) <= 4 or len(d) <= 4) else 0.85
+            if len(d) < len(t) * threshold and len(t) < len(d) * threshold:
+                return False
         return True
 
     return False
+
+
+def _similarity_score(detected: str, target: str) -> float:
+    """Calculate similarity score (0.0 to 1.0) between detected and target strings.
+
+    Uses SequenceMatcher for string similarity, accounting for:
+    - Punctuation differences
+    - Case differences
+    - Substring matches
+
+    Returns a score from 0.0 (no match) to 1.0 (perfect match).
+    """
+    d, t = detected.strip(), target.strip()
+    if not d or not t:
+        return 0.0
+
+    if d.lower() == t.lower():
+        return 1.0
+
+    # Clean punctuation
+    t_clean = re.sub(r'[^\w\s]', '', t).lower().strip()
+    d_clean = re.sub(r'[^\w\s]', '', d).lower().strip()
+
+    if t_clean == d_clean:
+        return 0.95
+
+    # Use SequenceMatcher for similarity
+    ratio = difflib.SequenceMatcher(None, d_clean, t_clean).ratio()
+
+    # Also check word-by-word matching
+    t_words = t_clean.split()
+    d_words = d_clean.split()
+
+    if t_words and d_words:
+        # Count how many target words appear in detected
+        matched_words = sum(1 for tw in t_words if any(tw in dw for dw in d_words))
+        word_ratio = matched_words / len(t_words) if t_words else 0
+        # Also check reverse: how many detected words appear in target
+        rev_matched = sum(1 for dw in d_words if any(dw in tw for tw in t_words))
+        rev_ratio = rev_matched / len(d_words) if d_words else 0
+        # Use the higher of the two ratios for asymmetric matching
+        combined_word_ratio = max(word_ratio, rev_ratio)
+        # Weight word matching higher for multi-word targets
+        if len(t_words) > 1:
+            ratio = (ratio * 0.4) + (combined_word_ratio * 0.6)
+
+    return ratio
 
 
 def _merge_ocr_results(results: list) -> list:
@@ -102,6 +291,13 @@ def _merge_ocr_results(results: list) -> list:
     """
     if not results:
         return []
+    
+    # Common UI labels that should NOT be merged with adjacent helper text or field data
+    # to avoid creating corrupted blobs like "Usertabase"
+    PROTECTED_LABELS = {
+        "User", "Username", "Host", "Port", "Database", "Password", "Project",
+        "Values", "Configurations", "Connection", "Service"
+    }
 
     # Sort primarily by y (top) and secondarily by x
     sorted_res = sorted(results, key=lambda r: (min(p[1] for p in r[0]), min(p[0] for p in r[0])))
@@ -125,12 +321,18 @@ def _merge_ocr_results(results: list) -> list:
         n_x2 = max(p[0] for p in next_bbox)
         n_y2 = max(p[1] for p in next_bbox)
         
-        # Check if same line (overlap in Y) and close in X
+        # Check if same line (overlap in Y) and close in X.
+        # Threshold (c_h * 0.4) is moderate to handle slightly tilted OCR bboxes
+        # while still preventing merging of vertically separated elements.
         y_overlap = min(c_y2, n_y2) - max(c_y1, n_y1)
-        is_same_line = y_overlap > (c_h * 0.5)
-        is_close_x = (n_x1 - c_x2) < (c_h * 2.0) # threshold for space between words
+        is_same_line = y_overlap > (c_h * 0.4)
+        is_close_x = (n_x1 - c_x2) < (c_h * 0.8) # word-spacing gap relative to text height
         
-        if is_same_line and is_close_x:
+        # PROTECTION: Do not merge if the current block or next block is a protected label.
+        # This keeps "User" isolated from nearby "Database username".
+        is_protected = (current_text.strip() in PROTECTED_LABELS or next_text.strip() in PROTECTED_LABELS)
+
+        if is_same_line and is_close_x and not is_protected:
             # Merge
             new_bbox = [
                 [min(c_x1, n_x1), min(c_y1, n_y1)],
@@ -195,78 +397,263 @@ def _is_blue_background(arr: np.ndarray, bbox) -> bool:
 
 def _is_contained_in_card(arr: np.ndarray, bbox) -> bool:
     """Detect if the element is inside a WSO2 'ButtonCard' container.
-    
-    Identifies rectangles with ~4px border-radius and specific aspect ratios (1:1 or 4:1).
+
+    WSO2 artifact picker cards (Automation, AI Chat Agent, HTTP Service, etc.) are
+    thin, wide rounded rectangles:
+      - Logical pixel size: ~28px tall × ~238px wide  → aspect ratio ~8.5
+      - Physical (Retina 2x):  ~56px tall × ~476px wide → aspect ratio ~8.5
+
+    Uses theme-aware Canny thresholds — dark mode cards have subtle borders.
     """
     import cv2
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-    edges = cv2.Canny(blurred, 30, 150)
-    
+    is_light = gray.mean() > 127
+    # Dark Mode: borders are subtle (low contrast) — use lower thresholds.
+    # Light Mode: borders are higher contrast — higher thresholds are fine.
+    edges = cv2.Canny(blurred, 10 if is_light else 15, 60 if is_light else 80)
+
     xs = [p[0] for p in bbox]
     ys = [p[1] for p in bbox]
     pt = (int(np.mean(xs)), int(np.mean(ys)))
-    
+
     contours, hierarchy = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None: return False
-    
+
     for i, cnt in enumerate(contours):
-        # 1. Geometry: Perimeter and Area
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        
-        # 2. Rectangularity: Approx size for cards in WSO2 UI
+        # Rectangularity: Approx size for cards in WSO2 UI
         x, y, w, h = cv2.boundingRect(cnt)
-        if w < 100 or h < 40: continue
-        
+        # Minimum size: cards are at least 80px wide and 20px tall (physical pixels)
+        if w < 80 or h < 20: continue
+
         aspect_ratio = w / float(h)
-        # Large Card (e.g. Automation) is typically wide (~4:1)
-        # Small Card (Square) is ~1:1
-        is_card_shape = (0.8 < aspect_ratio < 1.2) or (2.5 < aspect_ratio < 6.0)
-        
+        # WSO2 artifact picker cards are WIDE and THIN (~8.5:1 aspect ratio).
+        # Square Card  (welcome screen):   ~1:1   → (0.8 – 1.2)
+        # Medium Card  (3-col row):         ~5–6:1 → (4.0 – 6.5)
+        # Wide Card    (1 or 2-col row):    ~8–10:1→ (6.5 – 12.0)
+        is_card_shape = (
+            (0.8 < aspect_ratio < 1.2) or    # square cards (welcome screen)
+            (4.0 < aspect_ratio < 12.0)        # wide/medium picker cards (main target)
+        )
+
         if is_card_shape:
-            # 3. Containment Check
+            # Containment Check
             if x < pt[0] < x + w and y < pt[1] < y + h:
-                # 4. Complexity Check: Buttons/Cards usually have internal icons/text (children)
+                # Complexity Check: Buttons/Cards usually have internal icons/text (children)
                 has_child = hierarchy[0][i][2] != -1
                 return True if has_child else False
     return False
 
 
-def _alpha_target(target: str) -> str:
-    """Return the longest word that contains English letters, ignoring pure symbols.
+def _get_card_center(arr: np.ndarray, bbox, scale: float = 1.0) -> tuple[int, int] | None:
+    """Return the logical center (x, y) of the card container enclosing bbox.
 
-    e.g. '+ Add Automation'  → 'Automation'
-         '+ Add Resources'   → 'Resources'
-         '+ WSO2 Integrator' → 'Integrator'
+    Uses the same Canny+contour logic as _is_contained_in_card but returns
+    the center of the smallest qualifying rect instead of a boolean.
+    Returns None if no card boundary is found.
+
+    Cards are grid items in pickers (e.g., Automation, HTTP Service, API).
+    The card is a larger clickable container with icon + title text inside.
+    This function finds that container and returns its center, so clicks land
+    on the card itself, not just on the title text label.
+    """
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    is_light = gray.mean() > 127
+    # More sensitive thresholds than _is_contained_in_card to catch faint borders.
+    # Light Mode (gray.mean() > 127) requires even lower thresholds for subtle cards.
+    edges = cv2.Canny(blurred, 10 if is_light else 30, 60 if is_light else 120)
+
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    pt = (int(np.mean(xs)), int(np.mean(ys)))
+    text_area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    h_img, w_img = arr.shape[:2]
+
+    candidates = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # Minimum size: cards are at least 80px wide and 20px tall (physical pixels).
+        # WSO2 artifact picker cards ~56px tall (physical) at 2x Retina.
+        if w < 80 or h < 20:
+            continue
+        if w > 0.8 * w_img or h > 0.5 * h_img:
+            continue  # exclude full-panel rectangles
+        aspect = w / float(h)
+        # WSO2 picker cards are WIDE and THIN:
+        #   Square (welcome screen):    ~1:1   → 0.6 – 1.4
+        #   Wide picker cards:          ~8.5:1 → 4.0 – 12.0
+        if not (0.6 < aspect < 1.4 or 4.0 < aspect < 12.0):
+            continue
+        if not (x < pt[0] < x + w and y < pt[1] < y + h):
+            continue
+        if text_area > 0 and (w * h) < 1.5 * text_area:
+            continue  # too small — likely just the text bbox itself
+        candidates.append((w * h, x, y, w, h))
+
+    if not candidates:
+        return None
+
+    # Pick the smallest qualifying rect (the card, not the surrounding panel)
+    candidates.sort(key=lambda c: c[0])
+    _, x, y, w, h = candidates[0]
+    cx = int((x + w / 2) / scale)
+    cy = int((y + h / 2) / scale)
+    return (cx, cy)
+
+
+def _alpha_target(target: str) -> str:
+    """Return the most distinctive word from target for OCR anchor matching.
+
+    e.g. '+ Add Automation'          → 'Automation'
+         '+ Add Resources'           → 'Resources'
+         'Get rows from inventory'   → 'inventory'
+         '+ WSO2 Integrator'         → 'Integrator'
+
+    Prefer the LONGEST non-generic word so short common verbs like "Get", "Set",
+    "Add" do not become the anchor and falsely match unrelated UI elements.
     """
     words = [w for w in target.split() if re.search(r'[a-zA-Z]', w)]
     if not words:
         return target
-    # Prefer non-generic words if possible. 'Service' is too common.
-    # If the target starts with 'HTTP', that's a very strong keyword.
-    for w in words:
-        if len(w) >= 3 and w.lower() not in ("add", "new", "service"):
-            return w
+    # Common short words too generic to anchor OCR matching
+    SKIP = {"add", "new", "service", "get", "set", "the", "from", "with",
+            "and", "or", "to", "in", "of", "a", "an", "for", "by", "on"}
+    distinctive = [w for w in words if w.lower() not in SKIP and len(w) >= 4]
+    if distinctive:
+        return max(distinctive, key=len)
     return max(words, key=lambda w: sum(c.isalpha() for c in w))
 
 
-def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
+def _is_inside_input(arr: np.ndarray, bbox, is_light: bool) -> bool:
+    """Return True if the element's bounding box is inside an input-shaped contour.
+    
+    Used to penalize 'echoed' text in search bars/input fields when looking for 
+    clickable targets (buttons/cards).
+    """
+    import cv2
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    
+    # Adaptive thresholding to handle subtle dark-mode borders
+    if is_light:
+        t1, t2 = 10, 40
+    else:
+        t1, t2 = 5, 25 # even more sensitive for dark mode
+        
+    edges = cv2.Canny(blurred, t1, t2)
+    # Dilate to close anti-aliased border gaps (prevents missed input contours)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    xs = [p[0] for p in bbox]
+    ys = [p[1] for p in bbox]
+    pt = (int(np.mean(xs)), int(np.mean(ys)))
+
+    for cnt in contours:
+        # 1. Shape check (must be a rectangle-like box)
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+        if len(approx) < 4:
+            continue
+
+        x, y, w, h = cv2.boundingRect(cnt)
+        # 2. Size check: Input shape is wide and short
+        # Buttons like 'Create' are typically small (~80-120px)
+        # Search/Input fields are typically > 180px
+        if (180 < w < 2000) and (25 < h < 48) and (w > h * 2.5):
+            if x < pt[0] < x + w and y < pt[1] < y + h:
+                return True
+    return False
+
+
+def is_text_selected_blue(screenshot: Image.Image, cx: int, cy: int,
+                          radius: int = 300) -> bool:
+    """Return True if text around (cx, cy) sits on a blue SELECTION highlight.
+
+    After typing, fully blue-highlighted text means the value was entered
+    WITHOUT the correct field being focused (e.g. select-all landed on other
+    text, or typing went into an editor selection) — a wrong-field signal.
+
+    Detects the macOS/VS Code selection blue as a wide horizontal band of
+    blue pixels in the strip around the click point.
+    """
+    scale = _scale(screenshot)
+    px, py = int(cx * scale), int(cy * scale)
     arr = np.array(screenshot)
-    results = _ocr().readtext(arr)
+    x1 = max(0, px - int(radius * scale))
+    x2 = min(arr.shape[1], px + int(radius * scale))
+    y1 = max(0, py - int(22 * scale))
+    y2 = min(arr.shape[0], py + int(22 * scale))
+    region = arr[y1:y2, x1:x2]
+    if region.size == 0:
+        return False
+
+    hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+    # Selection blue: hue ~100-130 (OpenCV 0-180), moderately saturated.
+    mask = cv2.inRange(hsv, np.array([95, 60, 80]), np.array([135, 255, 255]))
+    blue_ratio = float(mask.sum()) / (255.0 * mask.size)
+    if blue_ratio < 0.25:
+        return False
+
+    # Must be a wide contiguous band (selection), not a small blue button/icon
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_band_w = int(80 * scale)
+    for cnt in contours:
+        _, _, w, h = cv2.boundingRect(cnt)
+        if w >= min_band_w and h >= int(8 * scale):
+            print(f"[detector] Blue selection band detected near ({cx},{cy}) "
+                  f"(ratio={blue_ratio:.2f}, band={w}px) — value likely typed in wrong place")
+            return True
+    return False
+
+
+def _compute_ocr_candidates(screenshot: Image.Image, target: str,
+                             search_region: tuple[int, int, int, int] | None = None
+                             ) -> tuple[list[dict], bool]:
+    """Build the scored OCR candidate list for `target` (extracted out of
+    _find_ocr so the candidates — not just the single winner — are available
+    for multi-candidate lookups like find_element_candidates()).
+
+    Returns (candidates, is_kb_card). Pure extraction: computes exactly what
+    _find_ocr always computed internally before picking a winner — no
+    scoring/selection behavior changed here.
+    """
+    arr = np.array(screenshot)
+    results = _read_ocr(arr)
     scale = _scale(screenshot)
     h, w = arr.shape[:2]
 
-    # For 'Automation', we know it's a card in the central workspace.
+    # Check if this target requires exact OCR match (no fuzzy)
+    _kb_path = Path(__file__).parent.parent / "kb" / "ui_elements.json"
+    _kb_data = json.loads(_kb_path.read_text()) if _kb_path.exists() else {}
+    exact_match_elements = set(e.lower() for e in _kb_data.get("exact_match_elements", []))
+    require_exact = target.lower() in exact_match_elements
+    # Check if this target is KB-declared as a card (e.g. "Automation", "HTTP Service")
+    _kb_hints = _kb_data.get("element_hints", {})
+    _kb_entry_target = _kb_hints.get(target, {})
+    is_kb_card = (isinstance(_kb_entry_target, dict) and _kb_entry_target.get("type") == "card")
+
     clean_target = _alpha_target(target)
     candidates: list[dict] = []
-    
+
     # Top-bar cutoff: IDE chrome (tabs, toolbar, search bar) sits in the top ~8%.
     # Form/canvas elements never live there — treat any hit in this strip as noise.
     top_bar_cutoff_ocr = int(h * 0.08)
+    is_light = _is_light_mode(screenshot)
 
     for bbox, text, conf in results:
-        if _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target)):
+        # Reject low-confidence OCR hits — they are usually garbage text
+        if conf < 0.2:
+            continue
+        if require_exact:
+            is_candidate = text.strip().lower() == target.strip().lower()
+        else:
+            is_candidate = _fuzzy(text, target) or (clean_target and _fuzzy(text, clean_target))
+        if is_candidate:
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             cx_img = int((min(xs) + max(xs)) / 2)
@@ -282,9 +669,15 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             dist_from_v_center = abs(cy_img - h/2) / (h/2)
             centrality_score = (15 if in_workspace else 0) + (10 * (1 - dist_from_v_center))
 
-            # Card Check: Professional UI cards have higher score
+            # Card Check: Visually confirmed cards (Canny detects surrounding box) get a big bonus.
+            # Do NOT set is_card=True for ALL hits just because KB says it's a card type —
+            # that would boost the section heading "Automation" equally with the card button.
             is_card = _is_contained_in_card(arr, bbox)
-            card_score = 30 if is_card else 0
+            card_score = 80 if is_card else 0
+
+            # For visually-confirmed card elements, click the card center — not the text label center.
+            card_center = _get_card_center(arr, bbox, scale=scale) if is_card else None
+            pos = card_center if card_center else (int(cx_img / scale), int(cy_img / scale))
 
             # Blue Check: Highlighter for active elements
             is_blue = _is_blue_background(arr, bbox)
@@ -294,41 +687,91 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
             is_exact = (text.strip().lower() == target.lower())
             is_case_match = (text.strip() == target)
             exact_score = 50 if is_exact else 0
-            case_bonus = 20 if is_case_match else 0
+            # Case bonus is now the highest priority (200), ensuring exact casing wins over position biases.
+            case_bonus = 200 if is_case_match else 0
 
-            # Sidebar Suppression: Penalize the leftmost 25% of the screen
-            sidebar_penalty = -50 if min(xs) < (w * 0.25) else 0
+            # Sidebar Suppression: Penalize the leftmost 30% of the screen heavily
+            # If the hit is in the explorer tree, it should never beat a central picker card.
+            sidebar_penalty = -150 if min(xs) < (w * 0.30) else 0
 
-            total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 5) + sidebar_penalty
+            # Input Field Penalty: Penalize text inside search bars/inputs
+            # This prevents clicking the typed text in a search box.
+            in_input = _is_inside_input(arr, bbox, is_light)
+            input_penalty = -250 if in_input else 0
+
+            total_score = centrality_score + card_score + blue_score + exact_score + case_bonus + (conf * 15) + sidebar_penalty + input_penalty
             candidates.append({
-                "pos": (int(cx_img / scale), int(cy_img / scale)),
+                "pos": pos,
                 "score": total_score,
                 "bbox": bbox,
                 "text": text,
+                "cy_img": cy_img,
                 "is_card": is_card,
                 "is_blue": is_blue,
                 "is_exact": is_exact,
-                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} text='{text}'"
+                "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} input:{input_penalty} text='{text}'"
             })
 
+    return candidates, is_kb_card
+
+
+def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
+    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target, search_region)
+
     if candidates:
-        # Heavily prioritize cards in the workspace
+        if is_kb_card:
+            # --- KB-card special selection logic ---
+            # In the WSO2 "Add Artifact" picker, the clickable card button always appears BELOW its
+            # section heading. Both share the same text (e.g. "Automation"), but:
+            #   • Section heading: plain text, not enclosed in a rectangle → is_card=False
+            #   • Card button: enclosed in a dark rounded rectangle with icon → is_card=True
+            #
+            # Step 1: Prefer visually-confirmed card hits (is_card=True) in the workspace.
+            visual_cards = [c for c in candidates if c["is_card"] and c["score"] > -100]
+            if visual_cards:
+                visual_cards.sort(key=lambda c: c["score"], reverse=True)
+                best = visual_cards[0]
+                print(f"[detector] KB-card '{target}': Using VISUAL card hit at {best['pos']} ({best['debug']})")
+                return best["pos"]
+
+            # Step 2: No visual card found (Canny missed borders in dark mode).
+            # Among non-sidebar candidates, pick the BOTTOM-MOST (highest cy_img).
+            # The card button is always BELOW the section heading — lowest position = the card.
+            non_sidebar = [c for c in candidates if c["score"] > -100]
+            if non_sidebar:
+                non_sidebar.sort(key=lambda c: c["cy_img"], reverse=True)  # highest y = lowest on screen
+                best = non_sidebar[0]
+                print(f"[detector] KB-card '{target}': Canny missed borders. Picking bottom-most hit at {best['pos']} ({best['debug']})")
+                return best["pos"]
+
+        # Standard (non-card) element — sort by score, highest wins
         candidates.sort(key=lambda c: c["score"], reverse=True)
         best = candidates[0]
         if len(candidates) > 1:
             print(f"[detector] OCR matching '{target}': Picked score {best['score']:.1f} at {best['pos']} ({best['debug']})")
         return best["pos"]
 
+    # Exact-match targets stop here — do not fall through to fuzzy fallbacks.
+    if require_exact:
+        print(f"[detector] Exact match required for '{target}' — no OCR result matched exactly.")
+        return None
+
     # Multi-word merge: try adjacent OCR boxes using cleaned target
     merge_target = clean_target if clean_target != target else target
     words = merge_target.lower().split()
     if len(words) >= 2:
-        for i, (bbox_i, text_i, _) in enumerate(results):
+        for i, (bbox_i, text_i, conf_i) in enumerate(results):
+            if conf_i < 0.2:
+                continue
             combined = text_i
             last_bbox = bbox_i
-            for bbox_j, text_j, _ in results[i + 1:]:
+            for bbox_j, text_j, conf_j in results[i + 1:]:
+                if conf_j < 0.2:
+                    continue
                 gap = bbox_j[0][0] - last_bbox[1][0]
-                if gap > 60:
+                # Use text height as reference for max gap — word spacing is ~1-2x character height
+                text_h = max(p[1] for p in bbox_i) - min(p[1] for p in bbox_i)
+                if gap > max(60, text_h * 3):
                     break
                 combined = combined + " " + text_j
                 last_bbox = bbox_j
@@ -340,37 +783,148 @@ def _find_ocr(screenshot: Image.Image, target: str) -> tuple[int, int] | None:
                     return (cx, cy)
 
     # Longest-word fallback: search for the most distinctive word in the target
-    # Uses similarity matching so typos (e.g. "Resouses" → "Resources") still match
+    # Uses similarity matching so typos still match. 
+    # Must now respect search_region and casing more strictly.
     from difflib import SequenceMatcher
 
     real_words = [w for w in words if re.search(r'[a-zA-Z]', w)]
     if real_words:
         keyword = max(real_words, key=lambda w: sum(c.isalpha() for c in w))
-        kw_candidates: list[tuple[int, int, float, bool]] = []
+        kw_candidates: list[tuple[int, int, float, bool, float]] = []
         for bbox, text, conf in results:
-            for ocr_word in text.lower().split():
-                if not ocr_word.isalpha():
+            if conf < 0.2:
+                continue
+            # Region filter
+            if search_region:
+                ocr_cx = (min(p[0] for p in bbox) + max(p[0] for p in bbox)) / (2 * scale)
+                ocr_cy = (min(p[1] for p in bbox) + max(p[1] for p in bbox)) / (2 * scale)
+                rx1, ry1, rx2, ry2 = search_region
+                if not (rx1 <= ocr_cx <= rx2 and ry1 <= ocr_cy <= ry2):
                     continue
-                # Reject words significantly longer than the keyword —
-                # prevents "myautomation" (len 12) matching "automation" (len 10).
-                # Allow ±1 char for OCR typos (e.g. "Automatoin" still passes).
-                if len(ocr_word) > len(keyword) + 1:
+
+            # Case-sensitive check first: exact case match in a word gets a huge boost
+            for ocr_word in text.split():
+                if not any(c.isalpha() for c in ocr_word):
                     continue
+                # Length filter
+                if len(ocr_word) > len(keyword) + 2 or len(ocr_word) < len(keyword) - 2:
+                    continue
+                
                 similarity = SequenceMatcher(None, keyword, ocr_word).ratio()
                 if similarity >= 0.75:
+                    case_bonus_fallback = 0.4 if ocr_word == keyword else 0.0
+                    total_sim = similarity + case_bonus_fallback
+                    
                     xs = [p[0] for p in bbox]
                     ys = [p[1] for p in bbox]
                     cx = int((min(xs) + max(xs)) / 2 / scale)
                     cy = int((min(ys) + max(ys)) / 2 / scale)
-                    kw_candidates.append((cx, cy, conf, _is_blue_background(arr, bbox)))
+                    kw_candidates.append((cx, cy, conf, _is_blue_background(arr, bbox), total_sim))
                     break
+
         if kw_candidates:
-            kw_candidates.sort(key=lambda c: (c[3], c[2]), reverse=True)
-            cx, cy, _, is_blue = kw_candidates[0]
-            print(f"[detector] Longest-word '{keyword}' (~fuzzy) found for '{target}' at ({cx}, {cy}), blue={is_blue}")
+            # Sort by total_sim (which includes case bonus) then blue then confidence 
+            kw_candidates.sort(key=lambda c: (c[4], c[3], c[2]), reverse=True)
+            cx, cy, _, is_blue, best_sim = kw_candidates[0]
+            print(f"[detector] Longest-word '{keyword}' found for '{target}' at ({cx}, {cy}) sim={best_sim:.2f}, blue={is_blue}")
             return (cx, cy)
 
     return None
+
+
+# ── Multi-candidate lookup (for duplicated on-screen elements) ──────────────
+
+def _cursor_pos() -> tuple[int, int] | None:
+    try:
+        p = pyautogui.position()
+        return (p.x, p.y)
+    except Exception:
+        return None
+
+
+def _dist(a: tuple[int, int], b: tuple[int, int]) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+
+def _rank_with_cursor_tiebreak(sorted_candidates: list[dict], tie_epsilon: float = 15.0
+                                ) -> list[dict]:
+    """Re-order the leading near-tied group of an already score-sorted
+    candidate list by distance to the current mouse cursor.
+
+    Only kicks in when there's genuine ambiguity: candidates whose score is
+    within `tie_epsilon` of the top score (e.g. two visually-identical
+    "Automation" cards). A clear single winner (next-best score more than
+    tie_epsilon lower) is completely unaffected — this never changes which
+    element wins, only which of several *equally good* matches gets tried
+    first.
+    """
+    if len(sorted_candidates) < 2:
+        return sorted_candidates
+    cursor = _cursor_pos()
+    if cursor is None:
+        return sorted_candidates
+
+    top_score = sorted_candidates[0]["score"]
+    tied = [c for c in sorted_candidates if top_score - c["score"] <= tie_epsilon]
+    rest = [c for c in sorted_candidates if top_score - c["score"] > tie_epsilon]
+    if len(tied) < 2:
+        return sorted_candidates
+
+    tied.sort(key=lambda c: _dist(c["pos"], cursor))
+    print(f"[detector] {len(tied)} near-tied candidates (within {tie_epsilon} pts) — "
+          f"trying nearest to cursor {cursor} first: "
+          + ", ".join(f"{c['pos']}" for c in tied))
+    return tied + rest
+
+
+def find_element_candidates(screenshot: Image.Image, target: str, hint: str | None = None,
+                             search_region: tuple[int, int, int, int] | None = None,
+                             max_results: int = 3) -> list[tuple[int, int]]:
+    """Like find_element(), but returns UP TO max_results ranked positions
+    instead of just the best one — for elements that can legitimately appear
+    more than once on screen (e.g. two "Automation" cards in the artifact
+    picker). The first entry is always what find_element() itself would
+    return; extra entries are runner-up candidates a caller can fall back to
+    if the first one turns out to be the wrong occurrence.
+
+    Only the plain OCR / KB-card path supports multiple candidates (that's
+    the case duplicated elements actually hit). Hint-based / template-match
+    paths fall back to a single find_element() result, unchanged.
+    """
+    if hint or search_region:
+        try:
+            return [find_element(screenshot, target, hint, search_region)]
+        except ElementNotFoundError:
+            return []
+
+    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target)
+    if not candidates:
+        try:
+            return [find_element(screenshot, target, hint)]
+        except ElementNotFoundError:
+            return []
+
+    if is_kb_card:
+        pool = [c for c in candidates if c["is_card"] and c["score"] > -100]
+        if not pool:
+            pool = [c for c in candidates if c["score"] > -100]
+            pool.sort(key=lambda c: c["cy_img"], reverse=True)
+            return [c["pos"] for c in pool[:max_results]]
+    else:
+        pool = candidates
+
+    pool = sorted(pool, key=lambda c: c["score"], reverse=True)
+    pool = _rank_with_cursor_tiebreak(pool)
+
+    # De-duplicate near-identical positions (same physical element hit twice
+    # by OCR, e.g. wrapped text) — keep the first (best-ranked) occurrence.
+    ranked: list[tuple[int, int]] = []
+    for c in pool:
+        if all(_dist(c["pos"], p) > 20 for p in ranked):
+            ranked.append(c["pos"])
+        if len(ranked) >= max_results:
+            break
+    return ranked
 
 
 # ── Knowledge base loaders ────────────────────────────────────────────────────
@@ -403,20 +957,18 @@ def _load_icon_prompts() -> list:
 def _kb_entry(label: str) -> dict | None:
     """Find a field entry in kb/ui_elements.json by label.
 
-    Searches across all screens in the knowledge base.
+    Priority:
+      1. Global element_hints (highest priority - allows global overrides)
+      2. Screen-specific field definitions
+      3. Global field_placeholders
     """
     p = Path(__file__).parent.parent / "kb" / "ui_elements.json"
     if not p.exists():
         return None
     data = json.loads(p.read_text())
     l_target = label.lower().strip()
-    for screen in data.get("screens", {}).values():
-        for field in screen.get("fields", []):
-            l_field = field.get("label", "").lower().strip()
-            if l_field == l_target or (len(l_field) > 3 and l_field in l_target):
-                return field
-                
-    # Fallback to element_hints if no proper field definition found
+
+    # 1. Global element_hints override
     hints = data.get("element_hints", {})
     for hint_label, val in hints.items():
         if hint_label.lower().strip() == l_target:
@@ -424,7 +976,14 @@ def _kb_entry(label: str) -> dict | None:
                 return {**val, "label": hint_label}
             return {"label": hint_label, "hint": val}
 
-    # Check top-level field_placeholders
+    # 2. Screen-specific fields
+    for screen in data.get("screens", {}).values():
+        for field in screen.get("fields", []):
+            l_field = field.get("label", "").lower().strip()
+            if l_field == l_target or (len(l_field) > 3 and l_field in l_target):
+                return field
+                
+    # 3. Global field_placeholders fallback
     fp = data.get("field_placeholders", {}).get("fields", {})
     if label in fp:
         return {"label": label, "placeholder": fp[label]}
@@ -442,7 +1001,7 @@ def _find_plus_below_node(screenshot: Image.Image, anchor_text: str = "Start") -
 
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
 
     # Find anchor node position
     anchor_pos = None
@@ -528,7 +1087,7 @@ def _find_plus_right_of_label(screenshot: Image.Image, anchor_text: str) -> tupl
 
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
 
     # ── Step 1: locate anchor label via OCR ──────────────────────────────────
     anchor_box = None
@@ -646,10 +1205,12 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     img = np.array(screenshot.resize((w_l, h_l), Image.LANCZOS))
 
     h, w = img.shape[:2]
-    # Build a mask covering the top toolbar and right-side toolbar
+    # Build a mask covering the top-right toolbar region
     search_mask = np.zeros((h, w), dtype=np.uint8)
-    search_mask[:80, :] = 255                # top toolbar strip
-    search_mask[:, int(w * 0.6):] = 255     # right-side toolbar
+    # The Run button is in the VS Code toolbar, NOT in the macOS menu bar above it.
+    # macOS menu bar: ~25px | VS Code title+tabs: ~63px | Toolbar extends to ~100px
+    # Search from y=25 (near menu bar bottom) to y=100 (full toolbar area), rightmost 12% (88-100%).
+    search_mask[25:100, int(w * 0.88):] = 255
 
     hsv_full = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
@@ -664,22 +1225,37 @@ def _find_green_play_button(screenshot: Image.Image) -> tuple[int, int] | None:
     # Restrict to toolbar areas only
     mask = cv2.bitwise_and(green_mask, search_mask)
 
+    # Debug: save the search mask and detected blobs so we can see exactly what was found
+    if _DEBUG_SAVE_DIR:
+        import time
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        # Save the masked region as a debug image (white = green detected, black = no green)
+        debug_img = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        cv2.imwrite(str(_DEBUG_SAVE_DIR / f"hsv_mask_run_{ts}.png"), debug_img)
+        # Also save the source crop for visual reference (the actual toolbar area being searched)
+        src_crop = cv2.cvtColor(img[:80, int(w * 0.88):], cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(_DEBUG_SAVE_DIR / f"hsv_crop_run_{ts}.png"), src_crop)
+
     # Find contours of green regions
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
 
-    # Pick the largest green blob
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < 4:  # too small — noise
+    # Filter out tiny noise (< 4 pixels)
+    contours = [c for c in contours if cv2.contourArea(c) >= 4]
+    if not contours:
         return None
 
-    M = cv2.moments(largest)
+    # Pick the RIGHTMOST green blob (not largest) — the Run button is in the far-right toolbar
+    # Calculate x-center for each contour and pick the one with highest x value
+    rightmost = max(contours, key=lambda c: cv2.moments(c)["m10"] / max(cv2.moments(c)["m00"], 1))
+
+    M = cv2.moments(rightmost)
     if M["m00"] == 0:
         return None
     cx = int(M["m10"] / M["m00"])
     cy = int(M["m01"] / M["m00"])
-    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection")
+    print(f"[detector] Green play button found at ({cx}, {cy}) via color detection (rightmost blob)")
     return (cx, cy)
 
 
@@ -754,10 +1330,14 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         if has_alpha:
             # Transparent icon: grayscale + alpha mask (only glyph pixels match)
             tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+            # Ensure mask is 8-bit single channel
             tmpl_mask = np.array(icon_img.split()[-1])
+            if tmpl_mask.dtype != np.uint8:
+                tmpl_mask = tmpl_mask.astype(np.uint8)
             screen_match = screen_gray
         else:
             # Opaque icon: full color matching preserves distinctive colors (e.g. blue +)
+            # Use BGR for screen_match since OpenCV uses BGR
             tmpl_gray = cv2.cvtColor(np.array(icon_img.convert("RGB")), cv2.COLOR_RGB2BGR)
             tmpl_mask = None
             screen_match = screen_bgr
@@ -768,20 +1348,28 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
         factors = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.25, 1.4, 1.6)
         for s in factors:
             tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
-            if tw_s < 10 or th_s < 10:
+            if tw_s < 5 or th_s < 5:
                 continue
             if tw_s > screen_match.shape[1] or th_s > screen_match.shape[0]:
                 continue
             tmpl_r = cv2.resize(tmpl_gray, (tw_s, th_s))
             if tmpl_mask is not None:
                 mask_r = cv2.resize(tmpl_mask, (tw_s, th_s))
+                # TM_CCOEFF_NORMED with mask can sometimes return -inf if mask is invalid
+                # or for certain OpenCV versions. Fall back to no-mask if it fails.
                 res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED, mask=mask_r)
+                _, val, _, loc = cv2.minMaxLoc(res)
+                if np.isinf(val) or np.isnan(val):
+                    res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
+                    _, val, _, loc = cv2.minMaxLoc(res)
             else:
                 res = cv2.matchTemplate(screen_match, tmpl_r, cv2.TM_CCOEFF_NORMED)
-            _, val, _, loc = cv2.minMaxLoc(res)
+                _, val, _, loc = cv2.minMaxLoc(res)
+            
             if val > best_val:
                 best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
 
+    # Priority: 1. Manual override, 2. KB entry, 3. Default (0.55/0.65)
     threshold = icon_entry.get("match_threshold", 0.55) if icon_entry else 0.55
     if best_val < threshold:
         print(f"[detector] Template match for '{target}' confidence={best_val:.2f} — below threshold")
@@ -793,16 +1381,36 @@ def _find_template(screenshot: Image.Image, target: str, canvas_only: bool = Fal
     return (cx, cy)
 
 
-def _icon_entry_for(target: str) -> dict | None:
+def _icon_entry_for(target: str, theme: str | None = None) -> dict | None:
     t = target.lower().strip()
-    for entry in _load_icon_prompts():
-        label = entry.get("element_label", "").lower()
-        if label == t:
+    prompts = _load_icon_prompts()
+    
+    # Exact match first
+    for entry in prompts:
+        if entry.get("element_label", "").lower().strip() == t:
+            # If entry has a theme, it MUST match the current theme
+            if theme and entry.get("theme") and entry.get("theme") != theme:
+                continue
             return entry
-        # Only fuzzy-match labels that are 3+ chars to prevent short symbols
-        # like "+" matching unrelated targets such as "+ Add Resources"
-        if len(label) >= 3 and (label in t or t in label):
-            return entry
+
+    # Fuzzy: label contained in target or target contained in label.
+    # To prevent 'Run' matching 'Run All', we only merge if they are the SAME words or if label is a symbol (<= 2 chars).
+    for entry in prompts:
+        label = entry.get("element_label", "").lower().strip()
+        if len(label) <= 2:
+            if label in t or t in label:
+                if theme and entry.get("theme") and entry.get("theme") != theme:
+                    continue
+                return entry
+        else:
+            # Word-based fuzzy match: label must be one of the words in t, or vice versa
+            t_words = set(t.split())
+            label_words = set(label.split())
+            if label_words == t_words and label_words:
+                if theme and entry.get("theme") and entry.get("theme") != theme:
+                    continue
+                return entry
+    
     return None
 
 
@@ -863,8 +1471,14 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
 
     Runs OCR on the screenshot and scores each known screen from the KB by
     counting how many of its distinctive element labels and field labels are
-    visible.  Returns the best-matching screen dict augmented with a
-    ``screen_key`` field, or None if no screen scores above threshold.
+    visible. Uses multiple field matching sources:
+    - Field labels
+    - Field placeholders
+    - Field helper text (more distinctive than placeholders)
+    - Combined word sequences from all sources
+
+    Returns the best-matching screen dict augmented with a ``screen_key`` field,
+    or None if no screen scores above threshold.
 
     Return format::
 
@@ -879,7 +1493,7 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
         }
     """
     arr = np.array(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
     merged_results = _merge_ocr_results(results)
 
     screens = _load_screens()
@@ -887,12 +1501,13 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
         return None
 
     best_screen = None
-    best_score = 0
+    best_score = 0.0
     best_info = {}
 
     for key, screen in screens.items():
         matched_elements = []
         matched_fields = []
+        field_match_score = 0.0
 
         # Score element labels
         for elem in screen.get("elements", []):
@@ -904,34 +1519,62 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
                     matched_elements.append(elem["label"])
                     break
 
-        # Score field labels (heavier weight — fields are more distinctive)
-        for field in screen.get("fields", []):
-            label = field.get("label", "").lower()
-            if not label:
-                continue
-            # Skip conditional fields — they may not be visible
-            if field.get("conditional", False):
-                continue
-            for _, dt, _ in merged_results:
-                if _fuzzy(dt, label):
-                    matched_fields.append(field["label"])
-                    break
-
-        # Also check for placeholder text in fields
+        # Score field labels with multiple sources
         placeholders = _load_field_placeholders()
         for field in screen.get("fields", []):
             fl = field.get("label", "")
-            ph = field.get("placeholder") or placeholders.get(fl)
-            if ph and fl not in [f for f in matched_fields]:
-                for _, dt, _ in merged_results:
-                    if _fuzzy(dt, ph):
-                        matched_fields.append(fl)
+            if not fl:
+                continue
+
+            # Skip conditional fields — they may not be visible
+            if field.get("conditional", False):
+                continue
+
+            # Collect all searchable text for this field
+            field_sources = [
+                field.get("label", "").lower(),
+                field.get("placeholder") or placeholders.get(fl),
+                field.get("helper_text", ""),
+                field.get("note", ""),
+            ]
+            field_sources = [src.lower() for src in field_sources if src]
+
+            # Look for best match across all OCR results
+            best_field_match = 0.0
+            for _, dt, conf in merged_results + results:
+                dt_lower = dt.lower()
+                for source in field_sources:
+                    if not source:
+                        continue
+
+                    # Use fuzzy match first (binary check)
+                    if _fuzzy(dt, source):
+                        best_field_match = 1.0
                         break
 
-        # Weighted score: fields count double since they're more screen-specific
-        total_possible = len([e for e in screen.get("elements", [])]) + \
-                         2 * len([f for f in screen.get("fields", []) if not f.get("conditional", False)])
-        score = len(matched_elements) + 2 * len(matched_fields)
+                    # Otherwise use similarity score
+                    sim = _similarity_score(dt, source)
+                    if sim > best_field_match:
+                        best_field_match = sim
+
+                if best_field_match >= 1.0:
+                    break
+
+            # Add to matched fields if good match found
+            if best_field_match >= 0.75:
+                matched_fields.append(fl)
+                field_match_score += best_field_match
+
+        # Weighted score calculation
+        # Fields are more distinctive (count double)
+        # Use both count and quality of matches
+        num_valid_fields = len([f for f in screen.get("fields", []) if not f.get("conditional", False)])
+        num_valid_elements = len([e for e in screen.get("elements", [])])
+
+        # Scoring: exact matches count more, similarity scores less
+        score = len(matched_elements) + (2 * len(matched_fields)) + (field_match_score * 0.5)
+        total_possible = num_valid_elements + (2 * num_valid_fields)
+
         confidence = score / total_possible if total_possible > 0 else 0
 
         if score > best_score:
@@ -947,7 +1590,7 @@ def identify_screen(screenshot: Image.Image) -> dict | None:
                 "elements": screen.get("elements", []),
             }
 
-    if best_screen and best_info.get("confidence", 0) >= 0.25:
+    if best_screen and best_info.get("confidence", 0) >= 0.35:
         print(f"[detector] Screen identified: '{best_info['name']}' "
               f"(confidence={best_info['confidence']}, "
               f"elements={best_info['matched_elements']}, "
@@ -963,6 +1606,10 @@ def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tup
 
     Placeholder text appears inside the input box itself, so the OCR hit
     position is already *inside* the field — just click there.
+
+    Only accepts hits whose centre falls inside an input-shaped contour so that
+    label text (e.g. "Database") cannot falsely match a placeholder that contains
+    the same word (e.g. "Database username").
     """
     placeholders = _load_field_placeholders()
     placeholder = placeholders.get(field_label)
@@ -974,24 +1621,101 @@ def _find_input_by_placeholder(screenshot: Image.Image, field_label: str) -> tup
     if not placeholder:
         return None
 
+    import cv2 as _cv2
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+
+    # Build input-shaped boxes for inside-check.
+    # Morphological detector (dilated edges) catches boxes whose anti-aliased
+    # borders break the raw Canny contour — the main cause of missed inputs.
+    _input_boxes_p = [b for b in _detect_input_boxes(arr, _is_light_mode(screenshot))
+                      if 27 < (b[3] - b[1]) < 80]
+    # Union with the legacy raw-Canny pass for backward compatibility
+    _gray_p = _cv2.cvtColor(arr, _cv2.COLOR_RGB2GRAY)
+    _edges_p = _cv2.Canny(_gray_p, 10 if _is_light_mode(screenshot) else 15,
+                          40 if _is_light_mode(screenshot) else 50)
+    _cnts_p, _ = _cv2.findContours(_edges_p, _cv2.RETR_EXTERNAL, _cv2.CHAIN_APPROX_SIMPLE)
+    _input_boxes_p += [(xp, yp, xp + wp, yp + hp)
+                       for cnt_p in _cnts_p
+                       for xp, yp, wp, hp in [_cv2.boundingRect(cnt_p)]
+                       if 150 < wp < 2000 and 27 < hp < 80 and wp > hp * 1.5]
+
+    def _ocr_inside_input(ocr_cx, ocr_cy) -> bool:
+        return any(bx1 < ocr_cx < bx2 and by1 < ocr_cy < by2
+                   for bx1, by1, bx2, by2 in _input_boxes_p)
+
+    results = _read_ocr(arr)
     merged_results = _merge_ocr_results(results)
 
-    for bbox, text, conf in merged_results:
-        if _fuzzy(text, placeholder):
+    # All OCR sources to search (merged first, then raw)
+    all_sources = list(merged_results) + list(results)
+
+    for bbox, text, conf in all_sources:
+        # Check both fuzzy and similarity matching
+        is_fuzzy_match = _fuzzy(text, placeholder)
+        similarity = _similarity_score(text, placeholder)
+
+        # Accept if fuzzy match OR good similarity score
+        if is_fuzzy_match or similarity >= 0.75:
+            # Reject partial label matches: "Project" (OCR) matching
+            # "Project Name" (field) via similarity is wrong — it clicks the
+            # wrong field.  Reject when the OCR text is a strict prefix of
+            # the field label.
+            text_lower = text.lower().strip()
+            label_lower = field_label.lower().strip()
+            if (len(text_lower) < len(label_lower)
+                    and label_lower.startswith(text_lower)):
+                print(f"[detector] Placeholder hit '{text}' (sim={similarity:.2f}) "
+                      f"rejected — partial label match for '{field_label}'")
+                continue
+
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
-            cx = int((min(xs) + max(xs)) / 2 / scale)
-            cy = int((min(ys) + max(ys)) / 2 / scale)
-            print(f"[detector] Placeholder '{placeholder}' found for '{field_label}' at ({cx}, {cy})")
+            ocr_cx_img = (min(xs) + max(xs)) / 2
+            ocr_cy_img = (min(ys) + max(ys)) / 2
+            # Only accept hits inside an input contour (reject label text matches)
+            if not _ocr_inside_input(ocr_cx_img, ocr_cy_img):
+                print(f"[detector] Placeholder hit '{text}' (sim={similarity:.2f}) for '{field_label}' rejected — not inside input contour")
+                continue
+            cx = int(ocr_cx_img / scale)
+            cy = int(ocr_cy_img / scale)
+            match_type = "fuzzy" if is_fuzzy_match else f"similarity ({similarity:.2f})"
+            print(f"[detector] SUCCESS: Placeholder '{text}' ({match_type}) found for '{field_label}' at ({cx}, {cy})")
             return (cx, cy)
 
+    # Last-word fallback: EasyOCR sometimes merges the label text with the placeholder
+    # (e.g. "User" + "Database username" → "Usertabase username"). In that case the
+    # full placeholder match fails. Try matching just the LAST distinctive word of the
+    # placeholder (e.g. "username") against any OCR text inside an input contour.
+    placeholder_words = placeholder.strip().split()
+    if len(placeholder_words) >= 2:
+        last_word = placeholder_words[-1]  # e.g. "username" from "Database username"
+        if len(last_word) >= 5:  # only use distinctive words (skip short words like "of")
+            for bbox, text, conf in all_sources:
+                text_words = re.sub(r'[^\w\s]', '', text.lower()).split()
+                # Try exact word match first
+                word_match = last_word.lower() in text_words
+                # Also try similarity matching on the entire text
+                sim = _similarity_score(text, last_word)
+
+                if word_match or sim >= 0.7:
+                    xs = [p[0] for p in bbox]
+                    ys = [p[1] for p in bbox]
+                    ocr_cx_img = (min(xs) + max(xs)) / 2
+                    ocr_cy_img = (min(ys) + max(ys)) / 2
+                    if not _ocr_inside_input(ocr_cx_img, ocr_cy_img):
+                        continue
+                    cx = int(ocr_cx_img / scale)
+                    cy = int(ocr_cy_img / scale)
+                    match_type = "word-match" if word_match else f"similarity ({sim:.2f})"
+                    print(f"[detector] SUCCESS: Placeholder last-word '{last_word}' ({match_type}) in '{text}' → '{field_label}' at ({cx}, {cy})")
+                    return (cx, cy)
+
+    print(f"[detector] No placeholder match found for '{field_label}' (target: '{placeholder}')")
     return None
 
 
-def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+def _find_input_by_visual(screenshot: Image.Image, field_label: str, exact_only: bool = False) -> tuple[int, int] | None:
     """Locate an input field using its label position as an anchor.
 
     No external API calls — works entirely locally.
@@ -1003,7 +1727,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
 
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
     # Merge Fragmented Labels
     merged_results = _merge_ocr_results(results)
 
@@ -1019,16 +1743,38 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     # Check for direct matches (skip if configured)
     if not skip_primary:
         for bbox, text, conf in merged_results:
-            if _fuzzy(text, field_label):
+            is_match = False
+            if exact_only:
+                is_match = (text.strip().lower() == field_label.strip().lower())
+            else:
+                is_match = _fuzzy(text, field_label)
+                # Also check similarity score for better matching
+                if not is_match:
+                    sim = _similarity_score(text, field_label)
+                    is_match = sim >= 0.80
+
+            if is_match:
                 bbox_y_top = min(p[1] for p in bbox)
                 if bbox_y_top < top_bar_cutoff:
                     print(f"[detector] Rejecting '{text}' label: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
                     continue
-                # Reject label bounding boxes that are unreasonably wide (>300px)
-                # OCR sometimes includes the entire input field in the label bbox
+                # Reject label bounding boxes that are unreasonably wide
+                # OCR sometimes includes the entire input field in the label bbox.
+                # Threshold scales by word count: short labels must have narrow boxes.
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
-                if bbox_width > 300:
-                    print(f"[detector] Rejecting '{text}' label: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
+                num_words = len(text.split())
+                # For single words, allow ~16px per character (min 120px) to handle
+                # longer labels like "Database" (~122px on Retina) without rejection.
+                # Use 150px per word for multi-word labels to accommodate long strings.
+                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 150 * num_words
+                if bbox_width > max_width:
+                    print(f"[detector] Rejecting '{text}' label: bbox too wide ({bbox_width}px > {max_width}px for {num_words} words). Likely OCR artifact.")
+                    continue
+                # Reject label bboxes that are too tall — a label is one line of text
+                # (~15–35px). A tall bbox means OCR bled into the field below the label.
+                bbox_height = max(p[1] for p in bbox) - min(p[1] for p in bbox)
+                if bbox_height > 45:
+                    print(f"[detector] Rejecting '{text}' label: bbox too tall ({bbox_height}px > 45px). Likely includes field below.")
                     continue
                 label_candidates.append((bbox, text, conf, False))
     else:
@@ -1040,21 +1786,48 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
     if kb and "anchor_label" in kb:
         anchor = kb["anchor_label"]
         for bbox, text, conf in results:  # raw results, not merged
-            if _fuzzy(text, anchor):
+            is_match = False
+            if exact_only:
+                is_match = (text.strip().lower() == anchor.strip().lower())
+            else:
+                is_match = _fuzzy(text, anchor)
+                # Also check similarity score for fallback anchor matching
+                if not is_match:
+                    sim = _similarity_score(text, anchor)
+                    is_match = sim >= 0.75
+
+            if is_match:
                 bbox_y_top = min(p[1] for p in bbox)
                 if bbox_y_top < top_bar_cutoff:
                     print(f"[detector] Rejecting '{text}' anchor: inside top-bar zone (y={bbox_y_top} < {top_bar_cutoff}).")
                     continue
                 bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
-                if bbox_width > 300:
-                    print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > 300px). Likely OCR artifact.")
+                num_words = len(text.split())
+                max_width = max(120, len(text.strip()) * 16) if num_words == 1 else 150 * num_words
+                if bbox_width > max_width:
+                    print(f"[detector] Rejecting '{text}' anchor: bbox too wide ({bbox_width}px > {max_width}px). Likely OCR artifact.")
+                    continue
+                bbox_height = max(p[1] for p in bbox) - min(p[1] for p in bbox)
+                if bbox_height > 45:
+                    print(f"[detector] Rejecting '{text}' anchor: bbox too tall ({bbox_height}px > 45px). Likely includes field below.")
                     continue
                 label_candidates.append((bbox, text, conf, True))
 
     if not label_candidates:
+        if _DEBUG_SAVE_DIR:
+            from PIL import ImageDraw
+            debug_img = screenshot.copy()
+            draw = ImageDraw.Draw(debug_img)
+            for bbox, text, _ in results:
+                lx1d = min(p[0] for p in bbox); ly1d = min(p[1] for p in bbox)
+                lx2d = max(p[0] for p in bbox); ly2d = max(p[1] for p in bbox)
+                draw.rectangle([lx1d, ly1d, lx2d, ly2d], outline="#CCCCCC", width=1)
+            fname = f"nolabel_{field_label.replace('*', '').replace(' ', '_')}.png"
+            debug_img.save(_DEBUG_SAVE_DIR / fname)
+            print(f"[detector] Debug image saved: {fname} (no label candidates found for '{field_label}')")
         return None
-        
-    # Preference: 
+
+    # Preference:
     # 1. PRIMARY EXACT CASE MATCH (e.g. "Url") comes first
     # 2. PRIMARY EXACT INSENSITIVE MATCH comes second
     # 3. ANCHOR EXACT CASE MATCH comes third
@@ -1133,10 +1906,16 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
             t1 = 10 if is_light else 15
             t2 = 40 if is_light else 50
             edges = cv2.Canny(gray, t1, t2)
-            
+
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            for cnt in contours:
-                x, y, w, h = cv2.boundingRect(cnt)
+            cand_rects = [cv2.boundingRect(cnt) for cnt in contours]
+            # Union with morphological full-screen input boxes (dilated-edge
+            # detection catches fields whose subtle borders break raw Canny).
+            for mbx1, mby1, mbx2, mby2 in _detect_input_boxes(arr, is_light):
+                mcx = (mbx1 + mbx2) / 2
+                if sy1 <= mby1 <= sy2 and sx1 <= mcx <= sx2:
+                    cand_rects.append((mbx1 - sx1, mby1 - sy1, mbx2 - mbx1, mby2 - mby1))
+            for x, y, w, h in cand_rects:
 
                 # ── Skip edge-of-region artifacts (label borders, window chrome) ──
                 # Only skip thin lines at the edge, not full-height input fields that
@@ -1145,7 +1924,7 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                     continue
 
                 # ── Minimum height gate: ignore thin lines / decorative borders ──
-                if h < 25:
+                if h < 27:
                     continue
 
                 # Allow taller contours when the KB declares an explicit height (e.g. large textareas)
@@ -1158,8 +1937,8 @@ def _find_input_by_visual(screenshot: Image.Image, field_label: str) -> tuple[in
                 wso2_heights = {32, 49}
                 h_match = abs(h - exact_h) <= 3
                 wso2_match = any(abs(h - wh) <= 3 for wh in wso2_heights)
-                # Height bonus: capped at 60, only awarded when height is close
-                height_bonus = 60 if h_match else (40 if wso2_match else 0)
+                # Height bonus: favor standard WSO2 heights equally or more than the base match
+                height_bonus = 60 if (h_match or wso2_match) else 0
 
                 # ── Continuous proximity score ────────────────────────────────
                 # Vertical distance from label bottom to candidate top (pixel space).
@@ -1335,11 +2114,21 @@ def _find_input_by_index(screenshot: Image.Image, anchor_label: str, field_index
     import cv2
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    merged = _merge_ocr_results(_read_ocr(arr))
 
     anchor_bbox = None
-    for bbox, text, conf in results:
-        if _fuzzy(text, anchor_label):
+    best_sim = 0.0
+    for bbox, text, conf in merged:
+        is_match = _fuzzy(text, anchor_label)
+        # Also check similarity if fuzzy match fails
+        if not is_match:
+            sim = _similarity_score(text, anchor_label)
+            if sim > best_sim:
+                best_sim = sim
+                if sim >= 0.75:
+                    is_match = True
+
+        if is_match:
             xs = [p[0] for p in bbox]
             ys = [p[1] for p in bbox]
             anchor_bbox = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
@@ -1408,7 +2197,7 @@ def is_text_visible_near(screenshot: Image.Image, text: str, cx: int, cy: int, r
         
     found_tokens = []
     matches = False
-    for _, found_text, _ in _ocr().readtext(region):
+    for _, found_text, _ in _read_ocr(region):
         found_tokens.append(found_text)
         if _fuzzy(found_text, text):
             matches = True
@@ -1447,23 +2236,56 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
     """
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
 
     # ── Step 1: find the label bbox ─────────────────────────────────────────
-    label_bbox = None
-    for bbox, text, conf in results:
-        if _fuzzy(text, field_label) and not _is_blue_background(arr, bbox):
-            label_bbox = bbox
-            break
+    merged_results = _merge_ocr_results(results)
+    candidates = []
+    for bbox, text, conf in merged_results:
+        is_match = _fuzzy(text, field_label)
+        # Also try similarity scoring if fuzzy match fails
+        if not is_match:
+            sim = _similarity_score(text, field_label)
+            is_match = sim >= 0.80
+
+        if is_match and not _is_blue_background(arr, bbox):
+            # Validate width to ensure we didn't accidentally merge with the field
+            bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
+            num_words = len(text.split())
+            # Relaxed width allowance (150px per word)
+            max_width = 120 if num_words == 1 else 150 * num_words
+            if bbox_width <= max_width:
+                candidates.append((bbox, bbox_width))
+    
+    # Pick the narrowest candidate (most likely the pure label)
+    if candidates:
+        candidates.sort(key=lambda x: x[1])
+        label_bbox = candidates[0][0]
+    else:
+        label_bbox = None
 
     # Fall back to anchor_label from KB
     kb = _kb_entry(field_label)
     if label_bbox is None and kb and "anchor_label" in kb:
         anchor = kb["anchor_label"]
-        for bbox, text, conf in results:
-            if _fuzzy(text, anchor):
-                label_bbox = bbox
-                break
+        anchor_candidates = []
+        for bbox, text, conf in merged_results:
+            is_match = _fuzzy(text, anchor)
+            # Also try similarity scoring for anchor matching
+            if not is_match:
+                sim = _similarity_score(text, anchor)
+                is_match = sim >= 0.75
+
+            if is_match:
+                bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
+                num_words = len(text.split())
+                max_width = 80 if num_words == 1 else 100 * num_words
+                if bbox_width <= max_width:
+                    anchor_candidates.append((bbox, bbox_width))
+        
+        if anchor_candidates:
+            anchor_candidates.sort(key=lambda x: x[1])
+            label_bbox = anchor_candidates[0][0]
 
     if label_bbox is None:
         return None
@@ -1523,21 +2345,339 @@ def _find_input_below_description(screenshot: Image.Image, field_label: str) -> 
     return (click_x, click_y)
 
 
+def _find_input_by_label_offset(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Find an input field by locating its label via OCR and clicking at a fixed offset below it.
+
+    No contour detection — just find the label text and click a deterministic distance below.
+    This is reliable for vertically-stacked form fields where contour borders may be too faint.
+    Uses `click_offset` from KB if available, otherwise defaults to (200, 35).
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
+
+    kb = _kb_entry(field_label)
+    anchor = kb["anchor_label"] if (kb and "anchor_label" in kb) else field_label
+    off_x = kb["click_offset"]["x"] if (kb and "click_offset" in kb) else 200
+    off_y = kb["click_offset"]["y"] if (kb and "click_offset" in kb) else 35
+
+    results = _read_ocr(arr)
+    merged = _merge_ocr_results(results)
+
+    # Build input contour set to exclude placeholder text from label matching
+    import cv2 as _cv2
+    _arr = np.array(screenshot)
+    _gray = _cv2.cvtColor(_arr, _cv2.COLOR_RGB2GRAY)
+    _edges = _cv2.Canny(_gray, 10 if _is_light_mode(screenshot) else 15,
+                        40 if _is_light_mode(screenshot) else 50)
+    _cnts, _ = _cv2.findContours(_edges, _cv2.RETR_EXTERNAL, _cv2.CHAIN_APPROX_SIMPLE)
+    _input_boxes = [(xp, yp, xp + wp, yp + hp)
+                    for cnt_p in _cnts
+                    for xp, yp, wp, hp in [_cv2.boundingRect(cnt_p)]
+                    if 150 < wp < 2000 and 27 < hp < 80 and wp > hp * 1.5]
+
+    def _label_inside_input(bbox) -> bool:
+        ocr_cx = (min(p[0] for p in bbox) + max(p[0] for p in bbox)) / 2
+        ocr_cy = (min(p[1] for p in bbox) + max(p[1] for p in bbox)) / 2
+        return any(bx1 < ocr_cx < bx2 and by1 < ocr_cy < by2
+                   for bx1, by1, bx2, by2 in _input_boxes)
+
+    best_bbox = None
+
+    # Search merged results first, then raw (raw catches short labels that merge artifacts split)
+    for source in (merged, results):
+        for bbox, text, conf in source:
+            bbox_y_top = min(p[1] for p in bbox)
+            if bbox_y_top < top_bar_cutoff:
+                continue
+            bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
+            if bbox_width > 300:
+                continue
+            # Exclude text inside input contours (those are placeholders, not labels)
+            if _label_inside_input(bbox):
+                continue
+            # For short single-word labels (<=6 chars) also allow exact case-insensitive match
+            is_short = len(field_label.strip()) <= 6 and len(field_label.strip().split()) == 1
+            matched = _fuzzy(text, anchor)
+            if not matched and is_short:
+                _t_clean = re.sub(r'[^\w\s]', '', text).strip().lower()
+                _a_clean = re.sub(r'[^\w\s]', '', anchor).strip().lower()
+                matched = _t_clean == _a_clean
+            if matched:
+                best_bbox = bbox
+                break
+        if best_bbox:
+            break
+
+    if best_bbox is None:
+        return None
+
+    lx1 = min(p[0] for p in best_bbox)
+    ly2 = max(p[1] for p in best_bbox)
+
+    # Convert image-space coords to screen coords first, THEN add the screen-space offset
+    cx = int(lx1 / scale) + off_x
+    cy = int(ly2 / scale) + off_y
+    print(f"[detector] Label-offset click for '{field_label}': label bottom at y={int(ly2/scale)} (screen), clicking ({cx}, {cy})")
+    return (cx, cy)
+
+
+def _find_input_by_global_scan(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Global contour scan: find ALL input-shaped contours on screen, score each by proximity
+    to the target label, and return the center of the nearest one below it.
+
+    This is more robust than the regional search in _find_input_by_visual because it does not
+    depend on a narrow search region — any input on the whole screen is a candidate.
+    """
+    import cv2
+
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
+
+    # ── 1. Find target label via OCR ─────────────────────────────────────────
+    kb = _kb_entry(field_label)
+    anchor = kb["anchor_label"] if (kb and "anchor_label" in kb) else field_label
+
+    results = _read_ocr(arr)
+    merged = _merge_ocr_results(results)
+
+    # Build a set of input-shaped contour bounding boxes so we can exclude OCR text
+    # that lives INSIDE an input field (those are placeholder texts, not labels).
+    gray_pre = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    is_light_pre = _is_light_mode(screenshot)
+    edges_pre = cv2.Canny(gray_pre, 10 if is_light_pre else 15, 40 if is_light_pre else 50)
+    contours_pre, _ = cv2.findContours(edges_pre, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    input_boxes: list[tuple[int, int, int, int]] = []
+    for cnt_p in contours_pre:
+        xp, yp, wp, hp = cv2.boundingRect(cnt_p)
+        if 150 < wp < 2000 and 27 < hp < 80 and wp > hp * 1.5:
+            input_boxes.append((xp, yp, xp + wp, yp + hp))
+
+    def _inside_input(bbox) -> bool:
+        """Return True if the OCR bbox centre falls inside any input contour."""
+        ocr_cx = (min(p[0] for p in bbox) + max(p[0] for p in bbox)) / 2
+        ocr_cy = (min(p[1] for p in bbox) + max(p[1] for p in bbox)) / 2
+        return any(bx1 < ocr_cx < bx2 and by1 < ocr_cy < by2
+                   for bx1, by1, bx2, by2 in input_boxes)
+
+    label_bbox = None
+    is_short = len(field_label.strip()) <= 6 and len(field_label.strip().split()) == 1
+
+    # Top-bar exclusion: avoid picking labels in window title/system bars
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
+
+    for bbox, text, conf in merged:
+        if _fuzzy(text, anchor):
+            bbox_y_top = min(p[1] for p in bbox)
+            if bbox_y_top < top_bar_cutoff:
+                continue
+            label_bbox = bbox
+            break
+
+    if label_bbox is None:
+        print(f"[detector] Global scan: label '{anchor}' not found outside input contours for '{field_label}'")
+        return None
+
+    # Label position in screen space
+    label_left   = min(p[0] for p in label_bbox) / scale
+    label_cx     = (min(p[0] for p in label_bbox) + max(p[0] for p in label_bbox)) / (2 * scale)
+    label_bottom = max(p[1] for p in label_bbox) / scale
+
+    # ── 2. Scan ALL input-shaped contours on screen ───────────────────────────
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    is_light = _is_light_mode(screenshot)
+    edges = cv2.Canny(gray, 10 if is_light else 15, 40 if is_light else 50)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    best_score = -1
+    best_cx, best_cy = None, None
+
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # Shape filters — same as _find_input_by_visual
+        # Filter noise boxes at the very top (window borders)
+        if y < 30 or (x == 0 and w < 100) or (y == 0 and h < 15):
+            continue
+        if not (150 < w < 2000 and 27 < h < 80 and w > h * 1.5):
+            continue
+
+        # Convert to screen space
+        cx_s = (x + w / 2) / scale
+        cy_s = (y + h / 2) / scale
+        top_s = y / scale
+        left_s = x / scale
+
+        # Must be at or below the label (allow up to 10px above to account for tight layouts)
+        vertical_dist = top_s - label_bottom
+        if vertical_dist < -10:
+            continue
+
+        # Scoring: nearest below wins
+        horiz_dist = abs(left_s - label_left)
+        wso2_heights = {32, 49}
+        height_bonus = 60 if any(abs(h - wh) <= 4 for wh in wso2_heights) else 0
+
+        score = max(0, 500 - vertical_dist * 3) + max(0, 100 - horiz_dist) + height_bonus
+
+        if score > best_score:
+            best_score = score
+            best_cx, best_cy = int(cx_s), int(cy_s)
+
+    if _DEBUG_SAVE_DIR:
+        from PIL import ImageDraw
+        debug_img = screenshot.copy()
+        draw = ImageDraw.Draw(debug_img)
+        if label_bbox:
+            lx1d = int(min(p[0] for p in label_bbox)); ly1d = int(min(p[1] for p in label_bbox))
+            lx2d = int(max(p[0] for p in label_bbox)); ly2d = int(max(p[1] for p in label_bbox))
+            draw.rectangle([lx1d, ly1d, lx2d, ly2d], outline="red", width=3)
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if not (150 < w < 2000 and 27 < h < 80 and w > h * 1.5):
+                continue
+            draw.rectangle([x, y, x + w, y + h], outline="#888888", width=1)
+        if best_cx is not None:
+            s = scale
+            draw.ellipse([best_cx * s - 10, best_cy * s - 10, best_cx * s + 10, best_cy * s + 10],
+                         fill="yellow", outline="black")
+        status = "match" if best_cx is not None else "fail"
+        fname = f"global_{status}_{field_label.replace('*', '').replace(' ', '_')}.png"
+        debug_img.save(_DEBUG_SAVE_DIR / fname)
+        print(f"[detector] Debug image saved: {fname}")
+
+    if best_cx is None:
+        return None
+
+    print(f"[detector] Global scan for '{field_label}': best contour at ({best_cx}, {best_cy}) score={best_score:.0f}")
+    return (best_cx, best_cy)
+
+
+def _find_input_by_label_30px(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
+    """Find an input field by locating its label via OCR and clicking 30px below the label bottom.
+
+    This is Method 3 of the three-way detection: no contour detection, no offset config — just
+    find the label and click directly into the field area 30px below the label baseline.
+    Works for vertically-stacked forms where the input is immediately below its label.
+    """
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    top_bar_cutoff = int(arr.shape[0] * 0.08)
+
+    kb = _kb_entry(field_label)
+    anchor = kb["anchor_label"] if (kb and "anchor_label" in kb) else field_label
+    is_short = len(field_label.strip()) <= 6 and len(field_label.strip().split()) == 1
+
+    results = _read_ocr(arr)
+    merged = _merge_ocr_results(results)
+
+    # Build input contour boxes so we can exclude placeholder text from label matching
+    import cv2 as _cv2
+    _gray = _cv2.cvtColor(arr, _cv2.COLOR_RGB2GRAY)
+    _edges = _cv2.Canny(_gray, 10 if _is_light_mode(screenshot) else 15,
+                        40 if _is_light_mode(screenshot) else 50)
+    _cnts, _ = _cv2.findContours(_edges, _cv2.RETR_EXTERNAL, _cv2.CHAIN_APPROX_SIMPLE)
+    _input_boxes = [(xp, yp, xp + wp, yp + hp)
+                    for cnt_p in _cnts
+                    for xp, yp, wp, hp in [_cv2.boundingRect(cnt_p)]
+                    if 150 < wp < 2000 and 27 < hp < 80 and wp > hp * 1.5]
+
+    def _inside_input_30(bbox) -> bool:
+        ocr_cx = (min(p[0] for p in bbox) + max(p[0] for p in bbox)) / 2
+        ocr_cy = (min(p[1] for p in bbox) + max(p[1] for p in bbox)) / 2
+        return any(bx1 < ocr_cx < bx2 and by1 < ocr_cy < by2
+                   for bx1, by1, bx2, by2 in _input_boxes)
+
+    best_bbox = None
+    for source in (merged, results):
+        for bbox, text, conf in source:
+            bbox_y_top = min(p[1] for p in bbox)
+            if bbox_y_top < top_bar_cutoff:
+                continue
+            bbox_width = max(p[0] for p in bbox) - min(p[0] for p in bbox)
+            if bbox_width > 300:
+                continue
+            if _inside_input_30(bbox):
+                continue
+            matched = _fuzzy(text, anchor)
+            if not matched and is_short:
+                _t_c = re.sub(r'[^\w\s]', '', text).strip().lower()
+                _a_c = re.sub(r'[^\w\s]', '', anchor).strip().lower()
+                matched = _t_c == _a_c
+            if matched:
+                best_bbox = bbox
+                break
+        if best_bbox:
+            break
+
+    if best_bbox is None:
+        print(f"[detector] Label-30px: label '{anchor}' not found for '{field_label}'")
+        return None
+
+    lx1 = min(p[0] for p in best_bbox)
+    lx2 = max(p[0] for p in best_bbox)
+    ly2 = max(p[1] for p in best_bbox)
+
+    # Click at horizontal center of the label, 30px below its bottom edge
+    label_center_x = int((lx1 + lx2) / 2 / scale)
+    click_y = int(ly2 / scale) + 30
+    print(f"[detector] Label-30px click for '{field_label}': label bottom at y={int(ly2/scale)} (screen), clicking ({label_center_x}, {click_y})")
+    return (label_center_x, click_y)
+
+
 def find_input_field(screenshot: Image.Image, field_label: str) -> tuple[int, int] | None:
-    """Find where to click to focus a named input field."""
-    # Try direct visual detection first (label + contour)
+    """Find where to click to focus a named input field.
+
+    Heuristic order prioritized by specificity:
+      Method 1 — Placeholder: find placeholder text inside input, click directly on it
+      Method 2 — Exact Visual: find EXACT label string, regional contour scan
+      Method 3 — Fuzzy Visual: find fuzzy label via OCR, regional contour scan
+      Method 4 — Global scan: score ALL screen contours by proximity to fuzzy label
+      Method 5 — Label 30px: find label via OCR, click 30px below it
+    """
+    # Method 0: Exact DOM lookup via CDP (when FLOWCAST_CDP_PORT is set).
+    # Reads the field position straight from the webview DOM — no OCR guesswork.
+    if dom_detector is not None and dom_detector.enabled():
+        result = dom_detector.find_field_dom(field_label)
+        if result:
+            return result
+
+    # Method 1: Placeholder detection — find placeholder text inside an input contour,
+    # click directly on it (no offset added).
+    result = _find_input_by_placeholder(screenshot, field_label)
+    if result:
+        return result
+
+    # Method 2: Exact visual detection (high specificity)
+    result = _find_input_by_visual(screenshot, field_label, exact_only=True)
+    if result:
+        return result
+
+    # Method 3: Fuzzy visual detection (original logic)
     result = _find_input_by_visual(screenshot, field_label)
+    if result:
+        return result
+
+    # Method 4: Global contour scan — find ALL input-shaped contours on screen,
+    # score each by proximity to the target label, pick nearest below.
+    result = _find_input_by_global_scan(screenshot, field_label)
+    if result:
+        return result
+
+    # Method 5: Label-offset fallback: configurable per-field offset from KB.
+    # This MUST run before the blind 30px guess because it relies on explicit KB configuration.
+    result = _find_input_by_label_offset(screenshot, field_label)
+    if result:
+        return result
+
+    # Method 6: Label 30px — find label via OCR, click 30px below label bottom.
+    result = _find_input_by_label_30px(screenshot, field_label)
     if result:
         return result
 
     # Fall back to description-anchor method: locate the field's helper text and
     # click just below its last line — most reliable when a description is present.
     result = _find_input_below_description(screenshot, field_label)
-    if result:
-        return result
-
-    # Try finding by placeholder text inside the input box
-    result = _find_input_by_placeholder(screenshot, field_label)
     if result:
         return result
 
@@ -1571,7 +2711,7 @@ def _find_text_right_of_label(screenshot: Image.Image, target: str, anchor_text:
     """
     arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    results = _read_ocr(arr)
 
     # Locate anchor label
     anchor_box = None
@@ -1627,7 +2767,73 @@ def _find_text_right_of_label(screenshot: Image.Image, target: str, anchor_text:
     return None
 
 
-def find_element(screenshot: Image.Image, target: str, hint: str | None = None) -> tuple[int, int]:
+def _find_scoped(screenshot: Image.Image, target: str, anchor_label: str) -> tuple[int, int]:
+    """Find a target element specifically within the region below an anchor label."""
+    print(f"[detector] Scoped search: finding '{target}' under '{anchor_label}'...")
+
+    # 1. Find the anchor label position/bbox
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    results = _read_ocr(arr)
+    merged = _merge_ocr_results(results)
+
+    anchor_bbox = None
+    for bbox, text, conf in merged:
+        if _fuzzy(text, anchor_label):
+            anchor_bbox = bbox
+            break
+    if not anchor_bbox:
+        for bbox, text, conf in results:
+            if _fuzzy(text, anchor_label):
+                anchor_bbox = bbox
+                break
+    if not anchor_bbox:
+        raise ElementNotFoundError(f"Could not find anchor label '{anchor_label}' for scoped search of '{target}'.")
+
+    # 2. Define search region below the anchor
+    ax1 = min(p[0] for p in anchor_bbox) / scale
+    ay1 = min(p[1] for p in anchor_bbox) / scale
+    screen_w = int(screenshot.width / scale)
+    screen_h = int(screenshot.height / scale)
+
+    # Search region: 10px above anchor top to bottom of screen
+    # Horizontal: from offset anchor left edge to right edge of screen
+    search_region = (int(ax1 - 20), int(ay1 - 10), screen_w, screen_h)
+    print(f"[detector] Scoped region defined as {search_region} below '{anchor_label}'")
+
+    # 3. Search for the target within this region
+    return find_element(screenshot, target, search_region=search_region)
+
+
+def find_element(screenshot: Image.Image, target: str, hint: str | None = None, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int]:
+    # DOM-first: exact CDP lookup when FLOWCAST_CDP_PORT is set. Skipped for
+    # spatial hints (under:/right_of:/next_to:) and short symbols like '+',
+    # where the OCR/anchor logic encodes disambiguation the DOM query lacks.
+    if (dom_detector is not None and dom_detector.enabled()
+            and not hint and not search_region and len(target.strip()) > 2):
+        dom_pos = dom_detector.find_element_dom(target)
+        if dom_pos:
+            return dom_pos
+
+    # "below:" hint: target directly below a named anchor node.
+    # For '+' this uses the plus-icon template search under the anchor (the
+    # reliable path for flow-diagram connector buttons); other targets fall
+    # through to a scoped search under the anchor.
+    if hint and hint.startswith("below:"):
+        anchor = hint[len("below:"):].strip()
+        if target.strip() == "+":
+            result = _find_plus_below_node(screenshot, anchor_text=anchor)
+            if result:
+                return result
+            raise ElementNotFoundError(
+                f"Could not find '+' below '{anchor}' via template match.")
+        return _find_scoped(screenshot, target, anchor)
+
+    # "under:" hint: Scoped search for target below/inside a parent label
+    if hint and hint.startswith("under:"):
+        anchor = hint[len("under:"):].strip()
+        return _find_scoped(screenshot, target, anchor)
+
     # "right_of:" hint: find target text in the row to the right of the anchor label.
     if hint and hint.startswith("right_of:"):
         anchor = hint[len("right_of:"):].strip()
@@ -1646,134 +2852,241 @@ def find_element(screenshot: Image.Image, target: str, hint: str | None = None) 
             return result
         raise ElementNotFoundError(f"Could not find '+' to the right of '{anchor}' via OCR.")
 
+    # Determine theme
+    theme = "light" if _is_light_mode(screenshot) else "dark"
+
     # Skip OCR only for short symbols (e.g. '+') where OCR finds them in wrong places.
     # For all other targets, try OCR first and fall back to template match.
-    icon_entry = _icon_entry_for(target)
+    icon_entry = _icon_entry_for(target, theme=theme)
     # Skip OCR for short symbols or entries that explicitly prefer template matching
     skip_ocr = (len(target.strip()) <= 2 and icon_entry is not None) or \
                (icon_entry is not None and icon_entry.get("prefer_template", False))
     canvas_only = False
+    tmpl_search_region = None
     if icon_entry and icon_entry.get("position_hint", ""):
         hint_lower = icon_entry["position_hint"].lower()
         canvas_only = any(kw in hint_lower for kw in ("canvas", "flow", "resource flow", "automation flow"))
 
-    # For canvas + button: anchor to Start node for reliable position
+        # Restrict search region for toolbar buttons to match HSV detection zone exactly
+        # This ensures consistent behavior between HSV and template matching methods
+        if "toolbar" in hint_lower:
+            scale = _scale(screenshot)
+            w_l = int(screenshot.width / scale)
+            h_l = int(screenshot.height / scale)
+            # Match HSV search zone: y=25 to 100 (full VS Code toolbar area), right 12% (88-100%)
+            tmpl_search_region = (int(w_l * 0.88), 25, w_l, 100)
+
+    # For canvas + button: find reliable anchor (Start for main flow, GET/POST etc. for resource flow)
     if target.strip() == "+" and canvas_only:
-        result = _find_plus_below_node(screenshot, anchor_text="Start")
-        if result:
-            return result
-        print(f"[detector] Anchor-based + detection failed, falling back to template match...")
+        # Try a sequence of common anchors for integration flows
+        for potential_anchor in ["Start", "GET", "POST", "Resource", "root"]:
+            print(f"[detector] Attempting to find '+' below anchor '{potential_anchor}'...")
+            result = _find_plus_below_node(screenshot, anchor_text=potential_anchor)
+            if result:
+                return result
+        print(f"[detector] Anchor-based + detection failed for all common labels. Falling back to template match...")
 
     if skip_ocr:
         print(f"[detector] '{target}' — skipping OCR, using template match first")
     else:
-        result = _find_ocr(screenshot, target)
+        result = _find_ocr(screenshot, target, search_region=search_region)
         if result:
             print(f"[detector] OCR found '{target}' at {result}")
             return result
         print(f"[detector] OCR failed for '{target}', trying template match...")
+        # DIAGNOSTIC: Check if specific hints exist for this target
+        kb_entry = _kb_entry(target)
+        if kb_entry and kb_entry.get("type") == "card":
+             print(f"[detector] '{target}' is defined as a CARD. Will use specialized card detection.")
 
-    # For green play icons: HSV color detection avoids transparent-PNG false positives
-    if icon_entry and "play_green" in (icon_entry.get("icon_file") or ""):
+    # For play button icons: HSV color detection is the PRIMARY method.
+    # Template matching of the tiny generic triangle causes false positives.
+    is_play_button = icon_entry and "play" in (icon_entry.get("icon_file") or "").lower()
+    if is_play_button:
         result = _find_green_play_button(screenshot)
         if result:
             return result
-        print(f"[detector] HSV color detection failed for '{target}', trying template match...")
+        print(f"[detector] HSV color detection failed for '{target}', trying template match as fallback...")
 
-    # Template matching: exact pixel comparison against the known icon file
-    result = _find_template(screenshot, target, canvas_only=canvas_only)
+    # Template matching: skip if already handled by HSV above, unless HSV failed
+    if skip_ocr and not is_play_button:
+        result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=tmpl_search_region)
+        if result:
+            print(f"[detector] Template match found '{target}' at {result}")
+            return result
+
+    # Final fallback template match (for non-skip_ocr icons and play_green fallback)
+    # FOR '+': If we are here, strict detection failed. Try a slightly more relaxed match
+    # specifically for the circular connector icon if it's in the canvas.
+    search_th = 0.65 if target.strip() == "+" else None
+    result = _find_template(screenshot, target, canvas_only=canvas_only, search_region=tmpl_search_region)
     if result:
-        print(f"[detector] Template match found '{target}' at {result}")
+        print(f"[detector] Template match confirmed '{target}' at {result}")
         return result
+    
+    # Extra check for candidates that might have been skipped due to threshold
+    if target.strip() == "+" and not result:
+        print(f"[detector] Strict '+' template match failed. Checking for any valid '+' in canvas...")
+        result = _find_template(screenshot, target, canvas_only=True)
+        if result:
+            print(f"[detector] Found '+' in canvas via global scan at {result}")
+            return result
+
+    # LAST RESORT: Try OCR if template failed, even if skip_ocr was true
+    # (unless it's a short symbol which leads to high false positives)
+    if skip_ocr and len(target.strip()) > 2:
+        print(f"[detector] Template match failed for '{target}', attempting final OCR fallback...")
+        result = _find_ocr(screenshot, target)
+        if result:
+            print(f"[detector] Final OCR^{(' (canvas)' if canvas_only else '')} fallback found '{target}' at {result}")
+            return result
 
     raise ElementNotFoundError(f"Could not find '{target}' via OCR or template match.")
 
 
 
-def _find_search_by_magnify_icon(screenshot: Image.Image) -> tuple[int, int] | None:
+def _find_search_by_magnify_icon(screenshot: Image.Image, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
     """Find the magnifying glass icon and return coordinates to its right.
     
     This strategy works when the search field is identified by a magnifying icon
     rather than literal 'Search' text.
     """
     # 1. Theme-aware template matching for the magnify icon
+    # Templates are 'magnify_dark' and 'magnify_white'
     for target in ["magnify_dark", "magnify_white"]:
-        pos = _find_template(screenshot, target)
+        pos = _find_template(screenshot, target, search_region=search_region)
         if pos:
-            # Click offset: to the right of the icon (+20 pixels) to focus the input field
+            # Click offset: to the right of the icon (+30 pixels) to focus the input field
             cx, cy = pos
-            return (cx + 20, cy)
+            print(f"[detector] Magnify icon found for '{target}' at {pos}")
+            return (cx + 30, cy)
             
     return None
 
 
-def find_search_field(screenshot: Image.Image, field_label: str = "Search") -> tuple[int, int] | None:
-    """Locate a search input box by its placeholder text or label.
+def find_search_field(screenshot: Image.Image, field_label: str = "Search", hint: str | None = None) -> tuple[int, int] | None:
+    """Locate a search input box by OCR-ing its placeholder text and clicking it.
 
-    Strategy:
-      1. OCR the screenshot for the exact placeholder text (e.g. 'Search', 'Search connectors').
-      2. If found, return the center of the detected region — that IS the clickable input.
-      3. Fallback: look for a contour-shaped search box in the upper half of the screen.
-
-    Returns logical (x, y) to click, or None if not found.
+    Simple approach: OCR the screen for 'search' text, click on it.
+    No template matching, no contour guessing.
     """
-    # 1. Try magnifying icon strategy first (most reliable for icon-only search bars)
-    icon_pos = _find_search_by_magnify_icon(screenshot)
-    if icon_pos:
-        print(f"[detector] Search field '{field_label}' found via magnify icon at {icon_pos}")
-        return icon_pos
-
-    # 2. OCR the screenshot for the exact placeholder text
-    arr = np.array(screenshot)
     scale = _scale(screenshot)
-    results = _ocr().readtext(arr)
+    w_l = int(screenshot.width / scale)
+    h_l = int(screenshot.height / scale)
 
-    # Common search placeholder variants to look for
-    search_variants = [field_label.lower()]
-    if field_label.lower() == "search":
-        search_variants += ["search connectors", "search...", "search…", "search for"]
+    # Define search region based on hint or default (excluding top 10% bar)
+    rx1, ry1, rx2, ry2 = 0, int(h_l * 0.10), w_l, h_l
+
+    if hint and "right panel" in hint.lower():
+        rx1 = int(w_l * 0.7)
+        print(f"[detector] Restricted search to right panel region: ({rx1}, {ry1}, {rx2}, {ry2})")
+    elif hint and "left panel" in hint.lower():
+        rx2 = int(w_l * 0.3)
+        print(f"[detector] Restricted search to left panel region: ({rx1}, {ry1}, {rx2}, {ry2})")
+
+    # OCR the full screen
+    arr = np.array(screenshot)
+    results = _read_ocr(arr)
+    h_img = arr.shape[0]
+
+    # Search variants — match any text containing "search"
+    search_variants = ["search"]
+    for v in ["search connectors", "search automation", "search...", "search…",
+              "search for", "search by name", "q search"]:
+        search_variants.append(v)
 
     candidates = []
     for bbox, text, conf in results:
         t = text.strip().lower()
-        if any(t == v or t.startswith(v) for v in search_variants):
-            xs = [p[0] for p in bbox]
-            ys = [p[1] for p in bbox]
-            cx = int((min(xs) + max(xs)) / 2 / scale)
-            cy = int((min(ys) + max(ys)) / 2 / scale)
-            candidates.append((cx, cy, conf))
+        if not any(t == v or t.startswith(v) or ("search" in t and len(t) < 40) for v in search_variants):
+            continue
+
+        xs = [p[0] for p in bbox]
+        ys = [p[1] for p in bbox]
+        cx_img = (min(xs) + max(xs)) / 2
+        cy_img = (min(ys) + max(ys)) / 2
+        cx = int(cx_img / scale)
+        cy = int(cy_img / scale)
+
+        # Reject hits inside the IDE top bar
+        if min(ys) < (h_img * 0.10):
+            print(f"[detector] OCR search: rejecting '{text}' — inside top-bar zone")
+            continue
+
+        # Reject hits outside the restricted region
+        if not (rx1 <= cx <= rx2 and ry1 <= cy <= ry2):
+            print(f"[detector] OCR search: rejecting '{text}' at ({cx},{cy}) — outside region")
+            continue
+
+        candidates.append((cx, cy, conf))
+        print(f"[detector] OCR search candidate: '{text}' at ({cx}, {cy}) conf={conf:.2f}")
 
     if candidates:
         # Pick highest confidence match
         candidates.sort(key=lambda c: -c[2])
         x, y, _ = candidates[0]
+        # Click slightly right of the text to focus the input field
         print(f"[detector] Search field '{field_label}' found via OCR at ({x}, {y})")
-        return (x, y)
+        return (x + 30, y)
 
-    # Fallback: find a wide, short input-shaped contour in the top 40% of screen
-    # (search boxes are usually at the top of panels/dialogs)
-    h_l = int(screenshot.height / scale)
-    w_l = int(screenshot.width / scale)
-    search_region = screenshot.crop((0, 0, screenshot.width, int(screenshot.height * 0.5)))
-    region_arr = np.array(search_region)
-    gray = cv2.cvtColor(region_arr, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 20, 80)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    search_box = None
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        # Search boxes: wide relative to height, reasonable size
-        if 200 < w < 1200 and 15 < h < 50 and w > h * 4:
-            if search_box is None or w > search_box[2]:
-                search_box = (x, y, w, h)
-
-    if search_box:
-        x, y, w, h = search_box
-        cx = int((x + w / 2) / scale)
-        cy = int((y + h / 2) / scale)
-        print(f"[detector] Search field found via contour at ({cx}, {cy})")
-        return (cx, cy)
-
-    print(f"[detector] Search field '{field_label}' not found")
+    print(f"[detector] Search field '{field_label}' not found via OCR")
     return None
+
+def find_template_on_screen(screenshot: Image.Image, template_path: str | Path, threshold: float = 0.5, 
+                            search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
+    """Find a template image on screen using OpenCV matchTemplate.
+    
+    Returns logical coordinates (cx, cy) or None if not found.
+    Handles Retina scaling automatically.
+    """
+    import cv2
+    from pathlib import Path as _Path
+    import numpy as np
+    from PIL import Image
+    
+    tp = _Path(template_path)
+    if not tp.exists():
+        print(f"[detector] Template match failed: {tp} does not exist")
+        return None
+        
+    arr = np.array(screenshot)
+    scale = _scale(screenshot)
+    
+    screen_bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    tmpl = cv2.imread(str(tp))
+    th, tw = tmpl.shape[:2]
+    
+    # If search_region provided (logical coords), crop screen_bgr
+    x_crop, y_crop = 0, 0
+    if search_region:
+        rx1, ry1, rx2, ry2 = search_region
+        x1 = max(0, int(rx1 * scale))
+        y1 = max(0, int(ry1 * scale))
+        x2 = min(screen_bgr.shape[1], int(rx2 * scale))
+        y2 = min(screen_bgr.shape[0], int(ry2 * scale))
+        screen_bgr = screen_bgr[y1:y2, x1:x2]
+        x_crop, y_crop = x1, y1
+        if screen_bgr.size == 0:
+            return None
+
+    best_val, best_loc, best_tw, best_th = -1.0, (0, 0), tw, th
+    # Try multiple scales for the template
+    factors = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+    for s in factors:
+        tw_s, th_s = max(1, int(tw * s)), max(1, int(th * s))
+        if tw_s > screen_bgr.shape[1] or th_s > screen_bgr.shape[0]:
+            continue
+        tmpl_r = cv2.resize(tmpl, (tw_s, th_s))
+        res = cv2.matchTemplate(screen_bgr, tmpl_r, cv2.TM_CCOEFF_NORMED)
+        _, val, _, loc = cv2.minMaxLoc(res)
+        if val > best_val:
+            best_val, best_loc, best_tw, best_th = val, loc, tw_s, th_s
+            
+    if best_val < threshold:
+        return None
+        
+    # Coordinates in image
+    cx_img = x_crop + best_loc[0] + best_tw // 2
+    cy_img = y_crop + best_loc[1] + best_th // 2
+    
+    return (int(cx_img / scale), int(cy_img / scale))

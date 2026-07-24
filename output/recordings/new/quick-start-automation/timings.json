@@ -1,0 +1,82 @@
+{
+  "step-01-create-the-project-dark.mov": [
+    {
+      "t": 0.0,
+      "label": "Click Skip for now."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Create."
+    },
+    {
+      "t": 0.0,
+      "label": "Set Integration Name to HelloWorld."
+    },
+    {
+      "t": 0.0,
+      "label": "Set Project Name to QuickStart."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Browse."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Open."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Create Integration."
+    }
+  ],
+  "step-02-add-an-automation-artifact-dark.mov": [
+    {
+      "t": 0.0,
+      "label": "Click HelloWorld."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Add Artifact."
+    },
+    {
+      "t": 0.0,
+      "label": ""
+    },
+    {
+      "t": 0.0,
+      "label": "Click Create."
+    }
+  ],
+  "step-03-add-logic-dark.mov": [
+    {
+      "t": 0.0,
+      "label": "Click the plus button."
+    },
+    {
+      "t": 0.0,
+      "label": "Search for Println."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Println."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Initialize Array."
+    },
+    {
+      "t": 0.0,
+      "label": "Set Values to Hello World."
+    },
+    {
+      "t": 0.0,
+      "label": "Click Save."
+    }
+  ],
+  "step-04-run-and-test-dark.mov": [
+    {
+      "t": 0.0,
+      "label": "Click Play."
+    }
+  ]
+}

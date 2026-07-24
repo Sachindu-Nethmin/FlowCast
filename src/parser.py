@@ -23,6 +23,7 @@ _FIELD_ALIASES: dict[str, str] = {
     "connection name":   "Connection Name",
     "response variable": "Response Variable",
     "response type":     "Response Type",
+    "target type":       "Target Type",
     "listener port":     "Listener port",
     "service base path": "Service Base Path",
     "service base path": "Service Base Path",
@@ -100,15 +101,15 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                 "hint": "next_to:" + m.group(1).strip(),
             })
 
-        # ── Click: "Select **X** in **Y**" ───────────────────────────────────
-        # e.g. "Select **Expression** in **Path**" → click Expression to the right of Path label
+        # ── Click: "Select **X** under/in **Y**" ──────────────────────────────
+        # e.g. "Select **GET** under **externalApi**" → click X with scoped search below Y
         if not line_actions:
-            m = re.search(r'select\s+\*\*([^*]+)\*\*\s+in\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            m = re.search(r'select\s+\*\*([^*]+)\*\*\s+(?:under|in|inside)\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action": "click",
                     "target": m.group(1).strip(),
-                    "hint": "right_of:" + m.group(2).strip(),
+                    "hint": f"under:{m.group(2).strip()}",
                 })
 
         # ── Scroll + Click: "Scroll down and select **X**" ───────────────────
@@ -116,7 +117,7 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         if not line_actions:
             m = re.search(r'scroll\s+down\s+and\s+select\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
             if m:
-                line_actions.append({"action": "scroll", "clicks": -5})
+                line_actions.append({"action": "scroll", "clicks": -15})
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
 
         # ── Search + Click: "Search `X` and select **Y**" ────────────────────
@@ -151,6 +152,13 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
             m = re.search(r'\bAdd\s+the\s+`([^`]+)`\s+action\b', line, re.IGNORECASE)
             if m:
                 line_actions.append({"action": "click", "target": m.group(1).strip()})
+
+        # ── Hotkey: "Press **X+Y**" ─────────────────────────────────────────
+        if not line_actions:
+            m = re.search(r'\bPress\s+\*\*([^*]+)\*\*', line, re.IGNORECASE)
+            if m:
+                keys = re.split(r'[+\s]+', m.group(1).strip())
+                line_actions.append({"action": "hotkey", "keys": [k for k in keys if k]})
 
         # ── Type: "Set [the] [base] **X** to `Y`" or "Set **X** to **Y**"
         m = re.search(r'set\s+(?:the\s+)?(.*?)\*\*([^*]+)\*\*\s+to\s+`([^`]+)`', line, re.IGNORECASE)
@@ -224,25 +232,36 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
                     "value":        m.group(2),
                 })
 
-        # ── Search: "Search **X** for `Y`" or "Search for `Y`" ───────────────
+        # ── Search: "Search **X** [from the Y]" or "Search for `Y`" ───────────
         if not line_actions:
-            # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
-            m = re.search(r'search\s+\*\*([^*]+)\*\*\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+            # 1. New pattern: Search **Println** [from the right panel]
+            # Here, the bolded text is the VALUE to search for.
+            m = re.search(r'search\s+\*\*([^*]+)\*\*(?:\s+from\s+(?:the\s+)?([^*]+))?', line, re.IGNORECASE)
             if m:
                 line_actions.append({
                     "action":       "search",
-                    "field_target": m.group(1).strip(),
-                    "value":        m.group(2).strip(),
+                    "field_target": "Search",
+                    "value":        m.group(1).strip(),
+                    "hint":         "panel:" + m.group(2).strip() if m.group(2) else None
                 })
             else:
-                # Without field name: Search for `api_sales_order_srv`
-                m = re.search(r'search\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+                # With explicit bold field name: Search **Connectors** for `api_sales_order_srv`
+                m = re.search(r'search\s+\*\*([^*]+)\*\*\s+for\s+`([^`]+)`', line, re.IGNORECASE)
                 if m:
                     line_actions.append({
                         "action":       "search",
-                        "field_target": "Search",
-                        "value":        m.group(1).strip(),
+                        "field_target": m.group(1).strip(),
+                        "value":        m.group(2).strip(),
                     })
+                else:
+                    # Without field name: Search for `api_sales_order_srv`
+                    m = re.search(r'search\s+for\s+`([^`]+)`', line, re.IGNORECASE)
+                    if m:
+                        line_actions.append({
+                            "action":       "search",
+                            "field_target": "Search",
+                            "value":        m.group(1).strip(),
+                        })
 
         actions.extend(line_actions)
 
@@ -288,6 +307,26 @@ def _parse_steps_from_md(content: str) -> list[tuple[str, str, str]]:
         instructions = re.sub(r'<[^>]+>', '', body).strip()
         results.append((title, gif_filename, instructions))
     return results
+
+
+def instruction_lines(raw: str) -> list[str]:
+    """Return display-ready instruction lines from a step's raw Markdown block.
+
+    Strips list markers (``1. `` / ``- `` / ``* ``), HTML tags, and inline
+    Markdown formatting (``**bold**``, `` `code` ``).  Used by TraceFlow and
+    the FlowCast Studio preview to render human-readable checklist items.
+    """
+    lines = []
+    for raw_line in raw.splitlines():
+        line = re.sub(r'^\s*\d+\.\s+', '', raw_line).strip()
+        line = re.sub(r'^\s*[-*+]\s+', '', line).strip()
+        line = re.sub(r'<[^>]+>', '', line).strip()
+        line = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+        line = re.sub(r'`([^`]+)`', r'\1', line)
+        line = re.sub(r'\*([^*]+)\*',  r'\1', line)
+        if line and not line.startswith('<'):
+            lines.append(line)
+    return lines
 
 
 def parse_markdown(path: str | Path) -> list[Step]:
