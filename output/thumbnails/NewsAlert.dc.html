@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif; }
+    a { color: #5FD4FF; }
+    a:hover { color: #9BE5FF; }
+  </style>
+</helmet>
+<div style="--accent: {{accent}}; position: relative; width: 2560px; height: 1440px; overflow: hidden; background: #0B1221; font-family: Helvetica Neue, Helvetica, Arial, sans-serif;">
+
+  <div style="position: absolute; inset: 0; background: radial-gradient(72% 68% at 33% 44%, #13294C 0%, rgba(19,41,76,0) 68%);"></div>
+  <div style="position: absolute; inset: 0; background: linear-gradient(135deg, rgba(21,44,80,0.75) 0%, rgba(11,18,33,0) 52%);"></div>
+  <div style="position: absolute; inset: 0; background: radial-gradient(34% 30% at 92% 44%, rgba(95,212,255,0.16) 0%, rgba(95,212,255,0) 70%);"></div>
+  <div style="position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(95,212,255,0.10) 3px, rgba(95,212,255,0) 3.5px); background-size: 80px 80px; background-position: 37px 37px;"></div>
+
+  <div style="position: relative; height: 100%; box-sizing: border-box; padding: 140px 140px 0 140px; display: flex; flex-direction: column;">
+
+    <div style="display: flex; align-items: center; gap: 33px;">
+      <div style="width: 132px; height: 132px; border-radius: 34px; border: 2px solid rgba(95,212,255,0.32); background: rgba(95,212,255,0.05); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="132" height="132" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+          <path d="M24 50 H40 L44.5 33 L53 68 L59 50 H74" stroke="var(--accent, #5FD4FF)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 28px; font-weight: 700; letter-spacing: 0.24em; color: var(--accent, #5FD4FF); line-height: 1;">WSO2</div>
+        <div style="font-size: 38px; font-weight: 700; letter-spacing: -0.005em; color: #EEF4FB; line-height: 1;">Integrator</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: flex-start; gap: 60px; flex-grow: 1; padding-top: 176px;">
+
+      <div style="display: flex; flex-direction: column; flex-grow: 1; min-width: 0;">
+        <div style="font-size: 46px; font-weight: 700; letter-spacing: 0.13em; color: var(--accent, #5FD4FF); line-height: 1;">BUILD A GUIDE</div>
+        <div style="margin-top: 56px; font-size: 142px; font-weight: 700; letter-spacing: -0.022em; line-height: 1.05; color: #EEF4FB;">
+          <div>Serve News over</div>
+          <div>a GraphQL API</div>
+        </div>
+        <div style="margin-top: 62px; font-size: 52px; font-weight: 700; letter-spacing: -0.01em; color: var(--accent, #5FD4FF); line-height: 1;">Query and explore in GraphiQL</div>
+      </div>
+
+      <div style="flex-shrink: 0; margin-top: 145px; margin-right: -140px;">
+        <svg width="1000" height="636" viewBox="0 0 880 560" fill="none"
+             stroke="var(--accent, #5FD4FF)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="238" y1="292" x2="96" y2="152" />
+  <line x1="238" y1="292" x2="404" y2="146" />
+  <line x1="238" y1="292" x2="120" y2="470" />
+  <line x1="238" y1="292" x2="392" y2="452" />
+  <path d="M238 194 L323 243 L323 341 L238 390 L153 341 L153 243 Z" fill="#101C30" />
+  <circle cx="238" cy="292" r="26" fill="var(--accent, #5FD4FF)" stroke="none" />
+  <circle cx="96" cy="152" r="42" fill="#101C30" />
+  <circle cx="404" cy="146" r="42" fill="#101C30" />
+  <circle cx="120" cy="470" r="42" fill="#101C30" />
+  <circle cx="392" cy="452" r="42" fill="#101C30" />
+  <path d="M604,268 H758 A28,28 0 0 1 786,296 V360 A28,28 0 0 1 758,388 H604 A28,28 0 0 1 576,360 V352.0 L542,328.0 L576,304.0 V296 A28,28 0 0 1 604,268 Z" fill="#101C30" stroke="var(--accent, #5FD4FF)" stroke-width="7" stroke-linejoin="round" /><text x="681.0" y="328.0" fill="#EEF4FB" stroke="none" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="48" font-weight="700" text-anchor="middle" dominant-baseline="central">/news</text>
+        </svg>
+      </div>
+
+    </div>
+  </div>
+
+  <sc-if value="{{frame}}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; border: 28px solid var(--accent, #5FD4FF); box-sizing: border-box; pointer-events: none;"></div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#5FD4FF","options":["#5FD4FF","#7C9CFF","#5FE3B8","#FFB25F"],"section":"Theme"},"frame":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":2560,"height":1440}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      accent: this.props.accent ?? "#5FD4FF",
+      frame: this.props.frame ?? false
+    };
+  }
+}
+</script>
+</body>
+</html>
