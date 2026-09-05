@@ -1,0 +1,71 @@
+# FlowCast natural narration — integration-as-api-hello-world
+#
+# One line per SUB-STEP, in order, matching the recorded actions 1:1.
+# '#' lines are comments.
+#
+# [card] plays over the branded title card; [intro]/[outro] play over a frozen
+# first/last frame (the video is paused).
+
+[card]
+Let's expose a REST API in WSO2 Integrator — no code required.
+
+[intro]
+We'll create an integration, add an HTTP service, call an external API, and
+return its response. It takes about five minutes.
+
+[step 1]
+Start by opening WSO2 Integrator.
+Skip the sign-in for now.
+Create a new integration.
+Name it Hello World API.
+Give the project a name too.
+Choose where it should live.
+Pick a folder and open it.
+Create the integration.
+
+[step 2]
+Open the integration you just made.
+Add an artifact to it.
+Choose HTTP Service, under Integration as API.
+Set the base path to slash hello.
+Create the service.
+
+[step 3]
+Add a resource to the service.
+Make it a GET.
+Set the path to greeting.
+Save it.
+
+[step 4]
+Open the resource flow and add a node.
+Add a connection.
+Pick a plain HTTP connection.
+Point it at the WSO2 sample API.
+Name the connection external API.
+Save the connection.
+
+[step 5]
+Add another node to the flow.
+Choose the external API connection.
+Use its Get operation.
+Call the root path.
+Store the reply in a variable called response.
+Treat the payload as JSON.
+Save the call.
+
+[step 6]
+Add one more node after the call.
+Choose Return.
+Return the response variable.
+Save it.
+
+[step 7]
+Run the integration.
+Open the test console.
+Execute the request — two hundred OK, and there's our Hello World.
+
+[outro]
+That's a working REST API, built and tested end to end. Thanks for watching.
+
+[endcard]
+Thanks for watching. Subscribe for more WSO2 Integrator tutorials.

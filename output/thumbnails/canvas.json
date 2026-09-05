@@ -1,0 +1,56 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "AI Chat Agent",
+      "x": 0,
+      "y": 0,
+      "w": 2560,
+      "h": 1440
+    },
+    {
+      "file": "Automation.dc.html",
+      "title": "Automation",
+      "x": 2760,
+      "y": 0,
+      "w": 2560,
+      "h": 1440
+    },
+    {
+      "file": "FileTracker.dc.html",
+      "title": "File Tracker",
+      "x": 0,
+      "y": 1700,
+      "w": 2560,
+      "h": 1440
+    },
+    {
+      "file": "NewsAlert.dc.html",
+      "title": "GraphQL News Alerts",
+      "x": 2760,
+      "y": 1700,
+      "w": 2560,
+      "h": 1440
+    },
+    {
+      "file": "SalesSync.dc.html",
+      "title": "Sales Data Sync",
+      "x": 0,
+      "y": 3400,
+      "w": 2560,
+      "h": 1440
+    },
+    {
+      "file": "SapS4Hana.dc.html",
+      "title": "SAP S/4HANA",
+      "x": 2760,
+      "y": 3400,
+      "w": 2560,
+      "h": 1440
+    }
+  ],
+  "launch": {
+    "view": "focused",
+    "file": "Main.dc.html"
+  }
+}
