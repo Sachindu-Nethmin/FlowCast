@@ -1,0 +1,12 @@
+{
+  "title": "Example",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/hrms/sap.successfactors.ecemploymentinformation/example"
+    ]
+  ],
+  "slug": "sap-successfactors-ecemploymentinformation-example"
+}

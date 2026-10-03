@@ -1,0 +1,12 @@
+{
+  "title": "Build an Automation",
+  "time": "Under 10 minutes",
+  "build": "An automation that prints Hello World to the terminal when it runs.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/get-started/build-automation"
+    ]
+  ],
+  "slug": "build-automation"
+}

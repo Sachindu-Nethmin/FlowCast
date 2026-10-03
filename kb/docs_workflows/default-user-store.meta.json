@@ -1,0 +1,12 @@
+{
+  "title": "Built-in User Store",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/manage/icp/user-stores/default-user-store"
+    ]
+  ],
+  "slug": "default-user-store"
+}

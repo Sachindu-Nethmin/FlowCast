@@ -1,0 +1,37 @@
+# Narration for build-event-integration — one line per recorded action.
+# Spoken forms: "Rabbit M Q", "Order Processor", "on Message", "print Info".
+# Verify against the recording with: tools/narrate_sync.py --dry-run
+
+# step 1
+Skip the sign in for now.
+Choose Create New Integration.
+Name the integration Order Processor.
+And the project, event integration.
+Then select Create Integration.
+
+# step 2
+Open the integration.
+Add an artifact.
+Pick Rabbit M Q, under Event Integration.
+The host is localhost.
+The port is fifty six seventy two, the broker's default.
+The queue name is Orders. This is where the messages will arrive.
+Then select Create.
+
+# step 3
+Add a handler.
+Choose on Message. It runs every time a message lands on the queue.
+Then select Save.
+
+# step 4
+Open the node panel inside the handler.
+Choose Call Function.
+Pick print Info, under log.
+Set the message to Received order.
+Then select Save.
+
+# step 5
+Run it.
+It compiles, and starts listening on the Orders queue.
+Now a message goes onto the Orders queue, sent from outside the integration.
+Received order. The handler ran the moment the message arrived.

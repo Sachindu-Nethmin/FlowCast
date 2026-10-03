@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "about": "Prerequisites FlowCast can start by itself, as local containers (src/prereqs.py). 'match' is tested against a page's prerequisites and instructions. 'values' fill configurables of the same meaning (host, port, user, password, database, url) when you have not entered your own. 'trigger' replaces a doc line that sends an event by hand (a management UI, a CLI) with a command FlowCast runs.",
+  "recipes": [
+    {
+      "id": "rabbitmq",
+      "label": "RabbitMQ",
+      "match": "\\brabbit ?mq\\b",
+      "image": "rabbitmq:4.2-management",
+      "ports": ["5672:5672", "15672:15672"],
+      "ready_port": 5672,
+      "ready_http": "http://localhost:15672",
+      "values": {"host": "localhost", "port": "5672", "user": "guest", "password": "guest"},
+      "trigger": {
+        "when": "management ui|publish (?:a )?message|send (?:a )?(?:test )?message",
+        "command": "tools/rmq_publish.sh {queue} {payload}",
+        "why": "publish a test message to the {queue} queue"
+      }
+    },
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "match": "\\bkafka\\b(?!.*(?:confluent|msk|event hubs))",
+      "image": "apache/kafka:3.9.0",
+      "ports": ["9092:9092"],
+      "ready_port": 9092,
+      "values": {"host": "localhost", "port": "9092", "url": "localhost:9092", "bootstrap": "localhost:9092"},
+      "trigger": {
+        "when": "produce|publish (?:a )?message|send (?:a )?(?:test )?message|console producer",
+        "command": "sh -c \"echo '{payload}' | docker exec -i flowcast-kafka /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic {topic}\"",
+        "why": "produce a test message on the {topic} topic"
+      }
+    },
+    {
+      "id": "mqtt",
+      "label": "MQTT broker (Mosquitto)",
+      "match": "\\bmqtt\\b|mosquitto",
+      "image": "eclipse-mosquitto:2",
+      "command": ["mosquitto", "-c", "/mosquitto-no-auth.conf"],
+      "ports": ["1883:1883"],
+      "ready_port": 1883,
+      "values": {"host": "localhost", "port": "1883", "url": "tcp://localhost:1883"},
+      "trigger": {
+        "when": "publish (?:a )?message|send (?:a )?(?:test )?message|mosquitto_pub",
+        "command": "docker exec flowcast-mqtt mosquitto_pub -t {topic} -m '{payload}'",
+        "why": "publish a test message on the {topic} topic"
+      }
+    },
+    {
+      "id": "mysql",
+      "label": "MySQL",
+      "match": "\\bmysql\\b",
+      "image": "mysql:8.4",
+      "env": {"MYSQL_ROOT_PASSWORD": "flowcast", "MYSQL_DATABASE": "flowcast"},
+      "ports": ["3306:3306"],
+      "ready_port": 3306,
+      "ready_log": "ready for connections. Version",
+      "values": {"host": "localhost", "port": "3306", "user": "root", "password": "flowcast", "database": "flowcast",
+                 "url": "jdbc:mysql://localhost:3306/flowcast"}
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "match": "postgre(?:s|sql)\\b",
+      "image": "postgres:16",
+      "command": ["postgres", "-c", "wal_level=logical"],
+      "env": {"POSTGRES_PASSWORD": "flowcast", "POSTGRES_DB": "flowcast"},
+      "ports": ["5432:5432"],
+      "ready_port": 5432,
+      "ready_log": "database system is ready to accept connections",
+      "values": {"host": "localhost", "port": "5432", "user": "postgres", "password": "flowcast", "database": "flowcast",
+                 "url": "jdbc:postgresql://localhost:5432/flowcast"}
+    },
+    {
+      "id": "mssql",
+      "label": "Microsoft SQL Server",
+      "match": "sql server|\\bmssql\\b",
+      "image": "mcr.microsoft.com/mssql/server:2022-latest",
+      "platform": "linux/amd64",
+      "env": {"ACCEPT_EULA": "Y", "MSSQL_SA_PASSWORD": "FlowCast#2026", "MSSQL_AGENT_ENABLED": "true"},
+      "ports": ["1433:1433"],
+      "ready_port": 1433,
+      "ready_log": "SQL Server is now ready for client connections",
+      "note": "Runs under x86 emulation on Apple silicon (colima start --vm-type vz --vz-rosetta).",
+      "values": {"host": "localhost", "port": "1433", "user": "sa", "password": "FlowCast#2026", "database": "master"}
+    },
+    {
+      "id": "redis",
+      "label": "Redis",
+      "match": "\\bredis\\b",
+      "image": "redis:7",
+      "ports": ["6379:6379"],
+      "ready_port": 6379,
+      "values": {"host": "localhost", "port": "6379", "url": "redis://localhost:6379"}
+    },
+    {
+      "id": "mongodb",
+      "label": "MongoDB",
+      "match": "\\bmongo ?db\\b",
+      "image": "mongo:7",
+      "ports": ["27017:27017"],
+      "ready_port": 27017,
+      "values": {"host": "localhost", "port": "27017", "url": "mongodb://localhost:27017", "database": "flowcast"}
+    },
+    {
+      "id": "activemq",
+      "label": "ActiveMQ",
+      "match": "\\bactivemq\\b",
+      "image": "apache/activemq-classic:6.1.2",
+      "ports": ["61616:61616", "8161:8161"],
+      "ready_port": 61616,
+      "values": {"host": "localhost", "port": "61616", "url": "tcp://localhost:61616", "user": "admin", "password": "admin"}
+    },
+    {
+      "id": "solace",
+      "label": "Solace PubSub+",
+      "match": "\\bsolace\\b",
+      "image": "solace/solace-pubsub-standard:latest",
+      "env": {"username_admin_globalaccesslevel": "admin", "username_admin_password": "admin"},
+      "extra": ["--shm-size=1g"],
+      "ports": ["55554:55555", "8080:8080"],
+      "ready_port": 55554,
+      "ready_seconds": 60,
+      "values": {"host": "localhost", "port": "55554", "url": "tcp://localhost:55554", "user": "default", "password": "default",
+                 "vpn": "default"}
+    },
+    {
+      "id": "sftp",
+      "label": "SFTP server",
+      "match": "\\bs?ftp server\\b|\\bsftp\\b",
+      "image": "atmoz/sftp:alpine",
+      "command": ["flowcast:flowcast:::upload"],
+      "ports": ["2222:22"],
+      "ready_port": 2222,
+      "values": {"host": "localhost", "port": "2222", "user": "flowcast", "password": "flowcast", "path": "/upload"}
+    },
+    {
+      "id": "smtp",
+      "label": "Mail server (Mailpit)",
+      "match": "\\bsmtp\\b",
+      "image": "axllent/mailpit:latest",
+      "ports": ["1025:1025", "8025:8025"],
+      "ready_port": 1025,
+      "values": {"host": "localhost", "port": "1025", "user": "flowcast", "password": "flowcast"}
+    }
+  ]
+}

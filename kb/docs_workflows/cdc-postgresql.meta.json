@@ -1,0 +1,12 @@
+{
+  "title": "CDC for PostgreSQL",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/develop/integration-artifacts/event/cdc-postgresql"
+    ]
+  ],
+  "slug": "cdc-postgresql"
+}

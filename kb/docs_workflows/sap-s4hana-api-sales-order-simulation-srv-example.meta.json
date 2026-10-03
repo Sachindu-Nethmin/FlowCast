@@ -1,0 +1,12 @@
+{
+  "title": "Example",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/erp-business/sap.s4hana.api_sales_order_simulation_srv/example"
+    ]
+  ],
+  "slug": "sap-s4hana-api-sales-order-simulation-srv-example"
+}

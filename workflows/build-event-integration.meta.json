@@ -1,0 +1,7 @@
+{
+  "title": "Build an Event-Driven Integration",
+  "time": "Under 10 minutes",
+  "build": "An event-driven integration that consumes messages from Orders queue in RabbitMQ broker and processes them.",
+  "links": [],
+  "slug": "build-event-integration"
+}

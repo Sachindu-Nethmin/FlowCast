@@ -1,0 +1,12 @@
+{
+  "title": "Azure Service Bus",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/develop/integration-artifacts/event/azure-service-bus"
+    ]
+  ],
+  "slug": "azure-service-bus"
+}

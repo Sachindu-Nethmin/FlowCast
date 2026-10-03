@@ -618,9 +618,9 @@ def _compute_ocr_candidates(screenshot: Image.Image, target: str,
     _find_ocr so the candidates — not just the single winner — are available
     for multi-candidate lookups like find_element_candidates()).
 
-    Returns (candidates, is_kb_card). Pure extraction: computes exactly what
-    _find_ocr always computed internally before picking a winner — no
-    scoring/selection behavior changed here.
+    Returns (candidates, is_kb_card, context): the scored candidate list,
+    the KB-card flag, and a dict of OCR helper values (require_exact,
+    clean_target, results, scale, arr) used by _find_ocr's fuzzy fallbacks.
     """
     arr = np.array(screenshot)
     results = _read_ocr(arr)
@@ -712,11 +712,22 @@ def _compute_ocr_candidates(screenshot: Image.Image, target: str,
                 "debug": f"cent:{centrality_score:.1f} card:{card_score} blue:{blue_score} exact:{exact_score} conf:{conf:.2f} input:{input_penalty} text='{text}'"
             })
 
-    return candidates, is_kb_card
+    return candidates, is_kb_card, {
+        "require_exact": require_exact,
+        "clean_target": clean_target,
+        "results": results,
+        "scale": scale,
+        "arr": arr,
+    }
 
 
 def _find_ocr(screenshot: Image.Image, target: str, search_region: tuple[int, int, int, int] | None = None) -> tuple[int, int] | None:
-    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target, search_region)
+    candidates, is_kb_card, ocr_ctx = _compute_ocr_candidates(screenshot, target, search_region)
+    require_exact = ocr_ctx["require_exact"]
+    clean_target = ocr_ctx["clean_target"]
+    results = ocr_ctx["results"]
+    scale = ocr_ctx["scale"]
+    arr = ocr_ctx["arr"]
 
     if candidates:
         if is_kb_card:
@@ -897,7 +908,7 @@ def find_element_candidates(screenshot: Image.Image, target: str, hint: str | No
         except ElementNotFoundError:
             return []
 
-    candidates, is_kb_card = _compute_ocr_candidates(screenshot, target)
+    candidates, is_kb_card, _ = _compute_ocr_candidates(screenshot, target)
     if not candidates:
         try:
             return [find_element(screenshot, target, hint)]

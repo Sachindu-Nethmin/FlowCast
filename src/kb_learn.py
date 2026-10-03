@@ -31,7 +31,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import queue
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -50,8 +53,48 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
+    # Atomic: a reader (pre-resolve thread, the background learner) never sees
+    # half a file — _load() would read that as an empty KB and the next save
+    # would wipe it.
     _KB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _KB_PATH.write_text(json.dumps(data, indent=2))
+    tmp = _KB_PATH.with_name(f"{_KB_PATH.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    os.replace(tmp, _KB_PATH)
+
+
+# Learning from a successful action OCRs the whole screen (~0.5 s); done on a
+# worker thread so the next action is offered straight away. Failures are
+# still recorded at once: the retry right after one must not reuse the spot.
+_LOCK = threading.RLock()
+_queue: "queue.Queue[tuple | None]" = queue.Queue()
+_worker: threading.Thread | None = None
+
+
+def _work() -> None:
+    while True:
+        job = _queue.get()
+        try:
+            if job is not None:
+                record(*job[0], **job[1])
+        except Exception as e:
+            print(f"[kb_learn] background record failed: {e}")
+        finally:
+            _queue.task_done()
+
+
+def record_later(*args, **kwargs) -> None:
+    """record(), on a background thread."""
+    global _worker
+    if _worker is None:
+        _worker = threading.Thread(target=_work, daemon=True)
+        _worker.start()
+    _queue.put((args, kwargs))
+
+
+def flush() -> None:
+    """Wait for background records to be written."""
+    if _worker is not None:
+        _queue.join()
 
 
 def _norm(s: str) -> str:
@@ -116,8 +159,15 @@ def record(screenshot: Image.Image, target: str, kind: str,
            pos: tuple[int, int], screen_size: tuple[int, int],
            success: bool, screen_name: str = "") -> None:
     """Record an executed action's outcome against the current screen."""
+    fp, texts = screen_fingerprint(screenshot)      # the slow part, outside the lock
+    with _LOCK:
+        _record(fp, texts, target, kind, pos, screen_size, success, screen_name)
+
+
+def _record(fp: str, texts: list[str], target: str, kind: str,
+            pos: tuple[int, int], screen_size: tuple[int, int],
+            success: bool, screen_name: str) -> None:
     data = _load()
-    fp, texts = screen_fingerprint(screenshot)
     screen = data["screens"].setdefault(fp, {"name": screen_name or "", "texts": texts, "targets": {}})
     if screen_name and not screen.get("name"):
         screen["name"] = screen_name
@@ -158,16 +208,17 @@ def record_alias(screenshot: Image.Image, target: str, alias: str,
         print(f"[kb_learn] Skipping invalid alias: '{target}' → '{alias}' (too short or command word)")
         return
 
-    data = _load()
     fp, texts = screen_fingerprint(screenshot)
-    screen = data["screens"].setdefault(fp, {"name": screen_name or "", "texts": texts, "targets": {}})
-    entry = screen["targets"].setdefault(_norm(target), {
-        "kind": "click", "label": target, "wins": 0, "fails": 0, "pos_rel": None,
-    })
-    entry["alias"] = alias
-    entry["wins"] += 1
-    entry["last_used"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    _save(data)
+    with _LOCK:
+        data = _load()
+        screen = data["screens"].setdefault(fp, {"name": screen_name or "", "texts": texts, "targets": {}})
+        entry = screen["targets"].setdefault(_norm(target), {
+            "kind": "click", "label": target, "wins": 0, "fails": 0, "pos_rel": None,
+        })
+        entry["alias"] = alias
+        entry["wins"] += 1
+        entry["last_used"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _save(data)
     print(f"[kb_learn] Learned alias: '{target}' → click '{alias}' on screen {fp}")
 
 

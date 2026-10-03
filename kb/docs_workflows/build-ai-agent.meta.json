@@ -1,0 +1,12 @@
+{
+  "title": "Build an AI Agent",
+  "time": "Under 10 minutes",
+  "build": "An AI agent that connects to an LLM, uses tools, and responds to user queries in chat.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/get-started/build-ai-agent"
+    ]
+  ],
+  "slug": "build-ai-agent"
+}

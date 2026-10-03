@@ -1,0 +1,12 @@
+{
+  "title": "New Relic",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/deploy-operate/observe/new-relic-integration"
+    ]
+  ],
+  "slug": "new-relic-integration"
+}

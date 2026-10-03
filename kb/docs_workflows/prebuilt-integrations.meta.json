@@ -1,0 +1,12 @@
+{
+  "title": "Prebuilt Integrations",
+  "time": "Under 10 minutes",
+  "build": "Nothing from scratch. You'll configure and deploy a production-ready integration between two applications from the prebuilt integration catalog.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/get-started/prebuilt-integrations"
+    ]
+  ],
+  "slug": "prebuilt-integrations"
+}

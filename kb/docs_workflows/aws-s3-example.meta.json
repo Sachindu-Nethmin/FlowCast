@@ -1,0 +1,12 @@
+{
+  "title": "Example",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/storage-file/aws.s3/example"
+    ]
+  ],
+  "slug": "aws-s3-example"
+}

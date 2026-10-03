@@ -1,9 +1,43 @@
-.env
-.env.local
+# ── Python ──────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
-.venv/
 *.egg-info/
+.venv/
+.venv-voice/
 dist/
 build/
+# SwiftPM (mac/FlowCastStudio)
+.build/
+
+# ── Secrets ─────────────────────────────────────────────────────────────
+.env
+.env.local
+# .env.example IS tracked — it documents the variables without the values.
+
+# ── Generated output ────────────────────────────────────────────────────
+# Recordings, stills, renders and debug frames are all reproducible from a
+# run. They are large (387 MB here) and change on every capture, so they do
+# not belong in history.
+output/
+scratch/
+
+# ── Third-party material ────────────────────────────────────────────────
+# A clone of https://github.com/wso2/product-integrator (Apache 2.0). Fetch
+# it rather than vendoring it, so this repo carries only its own licence.
 product-integrator/
+# 235 icons copied out of that same repo — same reasoning.
+output/product-integrator-assets/
+
+# ── Model weights ───────────────────────────────────────────────────────
+# EasyOCR downloads these on first use; hundreds of MB of binary.
+.easyocr_models/
+
+# ── macOS ───────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Personal ────────────────────────────────────────────────────────────
+# Your voice sample: anyone holding it can clone your voice.
+assets/voice/*.wav
+# Backups written while editing the knowledge base.
+kb/*.bak*
+.claude/settings.local.json

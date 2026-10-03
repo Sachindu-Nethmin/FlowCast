@@ -23,6 +23,15 @@ def slug(text: str) -> str:
     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
 
 
+def gif_name(index: int, stem: str, theme: str) -> str:
+    """Per-step GIF filename, e.g. "1. create-the-project-dark.gif".
+
+    The step number leads so the files sit in running order in Finder; the slug
+    alone sorts alphabetically and scrambles the sequence. Every place that
+    writes or references a step GIF goes through here so the two never drift."""
+    return f"{index}. {stem}-{theme}.gif"
+
+
 def build_full_video(out_dir: Path, theme: str) -> Path | None:
     """Combine all existing step MOVs (sorted by step number) into full.mov."""
     step_movs = sorted(out_dir.glob(f"step-*-{theme}.mov"))
@@ -48,13 +57,15 @@ def build_themed_markdown(steps: list[Step], out_dir: Path, wf_slug: str) -> Pat
 
         lines.append("")
         gif_stem = Path(step.gif_filename).stem
+        light_gif = gif_name(idx, gif_stem, "light")
+        dark_gif = gif_name(idx, gif_stem, "dark")
 
         themed_img = [
             "<ThemedImage",
             f'    alt="{step.title}"',
             "    sources={{",
-            f"        light: useBaseUrl('/img/get-started/{wf_slug}/{gif_stem}-light.gif'),",
-            f"        dark: useBaseUrl('/img/get-started/{wf_slug}/{gif_stem}-dark.gif'),",
+            f"        light: useBaseUrl('/img/get-started/{wf_slug}/{light_gif}'),",
+            f"        dark: useBaseUrl('/img/get-started/{wf_slug}/{dark_gif}'),",
             "    }}",
             "/>",
             ""

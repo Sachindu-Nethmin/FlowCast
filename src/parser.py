@@ -49,7 +49,10 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
     """Convert markdown instruction lines to UI action dicts — no LLM needed.
 
     Rules (applied per line, in priority order):
+      • "Wait 8 seconds."                    → wait (dwell so the result is filmed)
+      • "Run the shell command `X` [to …]."  → shell (inject an event from outside)
       • "Open WSO2 Integrator"               → open_app
+      • "Give the command `X`."  /  "Ask me for the next command." → command (learned popup)
       • line starts with "Keep"              → skip (value already set)
       • "[Ss]elect **X**"                    → click X
       • "[Aa]dd [a [new]] **X**"             → click X  (bold element)
@@ -74,12 +77,66 @@ def _parse_instructions(instructions: str) -> list[dict[str, Any]]:
         if not line:
             continue
 
+        # ── Wait: "Wait 8 seconds." ───────────────────────────────────────────
+        # A deliberate dwell. Without one, a step that ends on a click stops
+        # recording the moment the click lands, so anything the app prints
+        # afterwards — a build finishing, a response arriving — is never
+        # captured. Docs pages say "confirm the response shows ..."; that
+        # confirmation needs time on screen to be worth filming.
+        m = re.match(r'^Wait\s+(?:for\s+)?(\d+(?:\.\d+)?)\s*(?:s\b|seconds?\b)\.?$',
+                     line, re.IGNORECASE)
+        if m:
+            actions.append({"action": "wait", "seconds": float(m.group(1))})
+            continue
+
         # ── Open app ──────────────────────────────────────────────────────────
         if re.search(r'\bOpen\s+WSO2\s+Integrator\b', line, re.IGNORECASE):
             actions.append({
                 "action":   "open_app",
                 "app_name": _APP_NAME,
                 "app_path": _APP_PATH,
+            })
+            continue
+
+        # ── Shell: "Run the shell command `X` to publish a test message." ─────
+        # Runs X directly, no prompt. Event-driven quick starts need an event
+        # injected from OUTSIDE the app (a queue message, a file drop), and the
+        # docs usually do that in a second tool — a browser UI, a CLI. FlowCast
+        # re-activates the target app before every screenshot, so it cannot
+        # drive a second window; running the producer as a command can. The
+        # interactive "Give the command" form below blocks on a terminal prompt,
+        # which nobody is watching in --phone mode.
+        m = re.match(r'^Run\s+the\s+shell\s+command\s+`([^`]+)`(?:\s+to\s+(.+?))?\.?$',
+                     line, re.IGNORECASE)
+        if m:
+            act = {"action": "shell", "command": m.group(1).strip()}
+            if m.group(2):
+                act["label"] = m.group(2).strip()
+            actions.append(act)
+            continue
+
+        # ── Command: "Give the command `X`." / "Ask me for the next command." ──
+        # A pause-and-prompt action: on first run a popup + terminal prompt asks
+        # the user to enter a command; the answer is learned and auto-replayed on
+        # later runs. The optional backticked value is the command to run when no
+        # learned value exists and the user just presses Enter.
+        m = re.search(r'\bGive\s+the\s+command\s+`([^`]+)`', line, re.IGNORECASE)
+        if m:
+            actions.append({
+                "action":     "command",
+                "command":    m.group(1).strip(),
+                "prompt":     "Enter the command to run:",
+                "learn":      True,
+                "record_clip": True,
+            })
+            continue
+        if re.search(r'\bAsk\s+me\s+for\s+the\s+next\s+command\b', line, re.IGNORECASE):
+            actions.append({
+                "action": "command",
+                "command": "",
+                "prompt":  "Enter the command to run:",
+                "learn":   True,
+                "record_clip": True,
             })
             continue
 

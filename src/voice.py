@@ -1,12 +1,13 @@
-"""Voice input for FlowCast guide mode — push-to-talk (right arrow) commands.
+"""Voice input for FlowCast guide mode — tone-cued, timed listening.
 
-Hold the RIGHT ARROW key to record a spoken command, release it to send.
-The clip is transcribed fully ON-DEVICE via macOS's built-in Speech
-framework (the same on-device engine behind Siri dictation) — no API key,
-no network call, no model download. The resulting text is handed to the
-exact same pipeline as typed "what next>" input (src/nl_commands.parse_command),
-so --voice produces the identical workflow.md / GIFs / full_script.py as
-typed guide mode — only how the command text is captured changes.
+A short tone plays, then FlowCast records for a fixed window (5s by
+default) and transcribes automatically — no key to hold. The clip is
+transcribed fully ON-DEVICE via macOS's built-in Speech framework (the same
+on-device engine behind Siri dictation) — no API key, no network call, no
+model download. The resulting text is handed to the exact same pipeline as
+typed "what next>" input (src/nl_commands.parse_command), so --voice
+produces the identical workflow.md / GIFs / full_script.py as typed guide
+mode — only how the command text is captured changes.
 
 Setup (only needed for --voice):
     uv sync --extra voice          # installs pyobjc-framework-Speech + pynput
@@ -16,7 +17,7 @@ Privacy & Security):
     Speech Recognition — for on-device transcription (prompted automatically
                           on first use; must be granted to your terminal app)
     Microphone         — to record the spoken command
-    Input Monitoring   — for pynput to see the right-arrow key globally
+    Input Monitoring   — for pynput to see the Esc cancel-to-type key globally
     (Accessibility is already required for the rest of FlowCast via pyautogui)
 
 Recognition is forced on-device (requiresOnDeviceRecognition=True) so audio
@@ -27,7 +28,18 @@ Apple's cloud dictation.
 Voice is great for click / select / navigate commands ("click Create",
 "search for Println", "select FTP"). It's a poor fit for exact typed values
 (hostnames, ports, JSON, slugs like "sales-data-sync") since dictation
-rarely comes back verbatim — press Esc at the prompt to type those instead.
+rarely comes back verbatim — press Esc any time during the listening window
+to cancel and type those instead. The listen window defaults to 5 seconds;
+override with FLOWCAST_VOICE_SECONDS=<seconds>.
+
+Spoken feedback (speak(), used by src/guide.py's confirm-before-executing
+loop): after a command is heard, the guide loop reads it back and asks you
+to confirm ("say ok") or redo it ("say edit") before anything is actually
+clicked — a safety net against misheard commands. It then speaks whether
+the executed command succeeded ("Done. What's next?") or failed. This uses
+macOS's offline 'say' (FLOWCAST_GUIDE_VOICE / FLOWCAST_GUIDE_RATE to
+customize) — unrelated to the tutorial narration voice (FLOWCAST_DUB_VOICE,
+src/narrate.py), which is a separate, post-recording, non-interactive step.
 """
 from __future__ import annotations
 
@@ -355,14 +367,13 @@ def _flush_stdin() -> None:
 
 
 def _suppress_tty_echo():
-    """Turn off terminal echo for the duration of the push-to-talk listener.
+    """Turn off terminal echo for the duration of the tone-cued listen window.
 
-    Holding the right arrow triggers OS key-repeat, and the terminal (not
-    our Python process) echoes every one of those raw keystrokes to the
-    screen as "^[[C^[[C^[[C..." — pure visual noise, and it also queues
-    those bytes in the tty's input buffer where a later input() call could
-    pick them up. Returns a zero-arg restore() callback; a no-op if stdin
-    isn't a real tty (e.g. piped input) or on non-POSIX platforms.
+    We keep a background key listener alive (for the Esc-to-cancel shortcut)
+    while recording; without this, any stray keystrokes get echoed to the
+    screen and queued in the tty's input buffer where a later input() call
+    could pick them up. Returns a zero-arg restore() callback; a no-op if
+    stdin isn't a real tty (e.g. piped input) or on non-POSIX platforms.
     """
     try:
         import sys
@@ -386,18 +397,31 @@ def _suppress_tty_echo():
         return lambda: None
 
 
-# ── Push-to-talk ──────────────────────────────────────────────────────────────
+# ── Tone-cued timed listening ─────────────────────────────────────────────────
 
-class _PTTResult:
-    def __init__(self) -> None:
-        self.clip: Path | None = None
-        self.mode: str = ""  # "voice" | "typed"
+LISTEN_SECONDS = float(os.environ.get("FLOWCAST_VOICE_SECONDS", "5"))
+
+_START_TONE = "/System/Library/Sounds/Tink.aiff"
 
 
-def push_to_talk(prompt: str) -> str:
-    """Block until the user holds+releases the right arrow (records + transcribes
-    a command) or presses Esc (falls back to a typed line). Always returns a
-    string — possibly empty if nothing was understood."""
+def _play_start_tone() -> None:
+    """Short audible cue that recording has started, via macOS's built-in
+    `afplay`. Best-effort — a missing/failed tone shouldn't block voice
+    input, so this never raises."""
+    try:
+        subprocess.Popen(
+            ["afplay", _START_TONE],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def listen(prompt: str, duration: float = LISTEN_SECONDS) -> str:
+    """Play a tone, then record `duration` seconds of audio automatically and
+    transcribe it — no key to hold. Press Esc any time during the window to
+    cancel and fall back to typing instead. Always returns a string —
+    possibly empty if nothing was understood."""
     try:
         from pynput import keyboard
     except ImportError as e:
@@ -406,77 +430,103 @@ def push_to_talk(prompt: str) -> str:
             "Install with: uv sync --extra voice  (or: pip install pynput)"
         ) from e
 
-    result = _PTTResult()
-    done = threading.Event()
-    recording = threading.Event()
-
-    print(f"\n{prompt}  🎙  hold → to talk (release to send) · Esc to type instead")
+    cancelled = threading.Event()
 
     def on_press(key):
-        if key == keyboard.Key.right and not recording.is_set():
-            recording.set()
-            print("   ● recording… (release → to send)")
+        if key == keyboard.Key.esc:
+            cancelled.set()
+            return False
+
+    print(f"\n{prompt}  🎙  listening for {duration:.0f}s after the tone… · Esc to type instead")
+
+    restore_echo = _suppress_tty_echo()
+    listener = keyboard.Listener(on_press=on_press)
+    listener.start()
+
+    clip: Path | None = None
+    try:
+        if not cancelled.is_set():
+            _play_start_tone()
+        if not cancelled.is_set():
             try:
                 _start_recording()
             except Exception as e:
                 print(f"   ✗ {e}")
-                result.mode = "typed"
-                done.set()
-                return False
-        elif key == keyboard.Key.esc and not recording.is_set():
-            result.mode = "typed"
-            done.set()
-            return False
-
-    def on_release(key):
-        if key == keyboard.Key.right and recording.is_set():
-            # Just stop the recording here — transcription (Speech framework
-            # + its own run-loop pumping) happens on the MAIN thread below,
-            # after the listener is fully torn down, rather than inside this
-            # background listener-thread callback.
-            result.clip = _stop_recording()
-            result.mode = "voice"
-            done.set()
-            return False
-
-    restore_echo = _suppress_tty_echo()
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    try:
-        listener.start()
-        done.wait()
+            else:
+                print("   ● recording…")
+                deadline = time.time() + duration
+                while time.time() < deadline and not cancelled.is_set():
+                    time.sleep(0.05)
+                clip = _stop_recording()
+    finally:
         listener.stop()
         listener.join()
-    finally:
         restore_echo()
-        _flush_stdin()  # discard any key-repeat bytes that queued up while echo was off
+        _flush_stdin()  # discard any stray bytes that queued up while echo was off
 
-    if result.mode == "typed":
+    if cancelled.is_set():
+        if clip:
+            clip.unlink(missing_ok=True)
+            try:
+                clip.parent.rmdir()
+            except OSError:
+                pass
+        print("   ⎋  cancelled — switching to typed input")
+        return input("   (typed) what next> ").strip()
+
+    if clip is None:
+        # Mic never opened — fall back to typing rather than hang.
         return input("   (typed) what next> ").strip()
 
     text = ""
-    if result.clip:
-        peak = _peak_dbfs(result.clip)
-        if peak is not None and peak < _SILENCE_DBFS_THRESHOLD:
-            print(f"   ⚠️  recorded clip is silent (peak {peak:.0f} dBFS) — not sending to "
-                  f"the transcriber. This usually means either:")
-            print(f"       • Microphone permission isn't granted to your terminal app "
-                  f"(System Settings → Privacy & Security → Microphone), or")
-            print(f"       • The wrong input device was picked — run "
-                  f"`ffmpeg -f avfoundation -list_devices true -i \"\"` to see all mics, "
-                  f"then set FLOWCAST_AUDIO_DEVICE=<index> and retry.")
-        else:
-            print("   ⏳ transcribing…")
-            try:
-                text = transcribe(result.clip)
-            except Exception as e:
-                print(f"   ✗ transcription failed: {e}")
-        result.clip.unlink(missing_ok=True)
+    peak = _peak_dbfs(clip)
+    if peak is not None and peak < _SILENCE_DBFS_THRESHOLD:
+        print(f"   ⚠️  recorded clip is silent (peak {peak:.0f} dBFS) — not sending to "
+              f"the transcriber. This usually means either:")
+        print(f"       • Microphone permission isn't granted to your terminal app "
+              f"(System Settings → Privacy & Security → Microphone), or")
+        print(f"       • The wrong input device was picked — run "
+              f"`ffmpeg -f avfoundation -list_devices true -i \"\"` to see all mics, "
+              f"then set FLOWCAST_AUDIO_DEVICE=<index> and retry.")
+    else:
+        print("   ⏳ transcribing…")
         try:
-            result.clip.parent.rmdir()
-        except OSError:
-            pass
+            text = transcribe(clip)
+        except Exception as e:
+            print(f"   ✗ transcription failed: {e}")
+    clip.unlink(missing_ok=True)
+    try:
+        clip.parent.rmdir()
+    except OSError:
+        pass
 
     heard = _clean_transcript(text)
     print(f'   📝 heard: "{heard}"' if heard else
-          "   (heard nothing — hold → a little longer, or Esc to type)")
+          "   (heard nothing — try again, or Esc to type)")
     return heard
+
+
+# ── Spoken feedback (guide-mode confirm / success / failure) ────────────────
+
+def speak(text: str) -> None:
+    """Speak `text` aloud via macOS's offline 'say' — blocks until it
+    finishes, so callers naturally wait before listening for a reply next.
+    Voice defaults to macOS's system default; override with
+    FLOWCAST_GUIDE_VOICE (voice name, e.g. 'Samantha') and/or
+    FLOWCAST_GUIDE_RATE (words per minute). Best-effort: a TTS failure is
+    printed but never raises, so it can't break a guide session."""
+    text = (text or "").strip()
+    if not text:
+        return
+    cmd = ["say"]
+    voice_name = os.environ.get("FLOWCAST_GUIDE_VOICE")
+    if voice_name:
+        cmd += ["-v", voice_name]
+    rate = os.environ.get("FLOWCAST_GUIDE_RATE")
+    if rate:
+        cmd += ["-r", rate]
+    cmd.append(text)
+    try:
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print(f"   [voice] couldn't speak feedback: {e}")

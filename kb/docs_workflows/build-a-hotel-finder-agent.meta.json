@@ -1,0 +1,12 @@
+{
+  "title": "Build a Hotel Finder Agent",
+  "time": "10 minutes",
+  "build": "A conversational agent that helps users find hotels in a specific city and check availability through natural conversation, with session-scoped memory so the user can refer back to earlier messages.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/genai/getting-started/build-a-hotel-finder-agent"
+    ]
+  ],
+  "slug": "build-a-hotel-finder-agent"
+}

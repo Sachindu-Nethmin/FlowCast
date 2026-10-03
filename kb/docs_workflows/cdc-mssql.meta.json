@@ -1,0 +1,12 @@
+{
+  "title": "CDC for Microsoft SQL Server",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/develop/integration-artifacts/event/cdc-mssql"
+    ]
+  ],
+  "slug": "cdc-mssql"
+}

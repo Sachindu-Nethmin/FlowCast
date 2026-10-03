@@ -1,0 +1,16 @@
+{
+  "title": "Build an Integration as API",
+  "time": "Under 10 minutes",
+  "build": "An HTTP service that listens on `/hello/greeting`, calls an external API, and returns the response to the caller.",
+  "links": [
+    [
+      "Cloud setup",
+      "https://wso2.com/integration-platform/docs/get-started/setup/cloud-setup"
+    ],
+    [
+      "Local setup",
+      "https://wso2.com/integration-platform/docs/get-started/setup/local-setup"
+    ]
+  ],
+  "slug": "integration-as-api"
+}

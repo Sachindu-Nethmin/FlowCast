@@ -1,0 +1,12 @@
+{
+  "title": "Example",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/developer-tools/wso2.apim.catalog/example"
+    ]
+  ],
+  "slug": "wso2-apim-catalog-example"
+}
