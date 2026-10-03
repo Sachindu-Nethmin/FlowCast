@@ -235,6 +235,7 @@ class Pilot:
         self.path: dict[int, list[str]] = {}     # ops this run, per step
         self.ops: list[str] | None = None         # proven ops left in this step
         self.guided_cmd: str | None = None
+        self.replayed_cmd = False             # the last op was a saved command (see _replay_path)
         self.done_idx: set[int] = set()
         # The next action, already located while you look at the phone, so a
         # tap acts at once (runner.resolve is patched to use it).
@@ -290,7 +291,10 @@ class Pilot:
             if command.get("_direct") and command.get("action") == "click":
                 # A tap on the phone's screenshot ("at x,y"). Guide mode fires
                 # those without filming them; route it through the normal path
-                # (located already) so the click is in the video.
+                # (located already) so the click is in the video. A saved tap
+                # waits for the view to finish drawing: replayed straight after
+                # the click that opened it, it landed on an empty canvas.
+                runner.wait_ui_settle(timeout=4.0)
                 command = {k: v for k, v in command.items() if k != "_direct"}
                 self.pre = (_plain(action_to_markdown(command)), dict(command))
             ok, clip = orig(command, tmp_dir, clip_idx, step_idx)
@@ -698,11 +702,12 @@ class Pilot:
             step_cmd = self._recover()
             if step_cmd is not None:
                 return step_cmd
-        elif self.last_ok is False and self.current is not None and not self.correcting:
+        elif self.last_ok is False and self.current is not None and (not self.correcting or self.replayed_cmd):
             act = actions[self.current] if self.current < len(actions) else {}
             if (act.get("target") or "").lower() in OPTIONAL:
                 print(f"  [autopilot] '{act.get('target')}' not on screen — optional, moving on")
             else:
+                self.replayed_cmd = False
                 self.episodes += 1
                 self.episode = {"n": self.episodes, "key": (self.step_idx, self.current),
                                 "stage": 0, "phase": "start",
@@ -711,6 +716,7 @@ class Pilot:
                 step_cmd = self._recover()
                 if step_cmd is not None:
                     return step_cmd
+        self.replayed_cmd = False
         if self.guided_cmd is not None:
             # A command you sent from the phone becomes part of the path only if it worked.
             if self.last_ok:
@@ -875,8 +881,11 @@ class Pilot:
                 continue
             if op.startswith("cmd:"):
                 # It stands for the action due next (a tap you gave in its
-                # place): its clip is narrated as that action.
+                # place): its clip is narrated as that action, and if it fails
+                # that action is recovered (pause, retry, learned fix) rather
+                # than skipped.
                 self.current = self.next if self.next < len(self.step.actions) else self.current
+                self.replayed_cmd = True
                 self.correcting, self.last_ok = True, None
                 print(f"  [autopilot] proven path: {op[4:]}")
                 return op[4:]
