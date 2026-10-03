@@ -184,12 +184,24 @@ def _mangled(words: list[str] | None, value: str) -> bool:
     return bool(words) and v not in words and any(v in w and w != v for w in words)
 
 
+def _notch_px() -> int:
+    """Height of the black strip a notched display keeps above a full-screen
+    app (its safe-area inset), in screen pixels — 0 without a notch."""
+    try:
+        from AppKit import NSScreen
+        s = NSScreen.mainScreen()
+        return int(round(s.safeAreaInsets().top * s.backingScaleFactor()))
+    except Exception:
+        return 0
+
+
 def _set_menu_crop(native: bool) -> None:
     """The recorder crops the menu bar off the top of every frame. In native
-    full screen there is no menu bar, so that crop would eat real app pixels
-    instead — zero it out, and restore it when we fall back to a window."""
+    full screen there is no menu bar — only, on a notched MacBook, a black
+    strip beside the notch, which is cropped instead (it showed as a black bar
+    across the top of the video). Restored when we fall back to a window."""
     from src import recorder
-    recorder.MENU_BAR_H = 0 if native else recorder.DEFAULT_MENU_BAR_H
+    recorder.MENU_BAR_H = _notch_px() if native else recorder.DEFAULT_MENU_BAR_H
 
 
 def ensure_fullscreen(force: bool = False) -> None:

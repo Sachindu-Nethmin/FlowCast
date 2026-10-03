@@ -79,6 +79,19 @@ def _html(md: str) -> str:
     return re.sub(r"`([^`]+)`", r"<code>\1</code>", out)
 
 
+def _strip(rec: Path, mov: Path) -> int:
+    """The notch's black strip in this recording, measured on its clips."""
+    from src.frames import black_top, strip_heights
+    def size(p: Path) -> tuple[int, int]:
+        o = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height", "-of", "csv=p=0", str(p)], capture_output=True, text=True)
+        w, h = (int(x) for x in o.stdout.strip().split(",")[:2])
+        return w, h
+    clips = sorted((rec / "guid").glob("step*_action*.mov"))
+    by_size = strip_heights(clips, size) if clips else {}
+    return by_size.get(size(mov), black_top(mov))
+
+
 def make_gifs(rec: Path, theme: str, titles: list[str], out: Path) -> dict[int, Path]:
     """One GIF per step video in the recording, named '<NN> <step title>.gif'."""
     out.mkdir(parents=True, exist_ok=True)
@@ -88,8 +101,10 @@ def make_gifs(rec: Path, theme: str, titles: list[str], out: Path) -> dict[int, 
         if not movs:
             continue
         gif = out / f"{n:02d} {_safe(title)}.gif"
+        band = _strip(rec, movs[0])
+        trim = f"crop=iw:ih-{band}:0:{band}," if band else ""
         for width, fps, speed in GIF_LADDER:
-            vf = (f"setpts=PTS/{speed},fps={fps},scale={width}:-2:flags=lanczos,split[a][b];"
+            vf = (f"{trim}setpts=PTS/{speed},fps={fps},scale={width}:-2:flags=lanczos,split[a][b];"
                   "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle")
             r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(movs[0]), "-filter_complex", vf,
                                 "-loop", "0", str(gif)], capture_output=True)

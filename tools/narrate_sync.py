@@ -198,20 +198,27 @@ def main() -> None:
     rate, ch = int(rate), int(ch)
 
     # ── one picture size for the whole video ─────────────────────────────────
-    sizes = {clip: size(clip) for items in plan.values() for clip, _ in items}
+    # The black strip a notched MacBook keeps above a full-screen app is cut
+    # off each clip, then all are fitted to one size from the bottom up (the
+    # top is where a menu-bar crop differs).
+    from src.frames import strip_heights
+    clips_all = [clip for items in plan.values() for clip, _ in items]
+    raw = {clip: size(clip) for clip in clips_all}
+    strip = strip_heights(clips_all, raw.get)
+    sizes = {clip: (w, h - strip[(w, h)]) for clip, (w, h) in raw.items()}
+    if any(strip.values()):
+        print(f"black strip at the top (notch) cut off: {strip}")
     W = min(w for w, _ in sizes.values())
     H = min(h for _, h in sizes.values())
+    H -= H % 2
     if len(set(sizes.values())) > 1:
         print(f"clips differ in size ({sorted(set(sizes.values()))}) — fitting all to {W}x{H}, "
               "trimming the top (where a menu-bar crop differs)")
 
     def fit(clip: Path) -> str:
-        w, h = sizes[clip]
-        f = []
-        if w != W:
-            f.append(f"scale={W}:-2")
-        if h != H or w != W:
-            f.append(f"crop={W}:{H}:0:ih-{H}")
+        w, _ = sizes[clip]
+        f = [f"scale={W}:-2"] if w != W else []
+        f.append(f"crop={W}:{H}:0:ih-{H}")
         return ",".join(f + [f"fps={FPS}"])
 
     # ── build each step from its actions ───────────────────────────────────
