@@ -28,7 +28,7 @@ Options worth knowing:
                                >=1440p uploads a noticeably higher bitrate)
     --eyebrow "GET STARTED"    small letterspaced kicker above the headline
     --art chat|robot|files|graph|sync|sap|none   right-hand illustration
-    --no-zoom                  static framing instead of the slow push-in
+    --zoom                     add the slow push-in (off: it wobbles on a still card)
 """
 from __future__ import annotations
 
@@ -111,27 +111,22 @@ def _voice_over(text: str, wav: Path, voice: str | None, rate: int) -> float:
 
 
 def _compose(bg: Image.Image, layers: list[dict], t: float, unit: float) -> Image.Image:
-    """One frame: the static background with each element at its own progress."""
+    """One frame: the static background with each element faded in on its cue.
+
+    Opacity only. Elements used to rise and pop into place, and the card
+    zoomed; both move by whole pixels per frame, which reads as a wobble on a
+    still card. A fade has nothing to round, so it stays smooth."""
     frame = bg.copy()
     for L in layers:
         p = (t - L["cue"]) / IN_DUR
         if p <= 0:
             continue
-        img, pos = L["img"], L["pos"]
+        img = L["img"]
         if p < 1:
             fade = brand.ease_out_cubic(p)
-            if L["pop"]:
-                k = 0.90 + 0.10 * brand.ease_out_back(p)
-                w, h = max(int(img.width * k), 1), max(int(img.height * k), 1)
-                pos = (pos[0] + (img.width - w) // 2, pos[1] + (img.height - h) // 2)
-                img = img.resize((w, h), Image.BILINEAR)
-            else:
-                pos = (pos[0], int(pos[1] + L["rise"] * unit * (1 - fade)))
-            if fade < 1:
-                img = img.copy()
-                img.putalpha(img.getchannel("A").point(
-                    lambda v, f=fade: int(v * f)))
-        frame.alpha_composite(img, pos)
+            img = img.copy()
+            img.putalpha(img.getchannel("A").point(lambda v, f=fade: int(v * f)))
+        frame.alpha_composite(img, L["pos"])
     return frame
 
 
@@ -139,7 +134,7 @@ def build_intro(title: str, subtitle: str, text: str, out: Path,
                 quality: str = "1440p", theme: str = "dark",
                 voice: str | None = None, rate: int = 172,
                 lead_in: float = 0.7, tail: float = 1.0,
-                zoom: bool = True, crf: int = 14, preset: str = "faster",
+                zoom: bool = False, crf: int = 14, preset: str = "faster",
                 eyebrow: str = "GET STARTED", art: str = "none",
                 label: str | None = None) -> Path:
     """Render the animated title card with its voice-over → `out` (.mp4)."""
@@ -214,7 +209,7 @@ def main() -> None:
                     help="text in the illustration's speech bubble")
     ap.add_argument("--voice", default=None)
     ap.add_argument("--rate", type=int, default=172)
-    ap.add_argument("--no-zoom", action="store_true")
+    ap.add_argument("--zoom", action="store_true")
     ap.add_argument("--thumbnail", type=Path, default=None, help="also write a 1280x720 thumbnail")
     ap.add_argument("--thumbnail-only", type=Path, default=None)
     args = ap.parse_args()
@@ -226,7 +221,7 @@ def main() -> None:
 
     build_intro(args.title, args.subtitle, args.text, args.out,
                 quality=args.quality, theme=args.theme,
-                voice=args.voice, rate=args.rate, zoom=not args.no_zoom,
+                voice=args.voice, rate=args.rate, zoom=args.zoom,
                 eyebrow=args.eyebrow, art=args.art, label=args.label)
     if args.thumbnail:
         make_thumbnail(args.title, args.subtitle, args.thumbnail,

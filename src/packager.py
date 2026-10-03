@@ -85,8 +85,7 @@ def package(master: Path, title: str, slug: str, doc_url: str | None = None,
     name = safe_name(title)
     when = when or datetime.now()
     folder = root / f"{when:%Y-%m-%d} {name}"
-    # Re-rendering the same video on the same day replaces that day's folder;
-    # another day gets its own, so earlier versions are kept.
+    # A re-run of the same page replaces its earlier folder (see _replace_older).
     yt = folder / "YouTube"
     yt.mkdir(parents=True, exist_ok=True)
     for old in (f"{name}.mp4", f"{name} – Thumbnail.png", f"{name} – YouTube description.txt"):
@@ -115,7 +114,30 @@ def package(master: Path, title: str, slug: str, doc_url: str | None = None,
         except Exception as e:          # the YouTube half is done either way
             print(f"[package] Medium folder skipped: {e}")
     (folder / MANIFEST).write_text(json.dumps(manifest, indent=2))
+    _replace_older(root, slug, folder)
     return folder
+
+
+def _replace_older(root: Path, slug: str, keep: Path) -> None:
+    """A re-run of the same page replaces its earlier video: other folders made
+    for this slug go to the Trash (recoverable), so the Library shows one."""
+    trash = Path.home() / ".Trash"
+    for m in root.glob(f"*/{MANIFEST}"):
+        folder = m.parent
+        if folder == keep:
+            continue
+        try:
+            if json.loads(m.read_text()).get("slug") != slug:
+                continue
+        except (OSError, json.JSONDecodeError):
+            continue
+        dest = trash / folder.name
+        n = 2
+        while dest.exists():
+            dest = trash / f"{folder.name} {n}"
+            n += 1
+        shutil.move(str(folder), str(dest))
+        print(f"[package] replaced the earlier video — moved to the Trash: {folder.name}")
 
 
 def listing(root: Path | None = None) -> list[dict]:

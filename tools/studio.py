@@ -138,7 +138,36 @@ def cmd_prepare(args) -> None:
         rec.rename(dest)
         print(f"archived previous recording → {dest.relative_to(ROOT)}")
 
-    if args.fresh_projects and PROJECTS.is_dir() and any(PROJECTS.iterdir()):
+    if args.fresh_projects:
+        _fresh_wso2()
+    emit("prepared", slug=args.slug, workflow=str(wf), source=source,
+         title=page["title"], url=page["url"])
+
+
+WSO2_DATA = Path.home() / "Library" / "Application Support" / "WSO2 Integrator"
+
+
+def _wso2_running() -> bool:
+    return subprocess.run(["pgrep", "-xq", "WSO2 Integrator"]).returncode == 0
+
+
+def _fresh_wso2() -> None:
+    """Every recording starts from an empty WSO2 Integrator: the app is quit
+    FIRST (an open project would write itself back), the projects in
+    ~/WSO2Integrator are moved aside (never deleted), and the app is made to
+    forget the last folder it had open — it is VS Code based and reopens it,
+    and its unsaved-edit backups, on the next launch."""
+    if _wso2_running():
+        subprocess.run(["osascript", "-e", 'quit app "WSO2 Integrator"'], capture_output=True, timeout=30)
+        for _ in range(30):                    # up to 15 s to close
+            if not _wso2_running():
+                break
+            time.sleep(0.5)
+        else:
+            subprocess.run(["pkill", "-x", "WSO2 Integrator"])   # a dialog held it open
+            time.sleep(2)
+        print("quit WSO2 Integrator")
+    if PROJECTS.is_dir() and any(PROJECTS.iterdir()):
         # Step 1 creates the project; one left over from a previous run makes
         # "Create Integration" fail on a name clash. Moved aside, never deleted.
         dest = PROJECTS.with_name("WSO2Integrator-archive") / f"{datetime.now():%Y%m%d-%H%M%S}"
@@ -146,11 +175,23 @@ def cmd_prepare(args) -> None:
         for item in PROJECTS.iterdir():
             shutil.move(str(item), str(dest / item.name))
         print(f"moved existing projects → {dest}")
-        subprocess.run(["osascript", "-e", 'quit app "WSO2 Integrator"'],
-                       capture_output=True)
-        time.sleep(2)
-    emit("prepared", slug=args.slug, workflow=str(wf), source=source,
-         title=page["title"], url=page["url"])
+    storage = WSO2_DATA / "User" / "globalStorage" / "storage.json"
+    try:
+        data = json.loads(storage.read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    windows = data.get("windowsState") or {}
+    last = windows.get("lastActiveWindow") or {}
+    changed = bool(last.get("folder") or last.get("workspace") or windows.get("openedWindows"))
+    last.pop("folder", None)
+    last.pop("workspace", None)
+    windows["openedWindows"] = []
+    backups = data.get("backupWorkspaces") or {}
+    if backups.get("folders") or backups.get("workspaces"):
+        backups["folders"], backups["workspaces"], changed = [], [], True
+    if changed:
+        storage.write_text(json.dumps(data, indent=2))
+        print("WSO2 Integrator will open without the last project")
 
 
 # ── prerequisites ────────────────────────────────────────────────────────────

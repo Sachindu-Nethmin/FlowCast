@@ -286,7 +286,14 @@ final class PhoneBridge {
                 return .json(["ok": false, "error": "Enter this page's keys in FlowCast Studio on the Mac first."])
             }
             let mode = req.json["mode"] as? String
-            studio.enqueue([page], mode: mode == "guided" || mode == "auto" ? mode : nil)
+            // Say why when nothing was queued: the phone used to show
+            // "Starting on your Mac…" forever.
+            guard page.isRecordable else {
+                return .json(["ok": false, "error": "FlowCast cannot record this page."])
+            }
+            guard studio.enqueue([page], mode: mode == "guided" || mode == "auto" ? mode : nil) != nil else {
+                return .json(["ok": false, "error": "Could not queue it — see FlowCast Studio on the Mac."])
+            }
             return .json(["ok": true])
         case ("POST", "/api/control"):
             guard let id = req.json["id"] as? String, let action = req.json["action"] as? String,
@@ -647,7 +654,17 @@ function render(){
        : p.proven ? `<button class="make alt" data-s="${p.slug}" data-m="guided">Step by step</button><button class="make ${p.verdict}" data-s="${p.slug}" data-m="auto">▶ Auto</button>`
        : `<button class="make ${p.verdict}" data-s="${p.slug}" data-m="guided">▶ Start step by step</button>`}</div>
    </div>`).join('') : '<div class="empty">Nothing here.</div>';
-  document.querySelectorAll('button.make').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = 'Starting on your Mac…'; window.scrollTo({top: 0, behavior: 'smooth'}); api('/api/make', {slug: b.dataset.s, mode: b.dataset.m}).then(r => { if (r.ok === false) { b.textContent = r.error; } poll(); }); });
+  document.querySelectorAll('button.make').forEach(b => b.onclick = () => {
+    const label = b.textContent, slug = b.dataset.s;
+    const reset = msg => { b.disabled = false; b.textContent = msg ? msg + ' — tap to try again' : label; };
+    b.disabled = true; b.textContent = 'Starting on your Mac…';
+    api('/api/make', {slug, mode: b.dataset.m}).then(r => {
+      if (r.ok === false) { reset(r.error); return; }
+      window.scrollTo({top: 0, behavior: 'smooth'}); poll();
+      // A run shows up within a second or two; if not, say so instead of waiting forever.
+      setTimeout(() => { if (!jobs.some(j => j.slug === slug && (j.active || j.status === 'Queued' || j.status === 'Waiting to process'))) reset('Did not start'); }, 10000);
+    }).catch(() => reset('Could not reach your Mac'));
+  });
 }
 let audio = null, lastSeq = null;
 document.getElementById('alerts').onclick = () => {
