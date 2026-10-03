@@ -332,7 +332,9 @@ def cmd_master(args) -> None:
             title, copy, chapters.read_text() if chapters.exists() else "", titles, url))
         try:
             from src import packager
-            folder = packager.package(master, title, args.slug, url)
+            print("writing the Medium guide and step GIFs…", flush=True)
+            folder = packager.package(master, title, args.slug, url, rec=rec, workflow=wf,
+                                      theme=theme, article=copy)
             print(f"packaged → {folder}")
             emit("packaged", folder=str(folder), title=title)
         except Exception as e:          # the master exists; packaging is a convenience
@@ -363,8 +365,10 @@ def cmd_package(args) -> None:
             continue
         master = max(masters, key=lambda p: p.stat().st_mtime)
         title = master.stem.replace("-", " ")
+        rec = RECORDINGS / d.name
         folder = packager.package(master, title, d.name, _doc_url(d.name),
-                                  when=datetime.fromtimestamp(master.stat().st_mtime))
+                                  when=datetime.fromtimestamp(master.stat().st_mtime),
+                                  rec=rec, workflow=WORKFLOWS / f"{d.name}.md", theme=_theme(rec))
         print(f"{d.name} → {folder}")
         done.append(str(folder))
     emit("packaged_all", folders=done)

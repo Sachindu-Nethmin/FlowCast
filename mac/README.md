@@ -76,6 +76,20 @@ and learned. Finished videos land in `output/youtube/<slug>/` and in **Library**
 **Settings › Voice** records a new 15-second reference sample from the mic and
 can speak a test line in the cloned voice.
 
+Each finished video gets a folder in `~/Movies/FlowCast Studio`:
+
+```
+2026-10-03 Build a File-Driven Integration in WSO2 Integrator/
+    YouTube/   the video, its thumbnail, the title + description to paste
+    Medium/    "… – Medium article.txt" (paste into a new story) and ".html"
+               (open, copy, paste: keeps headings, lists, code), plus
+               "01 Create the integration.gif" … one GIF per step
+```
+
+The article marks where each step's GIF goes — Medium takes images only by
+upload. GIFs are 960 px, 10 fps, under Medium's 25 MB limit (src/medium.py).
+`tools/studio.py package [slug]` rebuilds folders in this layout.
+
 Two lanes: one video uses the screen at a time (Prepare, Prerequisites,
 Record); recorded videos are scripted, voiced and mastered alongside, one at a
 time, at background priority (`taskpolicy -b`) while something is recording.

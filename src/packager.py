@@ -3,13 +3,18 @@
 make_youtube_video.py leaves its output in output/youtube/<slug>/ under
 machine names (Build-an-HTTP-API-in-WSO2-Integrator.mp4, an intro clip, a
 chapters file). This makes a folder per video in ~/Movies/FlowCast Studio
-(FLOWCAST_VIDEOS_DIR to change it), with the three things an upload needs,
+(FLOWCAST_VIDEOS_DIR to change it), one subfolder per place it is published,
 named for people:
 
     2026-10-03 Build an HTTP API in WSO2 Integrator/
-        Build an HTTP API in WSO2 Integrator.mp4
-        Build an HTTP API in WSO2 Integrator – Thumbnail.png
-        Build an HTTP API in WSO2 Integrator – YouTube description.txt
+        YouTube/
+            Build an HTTP API in WSO2 Integrator.mp4
+            Build an HTTP API in WSO2 Integrator – Thumbnail.png
+            Build an HTTP API in WSO2 Integrator – YouTube description.txt
+        Medium/                       (src/medium.py)
+            Build an HTTP API in WSO2 Integrator – Medium article.txt / .html
+            01 Create the integration.gif …
+        video.json
 
 YouTube takes the file name as the video's first title, so the video is named
 after the title. Files are APFS clones of the originals: no extra disk space,
@@ -70,8 +75,11 @@ def _upload_text(title: str, description: str, video: Path, doc_url: str | None)
 
 
 def package(master: Path, title: str, slug: str, doc_url: str | None = None,
-            root: Path | None = None, when: datetime | None = None) -> Path:
-    """Copy `master` (+ its thumbnail and description) into a named folder."""
+            root: Path | None = None, when: datetime | None = None,
+            rec: Path | None = None, workflow: Path | None = None, theme: str = "dark",
+            article: dict | None = None) -> Path:
+    """Copy `master` (+ thumbnail, description) into <folder>/YouTube, and write
+    the Medium guide + step GIFs into <folder>/Medium when the workflow is given."""
     root = root or VIDEOS
     root.mkdir(parents=True, exist_ok=True)
     name = safe_name(title)
@@ -79,23 +87,34 @@ def package(master: Path, title: str, slug: str, doc_url: str | None = None,
     folder = root / f"{when:%Y-%m-%d} {name}"
     # Re-rendering the same video on the same day replaces that day's folder;
     # another day gets its own, so earlier versions are kept.
-    folder.mkdir(exist_ok=True)
+    yt = folder / "YouTube"
+    yt.mkdir(parents=True, exist_ok=True)
+    for old in (f"{name}.mp4", f"{name} – Thumbnail.png", f"{name} – YouTube description.txt"):
+        (folder / old).unlink(missing_ok=True)       # the flat layout this replaces
 
-    video = folder / f"{name}.mp4"
+    video = yt / f"{name}.mp4"
     _clone(master, video)
     thumb_src = master.with_name(master.stem + ".thumbnail.png")
-    thumb = folder / f"{name} – Thumbnail.png"
+    thumb = yt / f"{name} – Thumbnail.png"
     if thumb_src.exists():
         _clone(thumb_src, thumb)
     desc_src = master.with_name(master.stem + ".description.txt")
     description = desc_src.read_text() if desc_src.exists() else title
-    text = folder / f"{name} – YouTube description.txt"
+    text = yt / f"{name} – YouTube description.txt"
     text.write_text(_upload_text(title, description, video, doc_url))
-    (folder / MANIFEST).write_text(json.dumps({
-        "title": title, "slug": slug, "video": video.name,
-        "thumbnail": thumb.name if thumb.exists() else None, "text": text.name,
+    manifest = {
+        "title": title, "slug": slug, "video": f"YouTube/{video.name}",
+        "thumbnail": f"YouTube/{thumb.name}" if thumb.exists() else None, "text": f"YouTube/{text.name}",
         "made": when.isoformat(timespec="seconds"), "source": doc_url,
-        "seconds": round(_duration(video), 1)}, indent=2))
+        "seconds": round(_duration(video), 1)}
+    if workflow and workflow.exists():
+        from src import medium
+        try:
+            manifest.update(medium.build(folder / "Medium", name, title, workflow, rec, theme,
+                                         doc_url, article))
+        except Exception as e:          # the YouTube half is done either way
+            print(f"[package] Medium folder skipped: {e}")
+    (folder / MANIFEST).write_text(json.dumps(manifest, indent=2))
     return folder
 
 

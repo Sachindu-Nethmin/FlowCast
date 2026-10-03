@@ -252,4 +252,9 @@ struct LibraryVideo: Identifiable, Hashable {
 
     var duration: String { "\(Int(seconds) / 60):\(String(format: "%02d", Int(seconds) % 60))" }
     var folderName: String { (folder as NSString).lastPathComponent }
+    /// <folder>/Medium: the written guide and step GIFs (src/medium.py).
+    var mediumFolder: String? {
+        let m = (folder as NSString).appendingPathComponent("Medium")
+        return FileManager.default.fileExists(atPath: m) ? m : nil
+    }
 }

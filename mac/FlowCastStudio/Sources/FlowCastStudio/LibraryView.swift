@@ -83,6 +83,12 @@ struct VideoTile: View {
                     copyDescription(video)
                     copied = true
                 } label: { Label(copied ? "Copied" : "Copy description", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                if let m = video.mediumFolder {
+                    Button {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: m))
+                    } label: { Label("Medium", systemImage: "text.document") }
+                    .help("The written guide and step GIFs for Medium")
+                }
             }
             .controlSize(.small)
         }
@@ -93,6 +99,9 @@ struct VideoTile: View {
             }
             if let d = video.description {
                 Button("Open YouTube text") { NSWorkspace.shared.open(URL(fileURLWithPath: d)) }
+            }
+            if let m = video.mediumFolder {
+                Button("Open Medium folder") { NSWorkspace.shared.open(URL(fileURLWithPath: m)) }
             }
             Button("Copy description") { copyDescription(video) }
         }
