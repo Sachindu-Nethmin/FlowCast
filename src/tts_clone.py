@@ -27,6 +27,7 @@ import atexit
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -284,6 +285,12 @@ def _key(text: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:20]
 
 
+def pronounce(text: str) -> str:
+    """Names the voice must spell out, whoever wrote the line (rules, the
+    local model, a hook): "WSO2" is said "W S O two", not as one word."""
+    return re.sub(r"\bWSO\s?2\b", "W S O two", text, flags=re.IGNORECASE)
+
+
 def synthesize(text: str, out_wav: Path) -> float:
     """Speak `text` in the cloned voice into `out_wav` (44.1k stereo).
 
@@ -291,6 +298,7 @@ def synthesize(text: str, out_wav: Path) -> float:
     two backends are interchangeable."""
     out_wav = Path(out_wav)
     out_wav.parent.mkdir(parents=True, exist_ok=True)
+    text = pronounce(text)
 
     cached = _cache_dir() / f"{_key(text)}.wav"
     if cached.exists():

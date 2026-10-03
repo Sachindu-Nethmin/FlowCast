@@ -140,6 +140,50 @@ def _quick_screenshot(*args, **kwargs):
 pyautogui.screenshot = _quick_screenshot
 
 
+def _select_all() -> None:
+    """⌘A as separate key events with pauses. pyautogui.hotkey sometimes lands
+    as a plain "a" while the Mac is busy recording — a field holding "/tmp"
+    became "/tmpa/tmp"."""
+    pyautogui.keyDown("command")
+    time.sleep(0.06)
+    pyautogui.press("a")
+    time.sleep(0.06)
+    pyautogui.keyUp("command")
+    time.sleep(0.2)
+
+
+def _field_words(x: int, y: int) -> list[str] | None:
+    """Words read by OCR along the input at (x, y) — None when nothing is read.
+    A value sits left-aligned in its box, so the whole band is read."""
+    try:
+        time.sleep(0.15)
+        shot = pyautogui.screenshot()
+        sw, _ = screen_size()
+        k = shot.width / sw
+        box = (max(0, int((x - 380) * k)), max(0, int((y - 20) * k)),
+               min(shot.width, int((x + 380) * k)), min(shot.height, int((y + 20) * k)))
+        band = shot.crop(box).convert("RGB")
+        # Enlarged: OCR on a thin strip of small text misreads ("/tmp" → "/tmo").
+        band = band.resize((band.width * 2, band.height * 2), Image.LANCZOS)
+        from src.ocr_engine import read_text
+        # A focused field shows the text cursor, which OCR reads as "|".
+        words = [str(t).strip().strip("|").strip() for _b, t, c in read_text(band)
+                 if c >= 0.3 and str(t).strip().strip("|").strip()]
+    except Exception:
+        return None
+    return words or None
+
+
+def _holds(words: list[str] | None, value: str) -> bool:
+    return bool(words) and value.strip() in words
+
+
+def _mangled(words: list[str] | None, value: str) -> bool:
+    """The value is there but with something else stuck to it ("/tmpa/tmp")."""
+    v = value.strip()
+    return bool(words) and v not in words and any(v in w and w != v for w in words)
+
+
 def _set_menu_crop(native: bool) -> None:
     """The recorder crops the menu bar off the top of every frame. In native
     full screen there is no menu bar, so that crop would eat real app pixels
@@ -824,10 +868,21 @@ def fire(action: dict[str, Any]) -> None:
                     else:
                         print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
 
-        # Always select-all to clear any pre-filled content before pasting
-        pyautogui.hotkey("command", "a")
-        time.sleep(0.3)
-        _paste(action["value"])
+        value = str(action["value"])
+        if x is not None and y is not None and _holds(_field_words(x, y), value):
+            # Already holds it (a form's default, e.g. Path = /tmp): typing
+            # again is noise in the video, and a slip could double it.
+            print(f"[runner] '{action.get('field_target')}' already set to {value!r} — left as is")
+        else:
+            # Clear any pre-filled content, paste, and check what landed.
+            _select_all()
+            _paste(value)
+            if x is not None and y is not None:
+                now = _field_words(x, y)
+                if _mangled(now, value):
+                    print(f"[runner] field reads {now}, wanted {value!r} — clearing and pasting again")
+                    _select_all()
+                    _paste(value)
 
         # ── Wrong-field detection: blue selection band after typing ──────────
         # If the typed text (or surrounding text) is fully blue-highlighted,

@@ -541,7 +541,9 @@ class Pilot:
         for c in drop:
             (self.out_dir / "guid" / c["file"]).unlink(missing_ok=True)
             self.clips.remove(c)
-        if ep["source"] in ("ai", "you") and ep["cmds"]:
+        if ep["source"] == "you" and ep["you"]:
+            self._keep_your_fix(replaces=False)
+        elif ep["source"] == "ai" and ep["cmds"]:
             entry = {"commands": ep["cmds"], "then": "retry", "redo": ep["redo"],
                      "by": ep["source"], "learned_at": time.strftime("%Y-%m-%d")}
             self.fixes.setdefault(self.slug, {})[self._fix_key()] = entry
@@ -631,6 +633,31 @@ class Pilot:
             return self._next_stage()
         return None
 
+    def _keep_your_fix(self, replaces: bool) -> None:
+        """What you did for a failed action is kept two ways: as a learned fix
+        (kb/fixes.json — any later run of this page uses it), and, step by step,
+        in the path being proven, so the automatic replay does the same.
+        replaces: your commands did the action (it is not tried again)."""
+        ep = self.episode
+        step, i = ep["key"]
+        ops = self.path.setdefault(step, [])
+        last = len(ops) - 1 - ops[::-1].index(f"#{i}") if f"#{i}" in ops else None
+        if not ep["you"]:
+            if replaces and self.guided and last is not None:
+                ops[last] = f"skip:{i}"           # skipped without a replacement
+            return
+        self.fixes.setdefault(self.slug, {})[self._fix_key()] = {
+            "commands": list(ep["you"]), "then": "continue" if replaces else "retry",
+            "redo": False, "by": "you", "learned_at": time.strftime("%Y-%m-%d")}
+        _save(FIXES, self.fixes)
+        print(f"  [autopilot] remembered your fix for '{self._label(i)}': {' → '.join(ep['you'])}")
+        if self.guided:
+            cmds = [f"cmd:{c}" for c in ep["you"]]
+            if last is None:
+                ops += cmds
+            else:
+                ops[last:last + 1] = cmds if replaces else cmds + [f"#{i}"]
+
     def _ask_person(self) -> str | None:
         ep = self.episode
         self.stats["asked_person"] += 1
@@ -640,19 +667,12 @@ class Pilot:
         low = answer.lower().strip()
         if low in ("abort", "quit", "stop"):
             return "abort"
-        if low in ("continue", "done", "ok", "next"):
-            # Done by hand (with the commands sent so far): learn it as a
-            # replacement for the action.
-            if ep["you"]:
-                self.fixes.setdefault(self.slug, {})[self._fix_key()] = {
-                    "commands": ep["you"], "then": "continue", "redo": False, "by": "you",
-                    "learned_at": time.strftime("%Y-%m-%d")}
-                _save(FIXES, self.fixes)
+        if low in ("continue", "done", "ok", "next", "skip"):
+            # Done by hand with the commands sent so far — or skipped after
+            # them, which is the same thing: those commands did the action.
+            # Remember them in its place, so the next run does it alone.
             ep["source"] = "you"
-            self.episode = None
-            self.correcting, self.last_ok = False, None
-            return self.prompt_next()
-        if low == "skip":
+            self._keep_your_fix(replaces=True)
             self.episode = None
             self.correcting, self.last_ok = False, None
             return self.prompt_next()
@@ -854,6 +874,9 @@ class Pilot:
                 self.next = int(op[5:]) + 1
                 continue
             if op.startswith("cmd:"):
+                # It stands for the action due next (a tap you gave in its
+                # place): its clip is narrated as that action.
+                self.current = self.next if self.next < len(self.step.actions) else self.current
                 self.correcting, self.last_ok = True, None
                 print(f"  [autopilot] proven path: {op[4:]}")
                 return op[4:]

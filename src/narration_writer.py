@@ -29,7 +29,7 @@ WORDS = {"GET": "get", "POST": "post", "PUT": "put", "DELETE": "delete",
          "YAML": "yamel", "gRPC": "G R P C", "GraphQL": "Graph Q L",
          "WebSocket": "web socket", "RabbitMQ": "Rabbit M Q", "printInfo": "print info",
          "println": "print line", "Println": "print line", "io": "I O",
-         "WSO2": "WSO2", "toml": "tom-ul", "TOML": "tom-ul", "Msg": "message"}
+         "WSO2": "W S O two", "toml": "tom-ul", "TOML": "tom-ul", "Msg": "message"}
 
 
 def _split_identifier(word: str) -> str:
