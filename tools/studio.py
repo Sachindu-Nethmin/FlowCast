@@ -147,8 +147,12 @@ def cmd_prepare(args) -> None:
 WSO2_DATA = Path.home() / "Library" / "Application Support" / "WSO2 Integrator"
 
 
+# The app's main process is Electron inside the bundle — not named after the app.
+WSO2_PROCESS = "WSO2 Integrator.app/Contents/MacOS/"
+
+
 def _wso2_running() -> bool:
-    return subprocess.run(["pgrep", "-xq", "WSO2 Integrator"]).returncode == 0
+    return subprocess.run(["pgrep", "-fq", WSO2_PROCESS]).returncode == 0
 
 
 def _fresh_wso2() -> None:
@@ -164,8 +168,11 @@ def _fresh_wso2() -> None:
                 break
             time.sleep(0.5)
         else:
-            subprocess.run(["pkill", "-x", "WSO2 Integrator"])   # a dialog held it open
-            time.sleep(2)
+            subprocess.run(["pkill", "-f", WSO2_PROCESS])        # a dialog held it open
+            for _ in range(20):
+                if not _wso2_running():
+                    break
+                time.sleep(0.5)
         print("quit WSO2 Integrator")
     if PROJECTS.is_dir() and any(PROJECTS.iterdir()):
         # Step 1 creates the project; one left over from a previous run makes
