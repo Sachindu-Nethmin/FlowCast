@@ -230,6 +230,7 @@ final class PhoneBridge {
                 var o: [String: Any] = ["id": j.id.uuidString, "slug": j.page.slug, "title": j.page.displayTitle,
                                         "guided": j.guided, "screen": j.stage.usesScreen,
                                         "recording": j.stage == .record && j.status.isActive,
+                                        "task": j.task, "eta": studio.etaText(j),
                                         "canMake": j.stage == .record && (j.status == .failed || j.status == .cancelled)
                                             && studio.recordedClips(j) > 0,
                                         "status": j.status.label, "active": j.status.isActive,
@@ -551,7 +552,9 @@ button.make.ready{background:var(--ready);color:#fff}
 button.make.alt{background:transparent;color:var(--fg);border:1px solid var(--line);margin-right:6px}
 .acts{list-style:none;padding:0;margin:8px 0}.acts li{padding:9px 10px;border:1px solid var(--line);border-radius:9px;margin:5px 0;font-size:14px}
 .acts li.done{color:var(--dim);text-decoration:line-through}.acts li .again{display:inline-block;float:right;font-size:12px;color:var(--accent);text-decoration:none;font-weight:600}
-.row.run{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}.row.run button[data-r=stop]{color:#dc2626}.acts li.next{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:600}
+.row.run{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
+.task{font-size:14px;margin:6px 0 2px}.eta{font-size:13px;color:var(--dim);margin-top:4px}
+.bgjob{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:13px}.bgjob .bar{margin:6px 0 4px}.row.run button[data-r=stop]{color:#dc2626}.acts li.next{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:600}
 button.doit{width:100%;border:0;border-radius:12px;padding:14px;font-size:17px;font-weight:700;color:#fff;background:var(--accent);margin-top:6px}
 .tags{margin-top:8px;display:flex;gap:4px;flex-wrap:wrap}.tag{font-size:11px;color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-radius:999px;padding:1px 7px}
 #job{display:none}.job{border:2px solid var(--accent)}.job.help{border-color:var(--warn)}
@@ -668,7 +671,8 @@ function showJob(){
   // alongside and are listed under it.
   const j = jobs.find(j => j.help) || jobs.find(j => j.active && j.screen) || jobs.find(j => j.active) || jobs.find(j => j.status === 'Queued') || jobs.find(j => j.canMake);
   const bg = jobs.filter(x => x !== j && ((x.active && !x.screen) || x.status === 'Waiting to process'));
-  document.getElementById('bg').innerHTML = bg.map(x => `⚙︎ In the background: <b>${esc(x.title)}</b> — ${x.status === 'Running' ? esc(x.stage) + ' · ' + Math.round(x.progress * 100) + '%' : esc(x.status)}`).join('<br>');
+  document.getElementById('bg').innerHTML = bg.map(x => `<div class="bgjob">⚙︎ <b>${esc(x.title)}</b><br>${x.status === 'Running' ? esc(x.task || x.stage) : esc(x.status)}
+    <div class="bar"><div style="width:${Math.round(x.progress * 100)}%"></div></div>${Math.round(x.progress * 100)}%${x.eta ? ' · ' + esc(x.eta) : ''}</div>`).join('');
   if (!j) { el.style.display = 'none'; return; }
   el.style.display = 'block';
   el.className = 'card job' + (j.help ? ' help' : '');
@@ -684,8 +688,11 @@ function showJob(){
     wireRun(el, j);
     return;
   }
-  el.innerHTML = `<div class="sub">${j.help ? (j.help.manual ? 'Your turn' : 'FlowCast needs you') : (doing && j.guided ? '⏳ Doing: ' + esc(doing) + '…' : esc(j.status) + ' · ' + esc(j.stage))}</div>
-   <div class="title">${esc(j.title)}</div><div class="bar"><div style="width:${Math.round(j.progress*100)}%"></div></div>
+  el.innerHTML = `<div class="sub">${j.help ? (j.help.manual ? 'Your turn' : 'FlowCast needs you') : (doing && j.guided ? '⏳ Doing: ' + esc(doing) + '…' : esc(j.stage) + ' · ' + Math.round(j.progress*100) + '%')}</div>
+   <div class="title">${esc(j.title)}</div>
+   ${j.task && !j.help ? `<div class="task">${esc(j.task)}</div>` : ''}
+   <div class="bar"><div style="width:${Math.round(j.progress*100)}%"></div></div>
+   ${j.eta ? `<div class="eta">⏱ ${esc(j.eta)}</div>` : ''}
    ${(j.notes || []).map(n => `<div class="note">✓ ${esc(n)}</div>`).join('')}
    ${j.help ? `<div>Step ${j.help.step}: <b>${esc(j.help.label)}</b></div><div class="desc">${esc(j.help.reason)}</div>
     ${j.help.tried && j.help.tried.length ? `<div class="note">Local AI tried: ${esc(j.help.tried.join(', '))}</div>` : ''}
@@ -752,7 +759,8 @@ function showStep(el, j){
   doing = null;
   const h = j.help, done = new Set(h.done);
   el.className = 'card job';
-  el.innerHTML = `<div class="sub">Step by step · ${esc(j.title)}</div>
+  el.innerHTML = `<div class="sub">Step by step · ${esc(j.title)}${j.eta ? ' · ' + esc(j.eta) : ''}</div>
+   <div class="bar"><div style="width:${Math.round(j.progress*100)}%"></div></div>
    <div class="title">Step ${h.step}: ${esc(h.stepTitle)}</div>
    <ul class="acts">${h.actions.map((a, i) => `<li data-i="${i}" class="${done.has(i) ? 'done' : (i === h.next ? 'next' : '')}">${done.has(i) ? '✓ ' : (i === h.next ? '▶ ' : '')}${esc(a)}${done.has(i) ? '<span class="again">↻ again</span>' : ''}</li>`).join('')}</ul>
    <button class="doit" id="doit">${h.next >= 0 ? '▶ Do it: ' + esc(h.actions[h.next]) : 'Step done — continue ▶'}</button>

@@ -211,13 +211,16 @@ def cmd_narration(args) -> None:
 
     from src.parser import parse_markdown
     wf = WORKFLOWS / f"{args.slug}.md"
-    titles = {i: s.title for i, s in enumerate(parse_markdown(wf), 1)} if wf.exists() else {}
+    parsed = parse_markdown(wf) if wf.exists() else []
+    titles = {i: s.title for i, s in enumerate(parsed, 1)}
+    from src.interactive import action_to_markdown
+    step_actions = {i: [action_to_markdown(a) for a in s.actions] for i, s in enumerate(parsed, 1)}
     script = rec / "narration-script.txt"
     meta = _meta(args.slug)
     if script.exists() and not args.force:
         print(f"keeping existing {script.relative_to(ROOT)} (--force to rewrite)")
     else:
-        text = nw.write_script(clips, titles)
+        text = nw.write_script(clips, titles, step_actions)
         (rec / "narration-script.rules.txt").write_text(text)
         from src import local_writer as lw
         if args.ai_polish and not args.no_ai and lw.available():
@@ -297,6 +300,8 @@ def cmd_master(args) -> None:
     url = next((u for t, u in meta.get("links", []) if t == "Documentation"), None) \
         or next((p["url"] for p in dc.load().get("pages", []) if p["slug"] == args.slug), None)
     copy: dict = {}
+    from src import progress
+    progress.unit(0, 5, "Writing the YouTube title, description and thumbnail text")
     if lw.available() and not args.no_ai:
         print(f"writing the title, thumbnail text, hook and description with {lw.MODEL} (local)…", flush=True)
         copy = lw.video_copy(meta, titles, url, acts)
@@ -333,12 +338,14 @@ def cmd_master(args) -> None:
         try:
             from src import packager
             print("writing the Medium guide and step GIFs…", flush=True)
+            progress.unit(4, 5, "Writing the Medium guide and step GIFs")
             folder = packager.package(master, title, args.slug, url, rec=rec, workflow=wf,
                                       theme=theme, article=copy)
             print(f"packaged → {folder}")
             emit("packaged", folder=str(folder), title=title)
         except Exception as e:          # the master exists; packaging is a convenience
             print(f"packaging skipped: {e}")
+    progress.unit(5, 5, "Video ready")
     emit("master", path=str(master) if master else None, folder=str(out))
 
 

@@ -156,8 +156,17 @@ def line_for(label: str, i: int, step_title: str = "", last: bool = True) -> str
     return spoken(raw) + "."
 
 
-def write_script(clips: list[dict], step_titles: dict[int, str]) -> str:
-    """actions.json clips → narrate_sync script (# step N, one line per clip)."""
+_TAP = re.compile(r"\(\s*\d+\s*,\s*\d+\s*\)|^(?:click |select )?at \d+\s*,\s*\d+", re.I)
+
+
+def write_script(clips: list[dict], step_titles: dict[int, str],
+                 step_actions: dict[int, list[str]] | None = None) -> str:
+    """actions.json clips → narrate_sync script (# step N, one line per clip).
+
+    A click you gave by tapping the screenshot is logged by its coordinates
+    ("Select (925,259)"); it is spoken as the walkthrough action it stood in
+    for (the clip's index into step_actions), never as numbers."""
+    step_actions = step_actions or {}
     out: list[str] = ["# FlowCast Studio narration — one line per recorded action.",
                       "# Edit freely; keep the number of lines per step unchanged.", ""]
     by_step: dict[int, list[dict]] = {}
@@ -167,7 +176,15 @@ def write_script(clips: list[dict], step_titles: dict[int, str]) -> str:
         title = step_titles.get(n, "")
         out.append(f"# step {n}")
         for i, c in enumerate(by_step[n]):
-            line = line_for(c["label"], i, title, last=i == len(by_step[n]) - 1)
+            label = c["label"]
+            acts = step_actions.get(n) or []
+            idx = c.get("index")
+            if _TAP.search(label) and not (isinstance(idx, int) and 0 <= idx < len(acts)):
+                line = "Click here."
+            else:
+                if _TAP.search(label):
+                    label = re.sub(r"[*`]", "", acts[idx])
+                line = line_for(label, i, title, last=i == len(by_step[n]) - 1)
             if i == 0 and n > 1 and title:
                 line = f"{spoken(title).rstrip('.')}. {line}"
             out.append(line)

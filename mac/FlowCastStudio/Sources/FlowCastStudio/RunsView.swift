@@ -41,17 +41,22 @@ struct RunsView: View {
 }
 
 struct JobRow: View {
+    @Environment(Studio.self) private var studio
     let job: Job
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(job.page.displayTitle).font(.callout.weight(.medium)).lineLimit(1)
             HStack(spacing: 6) {
                 statusDot
-                Text(job.status == .running ? job.stage.title : job.status.label)
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(job.status.isActive && !job.task.isEmpty ? job.task
+                     : job.status == .running ? job.stage.title : job.status.label)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             if job.status.isActive {
                 ProgressView(value: job.progress).controlSize(.small)
+                TimelineView(.periodic(from: .now, by: 5)) { _ in
+                    Text(studio.etaText(job)).font(.caption2).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -108,6 +113,9 @@ struct JobDetail: View {
                     }
                 }
 
+                if job.status.isActive || job.status.isPending {
+                    NowCard(job: job)
+                }
                 StagePipeline(job: job)
                     .confirmationDialog("Start “\(job.page.displayTitle)” again from step 1?",
                                         isPresented: $confirmRestart) {
@@ -154,6 +162,35 @@ struct JobDetail: View {
                 }
             }
             .padding(20)
+        }
+    }
+}
+
+/// What the run is doing right now, how far along, and how long is left.
+struct NowCard: View {
+    @Environment(Studio.self) private var studio
+    let job: Job
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(job.status.isPending ? job.status.label : (job.task.isEmpty ? job.stage.title : job.task))
+                        .font(.headline).lineLimit(2)
+                    Spacer()
+                    Text("\(Int((job.progress * 100).rounded()))%")
+                        .font(.headline.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                ProgressView(value: job.progress)
+                HStack {
+                    Text("\(job.stage.title) · stage \(job.stage.rawValue + 1) of \(Stage.allCases.count)")
+                    Spacer()
+                    Text(studio.etaText(job))
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 }

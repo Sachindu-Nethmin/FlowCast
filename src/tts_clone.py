@@ -271,7 +271,10 @@ def _key(text: str) -> str:
     """
     parts = [
         text.strip(),
-        str(reference_wav()),
+        # Absolute: the app passes an absolute path, a terminal often a relative
+        # one — the same file must give the same key, or every line is voiced
+        # again (an hour for one video).
+        str(reference_wav().resolve()),
         str(reference_wav().stat().st_mtime_ns),
         os.environ.get("FLOWCAST_VOICE_EXAGGERATION", "0.4"),
         os.environ.get("FLOWCAST_VOICE_CFG", "0.5"),
@@ -329,6 +332,8 @@ def synthesize(text: str, out_wav: Path) -> float:
             if takes == 1:
                 best = candidate
                 break
+            from src import progress
+            progress.part((n + 1) / takes)          # this line's takes so far
             score = timbre_similarity(candidate, ref_spec)
             if score > best_score:
                 if best is not None and best != out_wav:

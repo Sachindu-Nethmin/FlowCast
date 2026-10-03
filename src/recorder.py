@@ -95,7 +95,8 @@ def prewarm(output_dir: Path | None = None) -> None:
     if _proc is not None or _warm_thread is not None:
         return
     if _warm is not None:
-        if _warm["proc"].poll() is None and time.time() - _warm["spawned"] < WARM_LIMIT - 120:
+        if (_warm["proc"].poll() is None and time.time() - _warm["spawned"] < WARM_LIMIT - 120
+                and _warm["crop"] == MENU_BAR_H):
             return
         _end(_warm)                      # ended by itself, or about to
         _warm = None
@@ -113,7 +114,8 @@ def prewarm(output_dir: Path | None = None) -> None:
         except Exception:
             err.close()
             return
-        _warm = {"proc": proc, "path": path, "stderr": err, "spawned": time.time()}
+        _warm = {"proc": proc, "path": path, "stderr": err, "spawned": time.time(),
+                 "crop": MENU_BAR_H}
 
     _warm_thread = threading.Thread(target=spawn, daemon=True)
     _warm_thread.start()
@@ -170,7 +172,9 @@ def start(name: str, output_dir: Path) -> None:
     w = _take_warm()
     if w is not None:
         age = time.time() - w["spawned"]
-        if w["proc"].poll() is None and age < WARM_LIMIT - 120:
+        # Same crop as now, or its frames would be a different size from the
+        # other clips (a full-screen change since it started).
+        if w["proc"].poll() is None and age < WARM_LIMIT - 120 and w["crop"] == MENU_BAR_H:
             if age < WARMUP:             # asked for the moment it was started
                 time.sleep(WARMUP - age)
                 age = WARMUP

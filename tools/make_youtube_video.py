@@ -41,7 +41,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src import narrate                                     # noqa: E402
+from src import narrate, progress                           # noqa: E402
+# Master phases as tools/studio.py counts them: 0 YouTube text, 1 intro,
+# 2 render, 3 loudness, 4 Medium guide — so the app can show which one runs.
+MASTER_UNITS = 5
 from make_intro import ART_KINDS, QUALITY, THEMES, build_intro, make_thumbnail  # noqa: E402
 
 FPS = 30
@@ -155,10 +158,24 @@ def _concat(parts: list[Path], canvas: tuple[int, int], pad_hex: str,
             "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",
             "-x264-params", f"keyint={FPS*2}:min-keyint={FPS}:scenecut=40",
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-            "-movflags", "+faststart", str(out)]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError(f"ffmpeg concat failed:\n{r.stderr[-2500:]}")
+            "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(out)]
+    # The longest part of making a video: report how far the encode is.
+    total = sum(narrate._probe_duration(p) for p in parts) or 1.0
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True)
+        last = 0.0
+        for line in proc.stdout:
+            if line.startswith("out_time_us="):
+                try:
+                    done = int(line.split("=", 1)[1]) / 1e6 / total
+                except ValueError:
+                    continue
+                if done - last >= 0.02:
+                    progress.part(done)
+                    last = done
+        if proc.wait() != 0:
+            err.seek(0)
+            raise RuntimeError("ffmpeg concat failed:\n" + err.read().decode(errors="replace")[-2500:])
     return out
 
 
@@ -275,6 +292,7 @@ def build(rec_dir: Path, title: str, subtitle: str = "", theme: str = "auto",
     parts: list[Path] = []
     intro_dur = 0.0
     if intro:
+        progress.unit(1, MASTER_UNITS, "Voicing and drawing the intro")
         text = hook or _narration_block(rec_dir, "card") or \
             f"{title}. Let's get started."
         intro_mp4 = out_dir / f"{rec_dir.name}-intro-{theme}.mp4"
@@ -303,7 +321,9 @@ def build(rec_dir: Path, title: str, subtitle: str = "", theme: str = "auto",
     with tempfile.TemporaryDirectory() as td:
         raw = Path(td) / "raw.mp4"
         print(f"[youtube] encoding master ({len(parts)} segment(s), x264 preset {preset} crf {crf})…")
+        progress.unit(2, MASTER_UNITS, f"Rendering the final video ({canvas[1]}p)")
         _concat(parts, canvas, pad_hex, raw, preset, crf)
+        progress.unit(3, MASTER_UNITS, "Balancing the loudness for YouTube")
         if not _loudnorm(raw, master):
             print("[youtube] loudness pass unavailable — keeping raw levels")
             raw.replace(master)

@@ -214,6 +214,16 @@ def ensure_fullscreen(force: bool = False) -> None:
             end if
         end repeat
         if best is missing value then return "nowin"
+        -- Already in native full screen: report it on EVERY call. The light
+        -- per-action check used to fall through to "ok", which reset the
+        -- recorder to cropping a menu bar that is not there — every clip but
+        -- a step's first lost the top of the app.
+        try
+            if value of attribute "AXFullScreen" of best is true then
+                set sf to size of best
+                return "full:" & ((item 1 of sf) as integer as text) & "x" & ((item 2 of sf) as integer as text)
+            end if
+        end try
         if {want_native} then
             try
                 if value of attribute "AXFullScreen" of best is not true then

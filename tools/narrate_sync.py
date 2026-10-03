@@ -48,6 +48,23 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 STEP_RE = re.compile(r"^#\s*step\s+(\d+)\s*$", re.IGNORECASE)
+FPS = 30
+# Every segment is encoded alike — size, pixel format, frame rate, encoder —
+# because the joins below are stream copies. Clips come from the recorder as
+# lossless x264 (a different profile and entropy coder from an encoded
+# segment), and a different height if the menu-bar crop changed mid-run;
+# copy-joining those decodes as garbage, and the master then drops frames and
+# ends seconds before the voice does.
+ENCODE = ["-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p",
+          "-r", str(FPS), "-an"]
+
+
+def size(p: Path) -> tuple[int, int]:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=width,height", "-of", "csv=p=0", str(p)],
+                         capture_output=True, text=True).stdout.strip()
+    w, h = (int(v) for v in out.split(",")[:2])
+    return w, h
 
 
 def dur(p: Path) -> float:
@@ -161,9 +178,16 @@ def main() -> None:
         return
 
     # ── speak every line ───────────────────────────────────────────────────
+    from src import progress
+    units = total_actions + len(plan)          # every line, then every step assembled
+    k = 0
     for step, items in plan.items():
         for i, (_clip, line) in enumerate(items):
+            short = line if len(line) <= 60 else line[:57] + "…"
+            progress.unit(k, units, f"Voicing line {k + 1} of {total_actions}: “{short}”",
+                          lines=total_actions)
             tts_clone.synthesize(line, vo / f"s{step}_a{i:02d}.wav")
+            k += 1
         print(f"  step {step}: {len(items)} line(s) spoken", flush=True)
 
     rate, ch = subprocess.run(
@@ -173,11 +197,30 @@ def main() -> None:
         capture_output=True, text=True).stdout.strip().split(",")
     rate, ch = int(rate), int(ch)
 
+    # ── one picture size for the whole video ─────────────────────────────────
+    sizes = {clip: size(clip) for items in plan.values() for clip, _ in items}
+    W = min(w for w, _ in sizes.values())
+    H = min(h for _, h in sizes.values())
+    if len(set(sizes.values())) > 1:
+        print(f"clips differ in size ({sorted(set(sizes.values()))}) — fitting all to {W}x{H}, "
+              "trimming the top (where a menu-bar crop differs)")
+
+    def fit(clip: Path) -> str:
+        w, h = sizes[clip]
+        f = []
+        if w != W:
+            f.append(f"scale={W}:-2")
+        if h != H or w != W:
+            f.append(f"crop={W}:{H}:0:ih-{H}")
+        return ",".join(f + [f"fps={FPS}"])
+
     # ── build each step from its actions ───────────────────────────────────
     last_step = max(plan)
     narrated: list[Path] = []
     print(f"\n{'step':>4} {'act':>4} {'clip':>7} {'voice':>7} {'held':>6} {'final':>7}")
-    for step, items in plan.items():
+    for j, (step, items) in enumerate(plan.items()):
+        progress.unit(total_actions + j, units, f"Putting the voice on step {step} of {len(plan)}",
+                      lines=total_actions)
         segs, auds = [], []
         for i, (clip, _line) in enumerate(items):
             wav = vo / f"s{step}_a{i:02d}.wav"
@@ -185,20 +228,23 @@ def main() -> None:
             final = (step == last_step and i == len(items) - 1)
             seg = vo / f"seg{step}_{i:02d}.mov"
             held = 0.0
+            vf = fit(clip)
             if final:
-                want = min(args.lead + speech + args.end_hold, clip_len)
-                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip),
-                                "-t", f"{want:.3f}", "-c:v", "libx264", "-crf", "18",
-                                "-preset", "fast", "-an", str(seg)], check=True)
+                # The last line is never cut: hold the last frame if the clip is shorter.
+                want = args.lead + speech + args.end_hold
+                if want > clip_len + 0.05:
+                    held = want - clip_len
+                    vf += f",tpad=stop_mode=clone:stop_duration={held:.3f}"
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip), "-vf", vf,
+                                "-t", f"{want:.3f}", *ENCODE, str(seg)], check=True)
             elif args.lead + speech + args.tail - clip_len > 0.05:
                 held = args.lead + speech + args.tail - clip_len
                 subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip), "-vf",
-                                f"tpad=stop_mode=clone:stop_duration={held:.3f}",
-                                "-c:v", "libx264", "-crf", "18", "-preset", "fast",
-                                "-an", str(seg)], check=True)
+                                f"{vf},tpad=stop_mode=clone:stop_duration={held:.3f}",
+                                *ENCODE, str(seg)], check=True)
             else:
-                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip),
-                                "-c:v", "copy", "-an", str(seg)], check=True)
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(clip), "-vf", vf,
+                                *ENCODE, str(seg)], check=True)
             seg_len = dur(seg)
             segs.append(seg)
 
@@ -234,6 +280,7 @@ def main() -> None:
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
                     "-i", str(vo / "full.txt"), "-c", "copy", str(full)], check=True)
 
+    progress.unit(units, units, "Narrated video ready")
     print(f"\n{len(narrated)} narrated step(s)")
     print(f"wrote {full}  ({dur(full):.1f}s)")
     print("next: tools/make_youtube_video.py --dir "

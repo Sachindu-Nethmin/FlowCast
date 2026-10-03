@@ -120,6 +120,17 @@ final class Job: Identifiable {
     var finishEarly = false
     /// Runs once the stopped run's process has exited (see cancel).
     @ObservationIgnored var afterExit: (() -> Void)?
+
+    // What is happening now, and how far along (src/progress.py events).
+    var task = ""                     // the "now" line on the Mac and the phone
+    var unitDone = 0                  // finished units of this stage (voice lines, render phases)
+    var unitTotal = 0
+    var unitPart = 0.0                // how far into the unit running now (takes, the encode)
+    var lineTotal = 0                 // voice stage: the first lineTotal units are lines
+    var lineCount = 0                 // clips recorded = lines to voice (known after recording)
+    var stageStartedAt = Date()
+    var unitStartedAt = Date()
+    var lineTimes: [Double] = []      // seconds a voice line took (cached ones excluded)
     var narrationPath: String?
     var hook: String?
     var masterPath: String?
@@ -138,15 +149,19 @@ final class Job: Identifiable {
     }
 
     var progress: Double {
-        let base = Double(stage.rawValue) / Double(Stage.allCases.count)
-        guard stage == .record, !steps.isEmpty else {
-            return status == .done ? 1 : base
+        if status == .done { return 1 }
+        let n = Double(Stage.allCases.count)
+        let base = Double(stage.rawValue) / n
+        if stage == .record, !steps.isEmpty {
+            let total = steps.reduce(0) { $0 + $1.actions.count }
+            let done = steps.reduce(0) { $0 + min($1.done, $1.actions.count) }
+            return base + (total > 0 ? Double(done) / Double(total) : 0) / n
         }
-        let total = steps.reduce(0) { $0 + $1.actions.count }
-        let done = steps.reduce(0) { $0 + min($1.done, $1.actions.count) }
-        let within = total > 0 ? Double(done) / Double(total) : 0
-        return base + within / Double(Stage.allCases.count)
+        guard unitTotal > 0 else { return base }
+        return base + min(1, (Double(unitDone) + unitPart) / Double(unitTotal)) / n
     }
+
+    var actionTotal: Int { steps.reduce(0) { $0 + $1.actions.count } }
 }
 
 @Observable
@@ -495,6 +510,93 @@ final class Studio {
         return clips.count
     }
 
+    // ── time left ────────────────────────────────────────────────────────────
+
+    /// How long things take on this Mac, learned from finished stages (seconds;
+    /// voiceTake is one take of one line, action one recorded action).
+    private(set) var timing: [String: Double] = {
+        var t: [String: Double] = ["prepare": 15, "setup": 20, "script": 8, "voiceTake": 50,
+                                   "master": 420, "action": 14]
+        for (k, v) in (UserDefaults.standard.dictionary(forKey: "stageTiming") as? [String: Double]) ?? [:] {
+            t[k] = v
+        }
+        return t
+    }()
+
+    private func learn(_ key: String, _ seconds: Double) {
+        guard seconds.isFinite, seconds > 0 else { return }
+        timing[key] = (timing[key] ?? seconds) * 0.5 + seconds * 0.5
+        UserDefaults.standard.set(timing, forKey: "stageTiming")
+    }
+
+    /// (left in the stage running now — nil while that depends on you, left in
+    /// the stages after it).
+    func estimate(_ job: Job) -> (now: Double?, after: Double) {
+        let takes = Double(max(1, settings.narrationTakes))
+        let perLine = (timing["voiceTake"] ?? 50) * takes
+        let lines = Double(job.lineCount > 0 ? job.lineCount : job.actionTotal)
+        let elapsed = Date().timeIntervalSince(job.stageStartedAt)
+        var now: Double?
+        if job.status.isPending {
+            now = 0                                   // not started: all of it is "after"
+        } else {
+            switch job.stage {
+            case .prepare: now = max(3, (timing["prepare"] ?? 15) - elapsed)
+            case .setup: now = max(3, (timing["setup"] ?? 20) - elapsed)
+            case .script: now = max(3, (timing["script"] ?? 8) - elapsed)
+            case .record:
+                let left = Double(max(0, job.actionTotal - job.steps.reduce(0) { $0 + min($1.done, $1.actions.count) }))
+                now = job.guided || job.status == .needsHelp ? nil : left * (timing["action"] ?? 14)
+            case .voice:
+                let measured = job.lineTimes.isEmpty ? perLine : job.lineTimes.reduce(0, +) / Double(job.lineTimes.count)
+                let total = job.lineTotal > 0 ? job.lineTotal : Int(lines)
+                let inLine = job.unitDone < total ? job.unitPart : 0
+                let linesLeft = max(0, Double(total - min(job.unitDone, total)) - inLine)
+                let stepsLeft = Double(max(0, job.unitTotal - max(job.unitDone, total)))
+                now = linesLeft * measured + stepsLeft * 8
+            case .master:
+                var left = max(10, (timing["master"] ?? 420) - elapsed)
+                if job.unitDone == 2, job.unitPart > 0.05 {     // the render reports its fraction
+                    let r = Date().timeIntervalSince(job.unitStartedAt)
+                    left = r / job.unitPart * (1 - job.unitPart) + 45
+                }
+                now = left
+            }
+        }
+        var after = 0.0
+        let from = job.status.isPending ? job.stage.rawValue - 1 : job.stage.rawValue
+        for s in Stage.allCases where s.rawValue > from {
+            switch s {
+            case .prepare: after += timing["prepare"] ?? 15
+            case .setup: after += timing["setup"] ?? 20
+            case .record: after += Double(job.actionTotal) * (timing["action"] ?? 14)
+            case .script: after += timing["script"] ?? 8
+            case .voice: after += lines * perLine
+            case .master: after += timing["master"] ?? 420
+            }
+        }
+        return (now, after)
+    }
+
+    /// "about 14 min left · ready ~21:05" — or what still depends on you.
+    func etaText(_ job: Job) -> String {
+        guard job.status.isActive || job.status.isPending else { return "" }
+        let (now, after) = estimate(job)
+        guard let now else {
+            return after > 30 ? "then about \(Self.duration(after)) to make the video" : ""
+        }
+        let total = now + after
+        if total < 45 { return "less than a minute left" }
+        let ready = Date().addingTimeInterval(total).formatted(date: .omitted, time: .shortened)
+        return "about \(Self.duration(total)) left · ready ~\(ready)"
+    }
+
+    static func duration(_ s: Double) -> String {
+        let m = Int((s / 60).rounded())
+        if m < 1 { return "under a minute" }
+        return m < 60 ? "\(m) min" : "\(m / 60) h \(m % 60) min"
+    }
+
     /// Runs that were replaced by a restart and have not exited yet.
     private var stopping: [Job] = []
 
@@ -533,6 +635,22 @@ final class Studio {
 
     private func run(_ job: Job, stage: Stage) {
         job.stage = stage
+        job.stageStartedAt = Date()
+        job.unitStartedAt = Date()
+        job.unitDone = 0
+        job.unitTotal = 0
+        job.unitPart = 0
+        job.lineTotal = 0
+        job.lineTimes = []
+        job.task = switch stage {
+        case .prepare: "Preparing the workspace"
+        case .setup: "Starting the prerequisites"
+        case .record: job.guided || runsGuided(job.page, forced: job.forcedMode) ? "Recording step by step" : "Recording"
+        case .script: "Writing the narration"
+        case .voice: "Voicing the narration"
+        case .master: "Making the YouTube video"
+        }
+        if stage.rawValue > Stage.record.rawValue, job.lineCount == 0 { job.lineCount = recordedClips(job) }
         let slug = job.page.slug
         let ref = settings.voiceReference
         var script = "tools/studio.py"
@@ -590,11 +708,28 @@ final class Studio {
                                  actions: $0["actions"] as? [String] ?? [])
                 }
             }
+        case "progress":
+            let done = ev.int("done") ?? 0
+            let lines = ev.int("lines") ?? 0
+            if done > job.unitDone {
+                let took = Date().timeIntervalSince(job.unitStartedAt) / Double(done - job.unitDone)
+                // Lines from the cache take no time; they would make it look fast.
+                if job.stage == .voice, job.unitDone < lines, took > 1.5 { job.lineTimes.append(took) }
+            }
+            job.unitDone = done
+            job.unitTotal = ev.int("total") ?? job.unitTotal
+            job.lineTotal = lines
+            job.unitPart = 0
+            job.unitStartedAt = Date()
+            if let t = ev.string("task") { job.task = t }
+        case "part":
+            job.unitPart = (ev.data["fraction"] as? NSNumber)?.doubleValue ?? job.unitPart
         case "step":
             // A step starting — for the first time, or again after Back — and
             // every step after it are still to do.
             let n = ev.int("n") ?? 0
             job.currentStep = n
+            job.task = "Recording step \(n) of \(job.steps.count): \(ev.string("title") ?? "")"
             for i in job.steps.indices where job.steps[i].n >= n {
                 job.steps[i].finished = false
                 job.steps[i].done = 0
@@ -627,6 +762,8 @@ final class Studio {
             if let i = job.steps.firstIndex(where: { $0.n == h.step }) {
                 job.steps[i].done = h.done.count     // undo / redo change it
             }
+            job.task = h.next.map { "Your move — step \(h.step): \(h.actions[$0])" }
+                ?? "Your move — step \(h.step) is done, continue"
             job.help = h
             job.status = .needsHelp
         case "proven":
@@ -643,6 +780,8 @@ final class Studio {
                                    screen: (ev.data["screen"] as? [NSNumber])?.map(\.intValue) ?? [])
             job.helpCount += 1
             job.status = .needsHelp
+            job.task = (ev.string("kind") == "manual" ? "Your turn — " : "Waiting for you — ")
+                + (ev.string("label") ?? "an action failed")
             showApp()
             notify(ev.string("kind") == "manual" ? "Your turn" : "FlowCast needs you",
                    "\(job.page.displayTitle): \(ev.string("label") ?? "an action failed")")
@@ -687,6 +826,22 @@ final class Studio {
 
     private func finished(_ job: Job, stage: Stage, code: Int32) {
         job.process = nil
+        if code == 0, job.status != .cancelled {
+            let took = Date().timeIntervalSince(job.stageStartedAt)
+            switch stage {
+            case .prepare: learn("prepare", took)
+            case .setup: learn("setup", took)
+            case .script: learn("script", took)
+            case .master: learn("master", took)
+            case .voice:
+                if !job.lineTimes.isEmpty {
+                    learn("voiceTake", job.lineTimes.reduce(0, +) / Double(job.lineTimes.count)
+                          / Double(max(1, settings.narrationTakes)))
+                }
+            case .record:
+                if !job.guided, job.actionTotal > 0 { learn("action", took / Double(job.actionTotal)) }
+            }
+        }
         stopping.removeAll { $0.id == job.id }
         guard job.status != .cancelled else {
             let then = job.afterExit
