@@ -409,7 +409,22 @@ final class Studio {
         for job in jobs where !job.stage.usesScreen {
             job.process?.setBackground(recording)
         }
+        keepAwake(jobs.contains { $0.process != nil })
     }
+
+    /// While anything runs, the Mac does not idle-sleep: a voice stage left
+    /// running overnight stalled mid-take when it did.
+    private func keepAwake(_ on: Bool) {
+        if on, awake == nil {
+            awake = ProcessInfo.processInfo.beginActivity(
+                options: [.idleSystemSleepDisabled, .suddenTerminationDisabled],
+                reason: "FlowCast Studio is making a video")
+        } else if !on, let token = awake {
+            ProcessInfo.processInfo.endActivity(token)
+            awake = nil
+        }
+    }
+    @ObservationIgnored private var awake: NSObjectProtocol?
 
     func cancel(_ job: Job, show: Bool = true) {
         job.status = .cancelled
@@ -834,6 +849,7 @@ final class Studio {
 
     private func finished(_ job: Job, stage: Stage, code: Int32) {
         job.process = nil
+        defer { keepAwake(jobs.contains { $0.process != nil }) }
         if code == 0, job.status != .cancelled {
             let took = Date().timeIntervalSince(job.stageStartedAt)
             switch stage {
