@@ -66,10 +66,14 @@ from src.interactive import action_to_markdown  # noqa: E402
 from src.parser import _parse_instructions, parse_markdown  # noqa: E402
 
 OUTPUT = ROOT / "output" / "recordings"
+WORKFLOWS_DIR = ROOT / "workflows"
 
 # Lines the current UI may simply not show: the sign-in card is absent when
 # already signed in. Failing on one of these is not worth a person's time.
 OPTIONAL = ("skip for now",)
+# A step that runs the integration against the real service.
+RUN_STEP = re.compile(r"\b(run|test|try)\b", re.I)
+WRITE_CONFIG = re.compile(r"tools/write_config\.py\s+--project\s+(\S+)")
 # Actions that put text in a field: ⌘Z takes those back. Undoing a click only
 # takes it out of the video — ⌘Z there could undo an earlier edit instead.
 TYPING = ("type", "search", "select")
@@ -247,6 +251,17 @@ class Pilot:
             self.bindings: list[dict] = page.get("bindings") or []
         except Exception:
             self.bindings = []
+            page = {}
+        # Placeholders: what the video shows for keys and account details
+        # (Config.toml written with "<your-apiKey>"). Your real values go in
+        # just before the run step, off camera — or, without them, the
+        # recording ends there (see guide_step).
+        self.placeholders = os.environ.get("FLOWCAST_PLACEHOLDERS") == "1"
+        self.secret_names = [i["name"] for i in (page.get("inputs") or []) if not i.get("auto")]
+        given = json.loads(os.environ.get("FLOWCAST_INPUTS") or "{}")
+        self.have_real = bool(self.secret_names) and all(str(given.get(n) or "").strip()
+                                                         for n in self.secret_names)
+        self.swapped = False
         self.episode: dict | None = None     # recovering from one failed action
         self.episodes = 0
         self.attempts = 0
@@ -254,8 +269,43 @@ class Pilot:
                       "auto_retries": 0}
 
     # guide._guide_step wrapper: know which step we are in
+    def _placeholders_end(self, step) -> bool:
+        """At the first run/test step of a placeholder recording: put your real
+        values in (off camera) and go on, or — without them — end here."""
+        if not self.placeholders or self.swapped or not RUN_STEP.search(step.title):
+            return False
+        note = {"names": self.secret_names, "stopped_before": None, "real_values_for_run": self.have_real}
+        if self.have_real:
+            m = WRITE_CONFIG.search(self._workflow_text())
+            if m:
+                env = {k: v for k, v in os.environ.items() if k != "FLOWCAST_PLACEHOLDERS"}
+                subprocess.run([sys.executable, str(ROOT / "tools" / "write_config.py"),
+                                "--project", m.group(1), "--wait", "5"], env=env,
+                               capture_output=True)
+                print("  [autopilot] your values are in Config.toml for the run — written off camera")
+            self.swapped = True
+            (self.out_dir / "placeholders.json").write_text(json.dumps(note, indent=2))
+            return False
+        note["stopped_before"] = step.title
+        (self.out_dir / "placeholders.json").write_text(json.dumps(note, indent=2))
+        print(f"  [autopilot] placeholders only — the video ends before '{step.title}' "
+              "(it would call the service with them)")
+        emit("finish_early", reason=f"Ends before “{step.title}”: add your keys in FlowCast Studio "
+                                    "to record the run too")
+        return True
+
+    def _workflow_text(self) -> str:
+        for d in (WORKFLOWS_DIR, ROOT / "kb" / "docs_workflows"):
+            try:
+                return (d / f"{self.slug}.md").read_text()
+            except OSError:
+                continue
+        return ""
+
     def guide_step(self, orig):
         def wrapped(step, step_idx, *a, **kw):
+            if self._placeholders_end(step):
+                return None, {"status": "aborted"}
             self.step, self.step_idx = step, step_idx
             self.next, self.current, self.last_ok = 0, None, None
             self.done_idx = set()

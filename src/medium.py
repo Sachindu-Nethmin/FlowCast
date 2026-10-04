@@ -117,6 +117,26 @@ def make_gifs(rec: Path, theme: str, titles: list[str], out: Path) -> dict[int, 
     return made
 
 
+def placeholder_note(rec: Path | None) -> tuple[str, str] | None:
+    """(heading, text) when the recording used placeholders for keys and
+    account details (tools/autopilot.py writes placeholders.json)."""
+    import json
+    f = rec / "placeholders.json" if rec else None
+    if not f or not f.exists():
+        return None
+    try:
+        d = json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+    names = ", ".join(d.get("names") or []) or "your keys"
+    text = (f"The values for {names} are placeholders here (<your-…>): keys and account "
+            "details never appear in this guide or the video. In WSO2 Integrator open "
+            "Configurations (Config.toml) and put in your own.")
+    if d.get("stopped_before"):
+        text += f" Then run it — “{d['stopped_before']}” needs your real values, so it is left out here."
+    return "Before you run it", text
+
+
 def build(folder: Path, name: str, title: str, workflow: Path, rec: Path | None, theme: str,
           doc_url: str | None = None, article: dict | None = None) -> dict:
     """Write the Medium folder. Returns the manifest entries (paths relative to the video folder)."""
@@ -148,6 +168,9 @@ def build(folder: Path, name: str, title: str, workflow: Path, rec: Path | None,
         t.append(gif_spot(n))
         t += [f"{i}. {_plain(l)}" for i, l in enumerate(lines, 1)]
         t.append("")
+    note = placeholder_note(rec)
+    if note:
+        t += [note[0], note[1], ""]
     t += ["Watch it narrated", "[paste the YouTube link on its own line — Medium embeds the video]", ""]
     if doc_url:
         t += [f"Based on the WSO2 Integrator documentation: {doc_url}", ""]
@@ -174,6 +197,8 @@ def build(folder: Path, name: str, title: str, workflow: Path, rec: Path | None,
             h.append(f"<p><em>{html.escape(notes[n - 1])}</em></p>")
         h.append(f"<p class='gif'>{html.escape(gif_spot(n))}</p>")
         h.append("<ol>" + "".join(f"<li>{_html(l)}</li>" for l in lines) + "</ol>")
+    if note:
+        h += [f"<h3>{html.escape(note[0])}</h3>", f"<p>{html.escape(note[1])}</p>"]
     h += ["<h3>Watch it narrated</h3>", "<p class='gif'>[paste the YouTube link on its own line]</p>"]
     if doc_url:
         h.append(f"<p>Based on the WSO2 Integrator documentation: "

@@ -106,6 +106,15 @@ skipped and each step's clips are joined in the background.
 
 ## Accounts, keys and the binding lesson
 
+**Placeholders.** Keys and account details never appear in a video or its
+guide. A page that needs them is recorded with placeholders — the
+Configurations panel shows `<your-apiKey>`, `https://your-service.example.com`
+(tools/write_config.py, `FLOWCAST_PLACEHOLDERS=1`). If you entered your real
+values, they are written into Config.toml off camera just before the run step,
+so the run works; without them the recording ends before the run step and the
+YouTube description and Medium guide say which values to fill in. So a page
+missing keys can still be recorded — "Make video · placeholders".
+
 FlowCast never signs in or creates accounts. You sign in to a service yourself
 once (sessions persist), enter its keys in the page's form (Keychain), and
 FlowCast writes them to `Config.toml` off camera. Cards say which account a

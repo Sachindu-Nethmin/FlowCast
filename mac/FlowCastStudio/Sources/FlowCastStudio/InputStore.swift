@@ -79,7 +79,12 @@ final class InputStore {
         let json = (try? JSONSerialization.data(withJSONObject: values)).flatMap {
             String(data: $0, encoding: .utf8)
         } ?? "{}"
-        return ["FLOWCAST_INPUTS": json, "FLOWCAST_RECIPES": page.recipes.joined(separator: ",")]
+        var env = ["FLOWCAST_INPUTS": json, "FLOWCAST_RECIPES": page.recipes.joined(separator: ",")]
+        // Keys and account details never appear in a video or its guide: the
+        // recording shows placeholders, and yours (when entered) are written
+        // in off camera just before the run step (tools/autopilot.py).
+        if page.inputs.contains(where: { $0.auto == nil }) { env["FLOWCAST_PLACEHOLDERS"] = "1" }
+        return env
     }
 
     // ── Keychain ──────────────────────────────────────────────────────────────

@@ -40,12 +40,14 @@ struct DocDetail: View {
                             Button {
                                 if studio.enqueue([page]) != nil { openRuns() }
                             } label: {
-                                Label(missing > 0 ? "Enter \(missing) value\(missing == 1 ? "" : "s") below"
-                                      : "Make video", systemImage: missing > 0 ? "key" : "record.circle")
+                                Label(missing > 0 ? "Make video with placeholders" : "Make video",
+                                      systemImage: "record.circle")
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(page.kind.tint)
-                            .disabled(missing > 0)
+                            .help(missing > 0
+                                  ? "Keys and account details show as placeholders. Without yours the video ends before the run step; enter them below to record the run too (they are written in off camera)."
+                                  : "Keys show as placeholders on screen; yours are written in off camera just before the run step.")
                             if let rec = studio.unfinishedRecording(page) {
                                 Button {
                                     if studio.makeVideo(fromRecordingOf: page) != nil { openRuns() }

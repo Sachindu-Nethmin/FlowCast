@@ -172,11 +172,7 @@ struct DocsBrowser: View {
     }
 
     private func make(_ pages: [DocPage]) {
-        // A page still missing your keys opens its form instead of queueing.
-        if pages.count == 1, let page = pages.first, !studio.inputs.missing(for: page).isEmpty {
-            inspected = page
-            return
-        }
+        // Pages missing your keys are recorded with placeholders.
         if studio.enqueue(pages) != nil { openRuns() }
     }
 }
@@ -278,7 +274,7 @@ struct DocCard: View {
                 } else if page.isRecordable && !selecting {
                     let missing = !studio.inputs.missing(for: page).isEmpty
                     Button(action: make) {
-                        Label(missing ? "Add keys" : "Make video", systemImage: missing ? "key" : "record.circle")
+                        Label(missing ? "Make video · placeholders" : "Make video", systemImage: "record.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(page.kind.tint)

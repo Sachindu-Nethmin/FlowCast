@@ -357,7 +357,9 @@ final class Studio {
     @discardableResult
     func enqueue(_ pages: [DocPage], mode: String? = nil) -> Job? {
         var first: Job?
-        for page in pages where page.isRecordable && inputs.missing(for: page).isEmpty {
+        // Missing keys no longer hold a page back: it is recorded with
+        // placeholders and ends before its run step (see InputStore.environment).
+        for page in pages where page.isRecordable {
             if let existing = jobs.first(where: { $0.page.slug == page.slug && ($0.status.isPending || $0.status.isActive) }) {
                 first = first ?? existing
                 continue
@@ -724,6 +726,12 @@ final class Studio {
             if let t = ev.string("task") { job.task = t }
         case "part":
             job.unitPart = (ev.data["fraction"] as? NSNumber)?.doubleValue ?? job.unitPart
+        case "finish_early":
+            // Placeholders only: the recording ends before the run step and
+            // the video is made from what was recorded.
+            job.finishEarly = true
+            job.notes.append(RecoveryNote(text: ev.string("reason") ?? "Ended before the run step",
+                                          symbol: "key"))
         case "step":
             // A step starting — for the first time, or again after Back — and
             // every step after it are still to do.

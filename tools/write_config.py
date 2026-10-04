@@ -18,6 +18,12 @@ is logged and saved; the environment is not):
     FLOWCAST_RECIPES   comma-separated prerequisite ids started for this page;
                        their connection values (host, port, user, …) fill any
                        configurable you did not set yourself
+    FLOWCAST_PLACEHOLDERS=1
+                       write placeholders ("<your-apiKey>") instead of your
+                       values — what the video's Configurations panel shows.
+                       Local-service values (localhost, a port) stay real.
+                       tools/autopilot.py writes your real values just before
+                       the run step, off camera.
 
 Only configurables the project actually declares are written (Ballerina rejects
 values for undeclared ones). `--expect` waits for those names to be declared,
@@ -86,6 +92,20 @@ def toml_value(typ: str, value: str) -> str:
     return json.dumps(value)                  # TOML basic string == JSON string
 
 
+def placeholder(name: str, typ: str) -> str:
+    """A value that shows what goes here without being anyone's."""
+    t = typ.rstrip("?")
+    if t in ("int", "float", "decimal"):
+        return "0"
+    if t == "boolean":
+        return "false"
+    if t.endswith("[]"):
+        return "[]"
+    if re.search(r"url|endpoint|host|uri", name, re.I):
+        return json.dumps(f"https://your-{re.sub(r'(url|endpoint|uri)$', '', name, flags=re.I) or 'service'}.example.com")
+    return json.dumps(f"<your-{name}>")
+
+
 def merge(existing: str, entries: dict[str, str]) -> str:
     lines, seen = [], set()
     for ln in existing.splitlines():
@@ -109,6 +129,9 @@ def main() -> None:
     args = ap.parse_args()
 
     inputs = json.loads(os.environ.get("FLOWCAST_INPUTS") or "{}")
+    placeholders = os.environ.get("FLOWCAST_PLACEHOLDERS") == "1"
+    if placeholders:
+        inputs = {}                          # yours go in just before the run, off camera
     recipes = [r for r in os.environ.get("FLOWCAST_RECIPES", "").split(",") if r]
     expect = [e for e in args.expect.split(",") if e]
     proj = project_dir(args.project, args.base)
@@ -127,6 +150,10 @@ def main() -> None:
     missing, report = [], []
     for name, (typ, required, pkg) in sorted(decl.items()):
         value = inputs.get(name) or lower.get(name.lower()) or prereqs.value_for(name, recipes)
+        if value is None and placeholders and (required or name in expect):
+            by_pkg.setdefault(pkg, {})[name] = placeholder(name, typ)
+            report.append(f"{name} — placeholder")
+            continue
         if value is None:
             if required:
                 missing.append(name)

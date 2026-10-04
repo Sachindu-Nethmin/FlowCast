@@ -281,10 +281,8 @@ final class PhoneBridge {
                 return studio.makeVideo(fromRecordingOf: page) != nil
                     ? .json(["ok": true]) : .json(["ok": false, "error": "No unfinished recording of this page."])
             }
-            // Keys are entered on the Mac only: this page is plain HTTP on the LAN.
-            if !studio.inputs.missing(for: page).isEmpty {
-                return .json(["ok": false, "error": "Enter this page's keys in FlowCast Studio on the Mac first."])
-            }
+            // Keys are entered on the Mac only (this page is plain HTTP on the
+            // LAN); without them the page is recorded with placeholders.
             let mode = req.json["mode"] as? String
             // Say why when nothing was queued: the phone used to show
             // "Starting on your Mac…" forever.
@@ -650,7 +648,8 @@ function render(){
     ${p.blockers.length ? `<div class="tags">${[...new Set(p.blockers)].map(b => `<span class="tag">${esc(b)}</span>`).join('')}</div>` : ''}
     <div class="meta"><span>${p.steps} steps</span><span>${p.actions} actions</span><span>${Math.round(p.coverage*100)}%</span><span class="sp"></span>
      ${!busy.has(p.slug) && p.unfinished ? `<button class="make alt" data-s="${p.slug}" data-m="recording">🎬 Make video from last recording</button>` : ''}
-     ${busy.has(p.slug) ? '<span>In queue</span>' : p.needsKeys ? '<span>Add keys on the Mac</span>'
+     ${p.needsKeys && !busy.has(p.slug) ? '<span title="Keys show as placeholders; the video ends before the run step until you add yours on the Mac">🔑 placeholders</span>' : ''}
+     ${busy.has(p.slug) ? '<span>In queue</span>'
        : p.proven ? `<button class="make alt" data-s="${p.slug}" data-m="guided">Step by step</button><button class="make ${p.verdict}" data-s="${p.slug}" data-m="auto">▶ Auto</button>`
        : `<button class="make ${p.verdict}" data-s="${p.slug}" data-m="guided">▶ Start step by step</button>`}</div>
    </div>`).join('') : '<div class="empty">Nothing here.</div>';

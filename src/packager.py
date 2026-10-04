@@ -57,8 +57,13 @@ def _duration(path: Path) -> float:
         return 0.0
 
 
-def _upload_text(title: str, description: str, video: Path, doc_url: str | None) -> str:
+def _upload_text(title: str, description: str, video: Path, doc_url: str | None,
+                 rec: Path | None = None) -> str:
     """The one text file: title on top, the description to paste, then facts."""
+    from src.medium import placeholder_note
+    note = placeholder_note(rec)
+    if note:
+        description = description.rstrip() + f"\n\n{note[0]}\n{note[1]}\n"
     if doc_url:
         description = description.replace("<paste the docs page URL here>", doc_url)
     tags = re.findall(r"#\w+", description)
@@ -100,7 +105,7 @@ def package(master: Path, title: str, slug: str, doc_url: str | None = None,
     desc_src = master.with_name(master.stem + ".description.txt")
     description = desc_src.read_text() if desc_src.exists() else title
     text = yt / f"{name} – YouTube description.txt"
-    text.write_text(_upload_text(title, description, video, doc_url))
+    text.write_text(_upload_text(title, description, video, doc_url, rec))
     manifest = {
         "title": title, "slug": slug, "video": f"YouTube/{video.name}",
         "thumbnail": f"YouTube/{thumb.name}" if thumb.exists() else None, "text": f"YouTube/{text.name}",
