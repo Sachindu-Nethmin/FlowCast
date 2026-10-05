@@ -121,7 +121,12 @@ def _activate() -> None:
         ["osascript", "-e", f'activate application "{_TARGET_APP}"'],
         capture_output=True, timeout=5,
     )
-    time.sleep(0.3)
+    # Something else had the screen. Coming back to a full-screen app slides
+    # its Space in (~0.8 s); a clip must not start until that has finished,
+    # or it opens on whatever was showing (it once opened on the desktop).
+    time.sleep(0.9)
+    from src import recorder
+    recorder.not_before(time.time())
 
 
 # Every screenshot in the recording loop (the UI change / settle checks take

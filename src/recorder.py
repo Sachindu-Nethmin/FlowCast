@@ -35,6 +35,14 @@ _head = 0.0                         # seconds to cut off the front at stop
 _last_stop = 0.0
 _warm: dict | None = None
 _warm_thread: threading.Thread | None = None
+_clean_from = 0.0     # wall time from which the screen shows only the app (see not_before)
+
+
+def not_before(t: float) -> None:
+    """The screen was taken back to the app at `t`: a pre-started capture is
+    cut to start after it, so a clip never shows what was on screen before."""
+    global _clean_from
+    _clean_from = max(_clean_from, t)
 
 
 def _get_screen_index() -> str:
@@ -180,6 +188,9 @@ def start(name: str, output_dir: Path) -> None:
                 age = WARMUP
             _proc, _stderr_tmp, _capture_path = w["proc"], w["stderr"], w["path"]
             _head = max(0.0, age - LEAD)
+            if _clean_from > w["spawned"]:
+                # The screen switched back while it waited: start after that.
+                _head = max(_head, _clean_from - w["spawned"] + 0.1)
             print(f"[recorder] Recording → {_mov_path.name} (already capturing)")
             return
         _end(w)
