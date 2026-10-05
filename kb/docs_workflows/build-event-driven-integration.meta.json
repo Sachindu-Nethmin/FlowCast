@@ -1,0 +1,12 @@
+{
+  "title": "Build an Event-Driven Integration",
+  "time": "Under 10 minutes",
+  "build": "An event-driven integration that consumes messages from Orders queue in RabbitMQ broker and processes them.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/get-started/build-event-driven-integration"
+    ]
+  ],
+  "slug": "build-event-driven-integration"
+}

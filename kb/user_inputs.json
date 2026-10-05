@@ -59,8 +59,8 @@
       "user_input": "click Automation",
       "screen_fp": "719db3f268593579",
       "timestamp": "2026-07-12T08:56:23+00:00",
-      "use_count": 9,
-      "last_used": "2026-07-21T17:23:55+00:00"
+      "use_count": 10,
+      "last_used": "2026-09-05T17:37:51+00:00"
     },
     {
       "workflow": "quick-start-automation.md",
@@ -180,6 +180,46 @@
       "user_input": "click Automation",
       "screen_fp": "719db3f268593579",
       "timestamp": "2026-07-21T17:24:02+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "integration-as-api-hello-world.md",
+      "step": "Create the integration",
+      "action_index": 1,
+      "original_target": "Create",
+      "user_input": "skip for now",
+      "screen_fp": "4312fa0613812e57",
+      "timestamp": "2026-09-04T16:50:36+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "integration-as-api-hello-world.md",
+      "step": "Add a resource",
+      "action_index": 0,
+      "original_target": "+ Add Resource",
+      "user_input": "press escape",
+      "screen_fp": "0c35f30f0046d211",
+      "timestamp": "2026-09-05T14:21:04+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "quick-start-automation.md",
+      "step": "Add an automation artifact",
+      "action_index": 2,
+      "original_target": "Automation",
+      "user_input": "click Automation",
+      "screen_fp": "719db3f268593579",
+      "timestamp": "2026-09-05T17:38:00+00:00",
+      "use_count": 0
+    },
+    {
+      "workflow": "integration-as-api.md",
+      "step": "Add an HTTP service",
+      "action_index": 0,
+      "original_target": "HelloWorldAPI",
+      "user_input": "click HelloWorldAPI",
+      "screen_fp": "da39a3ee5e6b4b0d",
+      "timestamp": "2026-09-07T13:03:34+00:00",
       "use_count": 0
     }
   ]

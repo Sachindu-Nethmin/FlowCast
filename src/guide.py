@@ -20,8 +20,11 @@ Usage (called from main.py):
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -36,10 +39,83 @@ from src.parser import Step, instruction_lines
 _slug = artifacts.slug
 
 
+def _plain(text: str) -> str:
+    """Drop the markdown emphasis from an action label so the phone shows
+    'Set Integration Name to HelloWorld', not 'Set **Integration Name** …'."""
+    return re.sub(r'`([^`]+)`', r'\1', re.sub(r'\*\*([^*]+)\*\*', r'\1', text))
+
+
+class WorkflowSwitchRequested(Exception):
+    """Raised from the guide command loop when the user says/types something
+    like 'continue the automation' that names a DIFFERENT workflow markdown
+    file (e.g. workflows/quick-start-automation.md). Left uncaught here —
+    it bubbles out of run_guide()/run_guide_new(); main.py catches it and
+    switches from step-by-step guide mode into a normal, fully automatic
+    run of the named workflow (same as `python main.py <file>.md` with no
+    --guide) — no more per-action prompts."""
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"switch to workflow: {path}")
+        self.path = path
+
+
+# "continue the automation" / "run sales data sync" / "do quick start file" —
+# a leading trigger verb + a name that resolves to a workflows/*.md file.
+# A bare "continue" (no name) never matches — it still means 'finish this
+# step', handled earlier in the caller's loop.
+_WORKFLOW_TRIGGER_RE = re.compile(
+    r'^(?:continue|run|do|start|play|execute)\s+(?:with\s+)?(?:the\s+)?(.+?)'
+    r'(?:\s+(?:workflow|automation|guide|markdown|md file|file))?$',
+    re.IGNORECASE,
+)
+_WORKFLOW_TRIGGER_STOPWORDS = {"", "it", "this", "that", "guide", "workflow", "step", "here", "on"}
+
+
+def _resolve_workflow_hint(hint: str, workflows_dir: Path) -> Path | None:
+    """Fuzzy-match a spoken/typed hint ('automation', 'sales data sync', ...)
+    against workflows/*.md filenames. An exact slug match wins outright;
+    otherwise falls back to a substring match, preferring the shortest
+    (closest) filename when more than one contains the hint."""
+    hint_slug = _slug(hint)
+    if not hint_slug or not workflows_dir.is_dir():
+        return None
+    partial: list[Path] = []
+    for p in sorted(workflows_dir.glob("*.md")):
+        stem_slug = _slug(p.stem)
+        if hint_slug == stem_slug:
+            return p
+        if hint_slug in stem_slug or stem_slug in hint_slug:
+            partial.append(p)
+    return min(partial, key=lambda p: len(p.stem)) if partial else None
+
+
+def _match_workflow_switch(raw: str, workflows_dir: Path) -> Path | None:
+    """Detect a 'continue the automation' style command and resolve it to a
+    workflows/*.md file. Returns None for everything else, so it never
+    steals a normal click/type/select command."""
+    m = _WORKFLOW_TRIGGER_RE.match(raw.strip())
+    if not m:
+        return None
+    hint = m.group(1).strip()
+    if hint.lower() in _WORKFLOW_TRIGGER_STOPWORDS:
+        return None
+    return _resolve_workflow_hint(hint, workflows_dir)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _screenshot() -> Image.Image:
     return runner._screenshot()
+
+
+def _video_only() -> bool:
+    """FlowCast Studio records for a video, and a video is made from the
+    per-action clips in guid/. The docs extras — a GIF per step (30-90 s each),
+    the joined tutorial and its GIF (~5 min) — are skipped, and each step's
+    clips are joined in the background, so the next step is offered at once."""
+    return os.environ.get("FLOWCAST_DOC_ARTIFACTS", "1") == "0"
+
+
+_joins: list[threading.Thread] = []
 
 
 def _describe_screen(shot: Image.Image) -> dict:
@@ -61,16 +137,55 @@ def _stop_recording() -> Path | None:
 
 
 def _prompt_next(voice: bool, label: str = "what next") -> str:
-    """Get the next command/title, either typed or (--voice) push-to-talk.
+    """Get the next command/title, either typed or (--voice) tone-cued listening.
 
-    Both paths return the identical shape of string, so everything
+    Every path returns the identical shape of string, so everything
     downstream (parse_command, control-word checks) is unaware of the
-    source — voice mode is purely an input-capture swap.
+    source — the mode is purely an input-capture swap. A running phone
+    server wins over --voice: you chose the phone by starting it.
     """
+    from src import phone
+    if phone.is_running():
+        return phone.ask(label)
     if voice:
         from src import voice as voice_mod
-        return voice_mod.push_to_talk(label)
+        return voice_mod.listen(label)
     return input(f"{label}> ").strip()
+
+
+def _speak_safe(text: str) -> None:
+    """Best-effort spoken feedback — never lets a TTS hiccup break the loop."""
+    try:
+        from src import voice as voice_mod
+        voice_mod.speak(text)
+    except Exception as e:
+        print(f"  [voice] speak failed: {e}")
+
+
+_CONFIRM_YES = {"ok", "okay", "yes", "yeah", "yep", "confirm", "correct", "go", "right"}
+_CONFIRM_NO  = {"edit", "no", "redo", "retry", "wrong", "cancel", "fix"}
+
+
+def _voice_confirm(raw: str) -> bool:
+    """Read the heard command back and ask the user to confirm it before
+    anything gets clicked — a safety net against misheard commands (see
+    src/voice.py's speak()). Returns True on 'ok'/'yes'/…, False on
+    'edit'/'no'/… or anything unclear — the caller then just loops back to
+    _prompt_next() for a fresh command rather than guessing what was meant.
+    """
+    from src import voice as voice_mod
+    _speak_safe(f'You said: {raw}. Say ok to confirm, or edit to redo.')
+    reply = voice_mod.listen("confirm (ok / edit)", duration=3.0).strip().lower()
+    words = set(reply.split())
+    if reply in _CONFIRM_YES or words & _CONFIRM_YES:
+        return True
+    if reply in _CONFIRM_NO or words & _CONFIRM_NO:
+        print("  [confirm] edit — say/type the command again")
+    elif reply:
+        print(f"  [confirm] '{reply}' wasn't ok/edit — treating as edit, try again")
+    else:
+        print("  [confirm] heard nothing — treating as edit, try again")
+    return False
 
 
 # ── Execute one user command ─────────────────────────────────────────────────
@@ -97,6 +212,9 @@ def _attempt(command: dict, clip_name: str, tmp_dir: Path) -> _Attempt:
     target = command.get("target") or command.get("field_target", "")
 
     runner.set_pre_move_callback(lambda: recorder.start(clip_name, tmp_dir))
+    # Capture starts now, while the target is found, so the first move is
+    # filmed without waiting for ffmpeg to come up.
+    recorder.prewarm(tmp_dir)
     a.shot_before = _screenshot()
 
     try:
@@ -160,8 +278,8 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
     target = command.get("target") or command.get("field_target", "")
     kind = command.get("action", "click")
 
-    # Skip / hotkey / wait — fire directly, no recording needed
-    if kind in ("wait", "hotkey") or command.get("_direct"):
+    # Skip / hotkey / wait — fire directly, no element to resolve on screen.
+    if kind in ("wait", "hotkey", "shell") or command.get("_direct"):
         try:
             if command.get("_direct"):
                 resolved = dict(command)
@@ -173,10 +291,27 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
         if resolved.get("_skip"):
             print("  ○ nothing to do (auto-populated)")
             return True, None
-        runner.fire(resolved)
+
+        # A wait is the one action whose whole point is what happens on screen
+        # while nothing is being clicked: a build finishing, a response
+        # arriving. Recording normally starts on the runner's first mouse
+        # move, and a wait never moves the mouse — so it filmed nothing, and
+        # the result the step exists to show was never captured. Start the
+        # recorder explicitly and hold it for the dwell.
         if kind == "wait":
-            time.sleep(resolved.get("seconds", 1.0))
-        elif kind == "hotkey":
+            seconds = float(resolved.get("seconds", 1.0))
+            clip_name = f"guide_{step_idx:02d}_{clip_idx:03d}"
+            recorder.start(clip_name, tmp_dir)
+            runner.fire(resolved)
+            time.sleep(seconds)
+            return True, _stop_recording()
+
+        try:
+            runner.fire(resolved)
+        except Exception as e:
+            print(f"  ✗ {e}")
+            return False, None
+        if kind == "hotkey":
             runner.wait_ui_settle()
         return True, None
 
@@ -244,8 +379,8 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
 
         # status == "ok"
         if a.x is not None and kind in ("click", "type", "select", "search"):
-            kb_learn.record(a.shot_before, target, kind, (a.x, a.y),
-                            runner.screen_size(), success=True)
+            kb_learn.record_later(a.shot_before, target, kind, (a.x, a.y),
+                                  runner.screen_size(), success=True)
         if attempt_num == 2:
             print(f"  ✓ {kind} '{target}' — succeeded at ({a.x}, {a.y}) on retry")
         else:
@@ -259,13 +394,17 @@ def _execute_command(command: dict, tmp_dir: Path, clip_idx: int,
 
 def _guide_step(step: Step, step_idx: int, out_dir: Path,
                 tmp_dir: Path, theme: str = "light",
-                voice: bool = False) -> tuple[Path | None, dict]:
+                voice: bool = False,
+                workflows_dir: Path = Path("workflows")) -> tuple[Path | None, dict]:
     """Guide one step: loop on 'what next>' until the user types 'ok'.
 
     Returns (step_mov, meta). meta also carries "actions" (the ordered list
     of action dicts taught this step) and "md_lines" (those actions rendered
     back to markdown instruction lines) so a brand-new workflow.md and a
     full_script.py can be assembled afterwards — see run_guide_new().
+
+    Raises WorkflowSwitchRequested if the user names a different workflow
+    markdown file ("continue the automation") — see that class's docstring.
     """
     clips: list[Path] = []
     step_out = out_dir / f"step-{step_idx:02d}"
@@ -280,8 +419,17 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
         for ln in lines:
             print(f"    • {ln}")
     print()
+    from src import phone
+    # The phone lists the PARSED actions, not the prose, so a tap maps to
+    # step.actions[n] by index with no re-parsing in between.
+    action_labels = [action_to_markdown(a) for a in step.actions]
+    phone.set_step(f"Step {step_idx}: {step.title}",
+                   [_plain(lbl) for lbl in action_labels] or lines)
 
     # ── Before screenshot ─────────────────────────────────────────────────
+    # Every step starts from the same geometry, so a window nudged out of
+    # place mid-run cannot make one step's frames a different size.
+    runner.ensure_fullscreen(force=True)
     shot_before = _screenshot()
     _save_screenshot(shot_before, step_out / "before.png")
     fp_before, texts_before = kb_learn.screen_fingerprint(shot_before)
@@ -291,6 +439,11 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
     # ── Command loop ──────────────────────────────────────────────────────
     n_actions = 0
     executed_commands: list[dict] = []
+    # Indices of step.actions that have run. Only tapped lines count: a typed
+    # correction is not one of the listed actions, so it must not push the
+    # step over the line into "finished".
+    done_actions: set[int] = set()
+    tapped_index: int | None = None
 
     while True:
         try:
@@ -303,11 +456,23 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
             print("  (type a command, or 'ok' / 'skip' / 'abort' / 'where')")
             continue
 
+        # ── Named-workflow handoff ("continue the automation") ─────────────
+        # Checked before anything else so it can't be shadowed by the bare
+        # "continue" control word (finish-step) or misread as a click target.
+        switch_target = _match_workflow_switch(raw, workflows_dir)
+        if switch_target:
+            print(f"  [switch] '{raw}' → leaving guide mode, running "
+                  f"'{switch_target.name}' automatically, start to finish")
+            raise WorkflowSwitchRequested(switch_target)
+
         low = raw.lower()
 
         # ── Control words ─────────────────────────────────────────────────
-        if low in ("ok", "done", "finish", "continue"):
+        if low in ("ok", "done", "finish", "continue", "next"):
             break
+        if low in ("back", "previous", "prev"):
+            print(f"  [back] leaving step {step_idx} to redo the previous one")
+            return None, {"status": "back"}
         if low == "skip":
             print(f"  [skip] step {step_idx} skipped")
             return None, {"status": "skipped"}
@@ -335,13 +500,37 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
             continue
 
         # ── Parse and execute ─────────────────────────────────────────────
-        kind, payload = parse_command(raw)
-        if kind == "error":
-            print(f"  ? {payload}")
-            continue
-        if kind == "control":
-            # e.g. "retry" — not a real control, treat as click
-            payload = {"action": "click", "target": payload}
+        if raw.startswith(phone.ACTION_TAP_PREFIX):
+            # Tapped on the phone: run that exact parsed action. Going back
+            # through parse_command here would turn "Set Integration Name to
+            # HelloWorld" into a click on that sentence, which is how the
+            # name ended up typed into nothing.
+            try:
+                tapped_index = int(raw[len(phone.ACTION_TAP_PREFIX):])
+                payload = dict(step.actions[tapped_index])
+            except (ValueError, IndexError):
+                print(f"  ? no such action in this step: {raw}")
+                tapped_index = None
+                continue
+            kind, raw = "action", action_to_markdown(payload)
+            print(f"  [tap] {raw}")
+        else:
+            tapped_index = None
+            kind, payload = parse_command(raw)
+            if kind == "error":
+                print(f"  ? {payload}")
+                if voice:
+                    _speak_safe("Sorry, I didn't get that command. What's next?")
+                continue
+            if kind == "control":
+                # e.g. "retry" — not a real control, treat as click
+                payload = {"action": "click", "target": payload}
+
+        # ── Voice confirm-or-edit — a safety net against misheard commands.
+        # Typed input skips this (already exact); read it back for voice only.
+        if voice:
+            if not _voice_confirm(raw):
+                continue
 
         n_actions += 1
         print(f"  [{n_actions}] executing: {raw}")
@@ -357,6 +546,32 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
             clips.append(clip)
         if ok:
             executed_commands.append({"command": raw, "action": payload})
+            phone.notify(f"Done: {_plain(raw)}")
+            if voice:
+                _speak_safe("Done. What's next?")
+            if tapped_index is not None:
+                done_actions.add(tapped_index)
+                # The LAST listed action is the one that commits the step, so
+                # reaching it ends the step even when earlier lines were never
+                # tapped. Workflows routinely carry actions this build of the
+                # UI does not present (a Browse button that is not shown, an
+                # "open the app" line for an app already running), and waiting
+                # for all of them would mean the step never finishes by itself.
+                finished = (tapped_index == len(step.actions) - 1
+                            or len(done_actions) >= len(step.actions))
+                if step.actions and finished:
+                    # Every listed action has run, so there is nothing left to
+                    # ask about. Ending here also means the step is finished
+                    # properly rather than skipped, which is what produces the
+                    # assembled clip and the after.png the docs tool uses.
+                    print(f"  [auto] step {step_idx} complete — moving to the next one")
+                    phone.notify("Step complete — moving on")
+                    print()
+                    break
+        else:
+            phone.notify(f"That didn't work: {_plain(raw)}")
+            if voice:
+                _speak_safe("Sorry, that didn't work. What's next?")
         print()
 
     # ── After screenshot ──────────────────────────────────────────────────
@@ -374,13 +589,21 @@ def _guide_step(step: Step, step_idx: int, out_dir: Path,
     if clips:
         step_mov = out_dir / f"step-{step_idx:02d}-{title_slug}-{theme}.mov"
         combined = tmp_dir / f"combined_{step_idx}.mov"
-        recorder.combine(clips, combined)
-        shutil.move(str(combined), str(step_mov))
-        print(f"  [video] step {step_idx} → {step_mov.name}")
 
-        step_gif = out_dir / f"{title_slug}-{theme}.gif"
-        recorder.to_gif(step_mov, step_gif)
-        print(f"  [gif]   step {step_idx} → {step_gif.name}")
+        def join(clips=list(clips), combined=combined, step_mov=step_mov) -> None:
+            recorder.combine(clips, combined)
+            shutil.move(str(combined), str(step_mov))
+            print(f"  [video] step {step_idx} → {step_mov.name}")
+
+        if _video_only():
+            t = threading.Thread(target=join)
+            t.start()
+            _joins.append(t)
+        else:
+            join()
+            step_gif = out_dir / artifacts.gif_name(step_idx, title_slug, theme)
+            recorder.to_gif(step_mov, step_gif)
+            print(f"  [gif]   step {step_idx} → {step_gif.name}")
 
     # Actions actually taught this step (in order), reflected back to
     # markdown instruction lines for the new workflow.md / index.md.
@@ -468,8 +691,12 @@ def _save_guide_meta_and_kb(out_dir: Path, slug: str, theme: str,
 # ── Main entry point (guide an EXISTING workflow) ────────────────────────────
 
 def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str,
-              voice: bool = False) -> None:
-    """Walk through every step, executing + recording each command."""
+              voice: bool = False, workflows_dir: Path = Path("workflows")) -> None:
+    """Walk through every step, executing + recording each command.
+
+    Raises WorkflowSwitchRequested (uncaught here — see main.py) if the user
+    names a different workflow markdown file mid-session.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = Path(tempfile.mkdtemp(prefix="guide_"))
 
@@ -479,31 +706,51 @@ def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str,
     print(f"  Output: {out_dir}")
     print(f"{'═' * 60}")
     if voice:
-        print(f"  For each step, hold → and speak what to do (e.g. 'click Create').")
+        from src import voice as voice_mod
+        print(f"  For each step, wait for the tone then speak what to do "
+              f"(e.g. 'click Create') — you get {int(voice_mod.LISTEN_SECONDS)}s.")
+        print(f"  FlowCast reads it back — say 'ok' to run it or 'edit' to redo, "
+              f"then tells you if it worked before asking what's next.")
         print(f"  Say 'ok' when the step is done. Esc at any prompt to type instead.")
     else:
         print(f"  For each step, type what to do (e.g. 'click Create').")
         print(f"  Type 'ok' when the step is done to move to the next one.")
-    print(f"  Commands: skip / abort / where / undo / help")
+    print(f"  Commands: next / back / skip / abort / where / undo / help")
     print(f"{'═' * 60}")
 
     runner.ensure_fullscreen(force=True)
 
-    step_movs: list[Path] = []
-    all_meta: list[dict] = []
-
-    for idx, step in enumerate(steps, 1):
-        mov, meta = _guide_step(step, idx, out_dir, tmp_dir, theme, voice)
-        all_meta.append(meta)
-        if mov:
-            step_movs.append(mov)
+    # Index-based rather than a for-loop: 'back' has to revisit a step that
+    # has already been yielded, which enumerate() cannot do.
+    recorded: list[tuple[Path | None, dict]] = []
+    idx = 1
+    while idx <= len(steps):
+        mov, meta = _guide_step(steps[idx - 1], idx, out_dir, tmp_dir, theme,
+                                voice, workflows_dir)
+        if meta.get("status") == "back":
+            if idx > 1:
+                recorded = recorded[:idx - 2]   # drop the step we are redoing
+                idx -= 1
+                print(f"\n  ← back to step {idx}: {steps[idx - 1].title}")
+            else:
+                print("  (already at the first step)")
+            continue
+        recorded.append((mov, meta))
         if meta.get("status") == "aborted":
             print(f"\n  Guide aborted at step {idx}")
             break
+        idx += 1
+
+    step_movs = [m for m, _ in recorded if m]
+    all_meta = [meta for _, meta in recorded]
+    for t in _joins:                  # step videos joined in the background
+        t.join()
+    _joins.clear()
+    kb_learn.flush()
 
     # ── Assemble full tutorial video (raw teaching-session recording) ─────
     full_mov = None
-    if step_movs:
+    if step_movs and not _video_only():
         full_mov = out_dir / f"tutorial-{theme}.mov"
         recorder.combine(step_movs, full_mov, keep_inputs=True)
         print(f"\n  [tutorial] full video → {full_mov}")
@@ -518,7 +765,8 @@ def run_guide(steps: list[Step], out_dir: Path, slug: str, theme: str,
     if taught_steps:
         artifacts.build_full_script(taught_steps, out_dir, theme)
         artifacts.build_themed_markdown(taught_steps, out_dir, slug)
-        artifacts.build_full_video(out_dir, theme)
+        if not _video_only():
+            artifacts.build_full_video(out_dir, theme)
 
     _save_guide_meta_and_kb(out_dir, slug, theme, len(steps), all_meta)
 
@@ -552,9 +800,9 @@ def run_guide_new(workflows_dir: Path, output_root: Path, voice: bool = False) -
     via runner.resolve().
 
     With voice=True, step titles and "what next>" commands are captured via
-    push-to-talk (src/voice.push_to_talk) instead of input(). The workflow
-    name itself is always typed — it becomes a filename, so it needs to be
-    exact rather than dictated.
+    tone-cued timed listening (src/voice.listen) instead of input(). The
+    workflow name itself is always typed — it becomes a filename, so it
+    needs to be exact rather than dictated.
     """
     print(f"\n{'═' * 60}")
     print(f"  GUIDE MODE — new workflow" + ("  |  🎙  VOICE" if voice else ""))
@@ -594,8 +842,11 @@ def run_guide_new(workflows_dir: Path, output_root: Path, voice: bool = False) -
     print(f"\n{'═' * 60}")
     print(f"  Teaching '{name}'  →  {md_path}")
     if voice:
-        print(f"  For each step: give it a title, then hold → and speak what to do")
-        print(f"  (e.g. 'click Create'). Say 'ok' to finish the step.")
+        from src import voice as voice_mod
+        print(f"  For each step: give it a title, wait for the tone, then speak")
+        print(f"  what to do (e.g. 'click Create') — you get {int(voice_mod.LISTEN_SECONDS)}s. Say 'ok' to finish the step.")
+        print(f"  FlowCast reads each command back — say 'ok' to run it or 'edit' to redo, "
+              f"then tells you if it worked.")
         print(f"  Say 'done' at the step-title prompt to finish the workflow,")
         print(f"  'abort' to cancel without saving, or press Esc at any prompt to type.")
     else:
@@ -627,10 +878,21 @@ def run_guide_new(workflows_dir: Path, output_root: Path, voice: bool = False) -
             print("  (give a step title, say/type 'done' to finish, or 'abort' to cancel)")
             continue
 
+        switch_target = _match_workflow_switch(title, workflows_dir)
+        if switch_target:
+            print(f"  [switch] '{title}' → discarding this in-progress workflow, running "
+                  f"'{switch_target.name}' automatically, start to finish")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise WorkflowSwitchRequested(switch_target)
+
         idx += 1
         placeholder = Step(title=title, gif_filename=f"{_slug(title)}.gif",
                             actions=[], raw_instructions="")
-        mov, meta = _guide_step(placeholder, idx, out_dir, tmp_dir, theme, voice)
+        try:
+            mov, meta = _guide_step(placeholder, idx, out_dir, tmp_dir, theme, voice, workflows_dir)
+        except WorkflowSwitchRequested:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
         all_meta.append(meta)
         if mov:
             step_movs.append(mov)
@@ -661,8 +923,8 @@ def run_guide_new(workflows_dir: Path, output_root: Path, voice: bool = False) -
     print(f"\n{'═' * 60}")
     print(f"  Workflow created — {len(taught_steps)} step(s), {total_actions} actions taught")
     print(f"  Workflow markdown → {md_path}")
-    for step in taught_steps:
-        gif = out_dir / f"{_slug(step.title)}-{theme}.gif"
+    for idx, step in enumerate(taught_steps, 1):
+        gif = out_dir / artifacts.gif_name(idx, _slug(step.title), theme)
         if gif.exists():
             print(f"    {gif}")
     if full_mov:

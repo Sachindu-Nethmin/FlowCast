@@ -1,0 +1,12 @@
+{
+  "title": "Setup Guide",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/messaging/gcloud.pubsub/setup-guide"
+    ]
+  ],
+  "slug": "gcloud-pubsub-setup-guide"
+}

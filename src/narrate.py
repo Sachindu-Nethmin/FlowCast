@@ -111,7 +111,7 @@ def load_narration_file(rec_dir: Path) -> dict:
     def flush():
         if current is None:
             return
-        if current in ("intro", "outro"):
+        if isinstance(current, str):        # intro/outro and any custom block
             text = " ".join(" ".join(buf).split())
             if text:
                 blocks[current] = text
@@ -127,11 +127,15 @@ def load_narration_file(rec_dir: Path) -> dict:
     for raw in path.read_text(encoding="utf-8").splitlines():
         if raw.strip().startswith("#"):
             continue
-        m = re.match(r"^\s*\[\s*(intro|outro|step\s+\d+)\s*\]", raw, re.IGNORECASE)
+        # Any [tag] line starts a block. Unknown tags (e.g. [card], read by
+        # tools/make_youtube_video.py) are kept under their own key instead of
+        # leaking their text into the block above them.
+        m = re.match(r"^\s*\[\s*([^\]]+?)\s*\]\s*$", raw)
         if m:
             flush()
-            tag = m.group(1).lower()
-            current = tag if tag in ("intro", "outro") else int(tag.split()[1])
+            tag = m.group(1).strip().lower()
+            step = re.fullmatch(r"step\s+(\d+)", tag)
+            current = int(step.group(1)) if step else tag
             buf = []
         else:
             buf.append(raw.rstrip())
@@ -418,7 +422,18 @@ def _norm_vf(w: int, h: int, extra: list[str] | None = None) -> str:
 
 
 def _say_to_wav(text: str, out_wav: Path, voice: str, rate: int) -> float:
-    """Synthesize one utterance to a 44.1k stereo WAV. Returns its duration."""
+    """Synthesize one utterance to a 44.1k stereo WAV. Returns its duration.
+
+    With FLOWCAST_TTS=chatterbox the line is spoken in a cloned voice instead of
+    by `say` (see src/tts_clone.py). `voice`/`rate` are `say` settings and have
+    no effect on that backend, which takes its timbre from FLOWCAST_VOICE_REF."""
+    try:
+        from src import tts_clone
+    except ImportError:                        # imported as a top-level module
+        import tts_clone
+    if tts_clone.is_enabled():
+        return tts_clone.synthesize(text, out_wav)
+
     tmp_aiff = out_wav.with_suffix(".aiff")
     r = subprocess.run(["say", "-v", voice, "-r", str(rate), "-o", str(tmp_aiff), text],
                        capture_output=True, text=True)
@@ -856,8 +871,16 @@ def narrate_workflow(rec_dir: Path, theme: str | None = None,
             f"no narration.txt in {rec_dir}, and no recorded timings or steps to "
             f"auto-generate from. Create narration.txt with [step N] blocks.")
 
-    chosen = pick_voice(voice, list_installed_voices())
-    note = "" if "(" in chosen else "  (compact voice — install an Enhanced one for a natural sound)"
+    try:
+        from src import tts_clone
+    except ImportError:
+        import tts_clone
+    if tts_clone.is_enabled():
+        chosen = f"cloned: {tts_clone.reference_wav().name}"
+        note = ""
+    else:
+        chosen = pick_voice(voice, list_installed_voices())
+        note = "" if "(" in chosen else "  (compact voice — install an Enhanced one for a natural sound)"
     intro_text = narration.get("intro")
     outro_text = narration.get("outro")
     size = _probe_size(clips[0][1])   # canonical resolution — all clips match this

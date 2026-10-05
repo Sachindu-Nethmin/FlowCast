@@ -7,7 +7,7 @@ Usage:
   uv run python main.py workflow.md --step 2
   uv run python main.py workflow.md --guide
   uv run python main.py --guide              # author a brand-new workflow
-  uv run python main.py --guide --voice      # ...same, but push-to-talk (hold →)
+  uv run python main.py --guide --voice      # ...same, but tone-cued 5s voice input
 
 Outputs (inside output/recordings/<workflow-slug>/):
   step-01-<slug>-<theme>.gif   — per-step animated GIF
@@ -15,6 +15,22 @@ Outputs (inside output/recordings/<workflow-slug>/):
   full-<theme>.mov             — all recorded steps concatenated in order
   full_script-<theme>.py       — runnable Python script for all steps
   index.md                     — themed (light/dark) markdown for docs
+
+Between-step input (ON by default, plain runs only):
+  After every step is recorded the run pauses and asks what — if anything —
+  comes before the next documented step: the "Skip for now" welcome card, a
+  dialog to dismiss, a project to pick. The WSO2 window is minimised for the
+  prompt, brought back full screen to run and RECORD your answer, then
+  minimised again, so the video only ever shows the app. Pick a numbered
+  suggestion (buttons visible on screen, the doc page, the next doc step,
+  learned KB entries), type a command, `paste` a block of WSO2 doc text, or
+  press Enter to move on. Before the first recording it asks once for the
+  documentation page these steps came from — paste it (or a file path) for
+  far better suggestions, or answer `none`; either answer is remembered. Whatever runs is saved to kb/step_inputs.json and REPLAYED
+  automatically next run — teach a gap once and it stays taught.
+    --no-step-input   never ask (FLOWCAST_STEP_INPUT=0)
+    --retrain-steps   ask again even where it is already trained
+  See src/step_input.py.
 
 Guide mode (--guide) with an existing workflow.md:
   Walks through each step interactively, records the screen while you perform
@@ -28,10 +44,12 @@ Guide mode (--guide) with NO workflow.md:
   workflows/<slug>.md and produces the full set of outputs above.
 
 Voice mode (--voice, implies --guide):
-  Replaces the typed "what next>" / step-title prompts with push-to-talk:
-  hold the RIGHT ARROW key, speak the command, release to send. Transcribed
-  fully on-device via macOS's built-in Speech framework — no API key, no
-  network call. Esc at any prompt falls back to typing — use it for exact
+  Replaces the typed "what next>" / step-title prompts with tone-cued
+  listening: no key to hold — a short tone plays, then FlowCast records for
+  5 seconds (override with FLOWCAST_VOICE_SECONDS) and transcribes
+  automatically. Transcribed fully on-device via macOS's built-in Speech
+  framework — no API key, no network call. Esc at any point during the
+  listening window cancels and falls back to typing — use it for exact
   values (hostnames, ports, JSON) that are a poor fit for dictation.
   Requires: uv sync --extra voice
   See src/voice.py for setup details and required macOS permissions.
@@ -64,6 +82,7 @@ Natural voiceover (ON by default):
 """
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import tempfile
@@ -76,7 +95,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src import healer, interactive, navigator, recorder, runner
-from src.artifacts import build_full_script, build_full_video, build_themed_markdown, slug as _slug
+from src.artifacts import (build_full_script, build_full_video, build_themed_markdown,
+                          gif_name as _gif_name, slug as _slug)
 from src.healer import HealingAbortedError
 from src.parser import Step, parse_markdown
 from src.runner import ElementNotFoundError
@@ -88,7 +108,8 @@ OUTPUT_DIR = Path("output") / "recordings"
 
 def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
               is_last_step: bool = False,
-              workflow_path: Path | None = None) -> tuple[Path, Path] | None:
+              workflow_path: Path | None = None,
+              next_step: Step | None = None) -> tuple[Path, Path] | None:
     """Record one step. Returns (gif_path, mov_path) or None on failure."""
     print(f"\n── Step {step_index}: {step.title} ──")
     print(f"   {len(step.actions)} actions → {step.gif_filename}")
@@ -113,6 +134,13 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
         for i, action in enumerate(step.actions):
             kind   = action["action"]
             target = action.get("target") or action.get("field_target", "")
+
+            # Command actions need workflow/step/index metadata so the runner can
+            # look up (and save) the learned command for this exact position.
+            if kind == "command":
+                action["_workflow"] = workflow_path.name if workflow_path else ""
+                action["_step_title"] = step.title
+                action["_action_index"] = i
 
             if i < skip_until:
                 print(f"   [skip  {i+1}] fast-forward — '{target}' already done per screen state")
@@ -230,6 +258,25 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
             if recorder._proc is not None:
                 clips.append(recorder.stop())
 
+        # ── Between-step input ────────────────────────────────────────
+        # The doc almost never mentions what the UI puts BETWEEN two steps —
+        # a "Skip for now" welcome card, a dialog to dismiss, a project to
+        # pick. Ask for it here, record the answer into this step's video,
+        # and learn it so the next run replays it unprompted.
+        # See src/step_input.py.
+        from src import step_input
+        try:
+            extra_clips, extra_actions, si_status = step_input.after_step(
+                step_index, step, next_step, tmp_dir, workflow_path,
+                action_offset=len(step.actions))
+        except Exception as e:  # noqa: BLE001 — never lose a recorded step over this
+            print(f"[step-input] skipped: {e}", file=sys.stderr)
+            extra_clips, extra_actions, si_status = [], [], "ok"
+        clips.extend(extra_clips)
+        if si_status == "abort":
+            print(f"[step-input] run aborted after step {step_index}")
+            return None
+
         if not clips:
             print(f"[WARN] No clips recorded for step {step_index}")
             return None
@@ -241,8 +288,9 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
         # (used for the action-by-action voiceover) must be saved first.
         try:
             from src import narrate
-            narrate.save_action_clips(out_dir, step_mov.name, clips, step.actions)
-            narrate.save_action_timings(out_dir, step_mov.name, clips, step.actions)
+            all_actions = list(step.actions) + extra_actions
+            narrate.save_action_clips(out_dir, step_mov.name, clips, all_actions)
+            narrate.save_action_timings(out_dir, step_mov.name, clips, all_actions)
         except Exception as e:  # noqa: BLE001 — never fatal to the recording
             print(f"   [timing] could not save per-action data: {e}", file=sys.stderr)
 
@@ -251,8 +299,7 @@ def _run_step(step_index: int, step: Step, out_dir: Path, theme: str,
         recorder.combine(clips, combined_tmp)
         shutil.move(str(combined_tmp), str(step_mov))
 
-        gif_name = f"{Path(step.gif_filename).stem}-{theme}.gif"
-        gif = out_dir / gif_name
+        gif = out_dir / _gif_name(step_index, Path(step.gif_filename).stem, theme)
         recorder.to_gif(step_mov, gif)
         print(f"   GIF saved → {gif}")
         print(f"   MOV saved → {step_mov.name}")
@@ -277,6 +324,90 @@ def _do_narrate(out_dir: Path, theme: str, steps: list[Step]) -> None:
         print(f"[narrate] skipped ({e})", file=sys.stderr)
 
 
+# ── Non-interactive full run (also the guide-mode "continue <name>" target) ───
+
+def run_full_workflow(md_path: Path, only_step: int | None = None,
+                       from_step: int | None = None,
+                       narrate_mode: bool = True) -> None:
+    """Record every step of md_path automatically, start to finish, with no
+    per-step prompts. This is exactly what `python main.py workflow.md`
+    (no --guide) runs — and it's also what a guide-mode 'continue the
+    automation' voice/typed command switches into for a NAMED workflow file
+    (see src.guide.WorkflowSwitchRequested / main()'s guide-mode branch)."""
+    if not md_path.exists():
+        print(f"[ERROR] File not found: {md_path}", file=sys.stderr)
+        return
+
+    slug = _slug(md_path.stem)
+    steps = parse_markdown(md_path)
+
+    # Ask ONCE for the doc page these steps came from, before anything is
+    # recorded — it is what makes the between-step suggestions specific.
+    # 'none' is remembered too, so this is asked once per workflow.
+    from src import step_input
+    step_input.ensure_doc_context(md_path)
+
+    # Make the app full screen BEFORE any screenshot/theme detection
+    runner.ensure_fullscreen(force=True)
+
+    # Identify theme before creating output directory
+    theme = runner.detect_theme()
+    print(f"  Theme identified: {theme.upper()}")
+
+    # Perceive current UI state: instead of always starting at step 1, detect
+    # which step the WSO2 Integrator is at right now and resume from there.
+    if only_step is None and from_step is None:
+        shot = runner._screenshot()
+        resume = navigator.find_resume_step(steps, shot)
+        if resume > 1:
+            print(f"  Current UI matches step {resume} — resuming there "
+                  f"(use --from-step 1 to force a full run)")
+            from_step = resume
+
+    out_dir = OUTPUT_DIR / slug
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Always regenerate artifacts (script, themed markdown) early so they
+    # reflect the latest markdown even if the recording loop below fails.
+    full_script = build_full_script(steps, out_dir, theme)
+    themed_md   = build_themed_markdown(steps, out_dir, slug)
+
+    print(f"\n{'='*60}")
+    print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
+    print(f"  Output: {out_dir}")
+    print(f"{'='*60}")
+
+    saved_gifs: list[Path] = []
+    for idx, step in enumerate(steps, 1):
+        if only_step is not None and idx != only_step:
+            continue
+        if from_step is not None and idx < from_step:
+            continue
+        is_last = (idx == len(steps))
+        nxt = None if is_last else steps[idx]      # steps is 1-based here
+        result = _run_step(idx, step, out_dir, theme, is_last_step=is_last,
+                           workflow_path=md_path, next_step=nxt)
+        if result:
+            gif, _ = result
+            saved_gifs.append(gif)
+
+    # Always regenerate full video from all existing step MOVs (including any
+    # recorded in previous runs so individual --step runs accumulate correctly).
+    full_mov = build_full_video(out_dir, theme)
+
+    if narrate_mode:
+        _do_narrate(out_dir, theme, steps)
+
+    print(f"\n{'='*60}")
+    print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")
+    for p in saved_gifs:
+        print(f"    {p}")
+    if full_mov:
+        print(f"  Full video  → {full_mov}")
+    print(f"  Full script → {full_script}")
+    print(f"{'='*60}")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -285,12 +416,15 @@ def main() -> None:
         print("Usage: python main.py workflow.md [--step N] [--guide]", file=sys.stderr)
         print("       python main.py --guide           (author a brand-new workflow)",
               file=sys.stderr)
+        print("       --no-step-input / --retrain-steps  (between-step prompt)",
+              file=sys.stderr)
         sys.exit(1)
 
     only_step: int | None = None
     from_step: int | None = None   # --from-step N  → record steps N, N+1, …
     guide_mode: bool = False       # --guide → interactive tutorial recording
-    voice_mode: bool = False       # --voice → push-to-talk instead of typed input
+    voice_mode: bool = False       # --voice → tone-cued 5s listening instead of typed input
+    phone_mode: bool = False       # --phone → prompt on a phone browser instead of the terminal
     dub_mode: bool = False         # --dub → post-process: narrate existing .mov files
     narrate_mode: bool = True      # natural voiceover is ON by default (--no-narrate to skip)
     md_path:   Path | None = None
@@ -309,6 +443,10 @@ def main() -> None:
             voice_mode = True
             guide_mode = True  # --voice implies --guide
             i += 1
+        elif args[i] == "--phone":
+            phone_mode = True
+            guide_mode = True  # --phone implies --guide
+            i += 1
         elif args[i] == "--dub":
             dub_mode = True
             i += 1
@@ -317,6 +455,12 @@ def main() -> None:
             i += 1
         elif args[i] in ("--no-narrate", "--silent"):
             narrate_mode = False   # opt out of the default voiceover
+            i += 1
+        elif args[i] in ("--no-step-input", "--no-between-steps"):
+            os.environ["FLOWCAST_STEP_INPUT"] = "0"       # see src/step_input.py
+            i += 1
+        elif args[i] in ("--retrain-steps", "--reteach"):
+            os.environ["FLOWCAST_STEP_INPUT"] = "retrain"  # ask again, even if trained
             i += 1
         else:
             md_path = Path(args[i])
@@ -330,8 +474,14 @@ def main() -> None:
             print("       python main.py --guide [--voice]  (author a brand-new workflow)",
                   file=sys.stderr)
             sys.exit(1)
-        from src.guide import run_guide_new
-        run_guide_new(Path("workflows"), OUTPUT_DIR, voice=voice_mode)
+        from src.guide import run_guide_new, WorkflowSwitchRequested
+        try:
+            run_guide_new(Path("workflows"), OUTPUT_DIR, voice=voice_mode)
+        except WorkflowSwitchRequested as switch:
+            print(f"\n  [switch] leaving guide mode — running "
+                  f"'{switch.path.name}' automatically, start to finish\n")
+            run_full_workflow(switch.path, narrate_mode=narrate_mode)
+            return
         if narrate_mode:
             print("\n  Recordings saved. To add the natural voiceover, run:\n"
                   "    python tools/dub_natural.py --dir output/recordings/<workflow-slug>")
@@ -363,76 +513,51 @@ def main() -> None:
         print(f"{'='*60}")
         return
 
-    steps   = parse_markdown(md_path)
-
-    # Make the app full screen BEFORE any screenshot/theme detection
-    runner.ensure_fullscreen(force=True)
-
-    # Identify theme before creating output directory
-    theme = runner.detect_theme()
-    print(f"  Theme identified: {theme.upper()}")
-
-    # Perceive current UI state: instead of always starting at step 1, detect
-    # which step the WSO2 Integrator is at right now and resume from there.
-    # (Explicit --step / --from-step always wins; FLOWCAST_NO_RESUME=1 disables.)
-    if only_step is None and from_step is None:
-        shot = runner._screenshot()
-        resume = navigator.find_resume_step(steps, shot)
-        if resume > 1:
-            print(f"  Current UI matches step {resume} — resuming there "
-                  f"(use --from-step 1 to force a full run)")
-            from_step = resume
-
-
-    out_dir = OUTPUT_DIR / slug
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     # ── Guide mode: interactive tutorial recording ────────────────────────
     if guide_mode:
-        from src.guide import run_guide
-        run_guide(steps, out_dir, slug, theme, voice=voice_mode)
+        steps = parse_markdown(md_path)
+
+        if phone_mode:
+            from src import phone
+            link = phone.start()
+            print(f"\n{'═' * 60}")
+            print("  PHONE CONTROL — point your phone camera at this:")
+            qr = phone.qr_ascii(link)
+            if qr:
+                print()
+                print(qr)
+            print(f"\n  or open:  {link}\n")
+            print("  Also copied to the clipboard, so Universal Clipboard can")
+            print("  paste it into Safari if your phone shares this Apple ID.")
+            print("  The token changes every run; the page drives the mouse, so")
+            print("  do not share the link.")
+            print(f"{'═' * 60}")
+
+        # Make the app full screen BEFORE any screenshot/theme detection
+        runner.ensure_fullscreen(force=True)
+        theme = runner.detect_theme()
+        print(f"  Theme identified: {theme.upper()}")
+
+        out_dir = OUTPUT_DIR / slug
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        from src.guide import run_guide, WorkflowSwitchRequested
+        try:
+            run_guide(steps, out_dir, slug, theme, voice=voice_mode)
+        except WorkflowSwitchRequested as switch:
+            print(f"\n  [switch] leaving guide mode — running "
+                  f"'{switch.path.name}' automatically, start to finish\n")
+            run_full_workflow(switch.path, narrate_mode=narrate_mode)
+            return
         if narrate_mode:
             _do_narrate(out_dir, theme, steps)
+        if phone_mode:
+            from src import phone
+            phone.stop()
         return
 
-    # Always regenerate artifacts (script, themed markdown) early so they 
-    # reflect the latest markdown even if the recording loop below fails.
-    full_script = build_full_script(steps, out_dir, theme)
-    themed_md   = build_themed_markdown(steps, out_dir, slug)
-
-    print(f"\n{'='*60}")
-    print(f"  FlowCast  |  {md_path.name}  |  {len(steps)} steps")
-    print(f"  Output: {out_dir}")
-    print(f"{'='*60}")
-
-    saved_gifs: list[Path] = []
-    for idx, step in enumerate(steps, 1):
-        if only_step is not None and idx != only_step:
-            continue
-        if from_step is not None and idx < from_step:
-            continue
-        is_last = (idx == len(steps))
-        result = _run_step(idx, step, out_dir, theme, is_last_step=is_last,
-                           workflow_path=md_path)
-        if result:
-            gif, _ = result
-            saved_gifs.append(gif)
-
-    # Always regenerate full video from all existing step MOVs (including any
-    # recorded in previous runs so individual --step runs accumulate correctly).
-    full_mov = build_full_video(out_dir, theme)
-
-    if narrate_mode:
-        _do_narrate(out_dir, theme, steps)
-
-    print(f"\n{'='*60}")
-    print(f"  Done — {len(saved_gifs)}/{len(steps)} GIFs recorded this run")
-    for p in saved_gifs:
-        print(f"    {p}")
-    if full_mov:
-        print(f"  Full video  → {full_mov}")
-    print(f"  Full script → {full_script}")
-    print(f"{'='*60}")
+    # ── Normal, non-interactive run ────────────────────────────────────────
+    run_full_workflow(md_path, only_step, from_step, narrate_mode)
 
 
 if __name__ == "__main__":

@@ -181,6 +181,11 @@ def _user_action_to_markdown(action: dict) -> str:
     if kind == "hotkey":
         keys = "+".join(action.get("keys", []))
         return f"Press **{keys}**"
+    if kind == "shell":
+        cmd = action.get("command", "")
+        label = action.get("label")
+        return (f"Run the shell command `{cmd}` to {label}" if label
+                else f"Run the shell command `{cmd}`")
     if kind == "scroll":
         direction = "down" if action.get("clicks", 0) < 0 else "up"
         return f"Scroll {direction}"

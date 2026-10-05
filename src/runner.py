@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -44,7 +45,7 @@ LAST_REPORT: dict = {}
 
 
 # Enable visual debugging for input detection
-from src import detector
+from src import detector, fastcap
 detector.set_debug_dir(Path(__file__).parent.parent / "output" / "debug_detection")
 
 
@@ -112,27 +113,255 @@ def _screenshot() -> Image.Image:
 
 
 def _activate() -> None:
+    # Nearly always WSO2 Integrator is in front already; AppleScript plus the
+    # settle pause cost ~0.5 s before every screenshot for nothing.
+    if fastcap.front_app() == _TARGET_APP:
+        return
     subprocess.run(
         ["osascript", "-e", f'activate application "{_TARGET_APP}"'],
         capture_output=True, timeout=5,
     )
-    time.sleep(0.3)
+    # Something else had the screen. Coming back to a full-screen app slides
+    # its Space in (~0.8 s); a clip must not start until that has finished,
+    # or it opens on whatever was showing (it once opened on the desktop).
+    time.sleep(0.9)
+    from src import recorder
+    recorder.not_before(time.time())
+
+
+# Every screenshot in the recording loop (the UI change / settle checks take
+# several per action) goes through Quartz: 0.05 s instead of 0.45 s.
+_slow_screenshot = pyautogui.screenshot
+
+
+def _quick_screenshot(*args, **kwargs):
+    if not args and not kwargs:
+        shot = fastcap.screenshot()
+        if shot is not None:
+            return shot
+    return _slow_screenshot(*args, **kwargs)
+
+
+pyautogui.screenshot = _quick_screenshot
+
+
+def _select_all() -> None:
+    """⌘A as separate key events with pauses. pyautogui.hotkey sometimes lands
+    as a plain "a" while the Mac is busy recording — a field holding "/tmp"
+    became "/tmpa/tmp"."""
+    pyautogui.keyDown("command")
+    time.sleep(0.06)
+    pyautogui.press("a")
+    time.sleep(0.06)
+    pyautogui.keyUp("command")
+    time.sleep(0.2)
+
+
+def _field_words(x: int, y: int) -> list[str] | None:
+    """Words read by OCR along the input at (x, y) — None when nothing is read.
+    A value sits left-aligned in its box, so the whole band is read."""
+    try:
+        time.sleep(0.15)
+        shot = pyautogui.screenshot()
+        sw, _ = screen_size()
+        k = shot.width / sw
+        box = (max(0, int((x - 380) * k)), max(0, int((y - 20) * k)),
+               min(shot.width, int((x + 380) * k)), min(shot.height, int((y + 20) * k)))
+        band = shot.crop(box).convert("RGB")
+        # Enlarged: OCR on a thin strip of small text misreads ("/tmp" → "/tmo").
+        band = band.resize((band.width * 2, band.height * 2), Image.LANCZOS)
+        from src.ocr_engine import read_text
+        # A focused field shows the text cursor, which OCR reads as "|".
+        words = [str(t).strip().strip("|").strip() for _b, t, c in read_text(band)
+                 if c >= 0.3 and str(t).strip().strip("|").strip()]
+    except Exception:
+        return None
+    return words or None
+
+
+def _holds(words: list[str] | None, value: str) -> bool:
+    return bool(words) and value.strip() in words
+
+
+def _mangled(words: list[str] | None, value: str) -> bool:
+    """The value is there but with something else stuck to it ("/tmpa/tmp")."""
+    v = value.strip()
+    return bool(words) and v not in words and any(v in w and w != v for w in words)
+
+
+def _notch_px() -> int:
+    """Height of the black strip a notched display keeps above a full-screen
+    app (its safe-area inset), in screen pixels — 0 without a notch."""
+    try:
+        from AppKit import NSScreen
+        s = NSScreen.mainScreen()
+        return int(round(s.safeAreaInsets().top * s.backingScaleFactor()))
+    except Exception:
+        return 0
+
+
+def _set_menu_crop(native: bool) -> None:
+    """The recorder crops the menu bar off the top of every frame. In native
+    full screen there is no menu bar — only, on a notched MacBook, a black
+    strip beside the notch, which is cropped instead (it showed as a black bar
+    across the top of the video). Restored when we fall back to a window."""
+    from src import recorder
+    recorder.MENU_BAR_H = _notch_px() if native else recorder.DEFAULT_MENU_BAR_H
 
 
 def ensure_fullscreen(force: bool = False) -> None:
-    """ALWAYS make sure the WSO2 Integrator window fills the screen.
+    """ALWAYS make sure the WSO2 Integrator window is up and fills the screen.
 
-    Uses multiple strategies: set position+size, AXFullScreen, and green button.
-    Never gives up — always retries on every call.
+    Un-hides the app and un-minimises its windows FIRST: a run that was
+    aborted during the between-step prompt (src/step_input.py) leaves the
+    window in the Dock, and nothing else would bring it back — the next run
+    would happily record an empty desktop. Then sets position+size on the
+    largest window. Never gives up — always retries on every call.
+
+    Without `force`, a window that is already within ~10% of the screen is
+    left where it is, which keeps the common case cheap. That tolerance is
+    wrong at the START of a run: a 1400x900 window on a 1512x982 screen
+    passes it, so every recording comes out a slightly different size.
+    `force=True` skips the check and always sets position+size.
     """
     _activate()
     w, h = pyautogui.size()
+    # force → always resize; otherwise only when the window is visibly smaller.
+    # Leave a strip free on the right for an iPhone Mirroring window, so one
+    # screen recording can show the phone and the app it is driving. Native
+    # full screen takes over its own Space and cannot share the screen with
+    # anything, so asking for an inset turns it off.
+    inset = max(0, int(os.environ.get("FLOWCAST_WINDOW_INSET_RIGHT", "0") or 0))
+    target_w = max(600, w - inset)
+    size_is_wrong = "true" if force else (
+        f"(item 1 of s) < {int(target_w * 0.90)} or (item 2 of s) < {int(h * 0.85)}")
+    # Setting position+size only fills the *usable* desktop: macOS keeps the
+    # window clear of the menu bar and Dock, which cost ~98px of a 982px
+    # screen. Native full screen (AXFullScreen) hides both and is what the
+    # recordings should show. Set FLOWCAST_NATIVE_FULLSCREEN=0 to opt out.
+    want_native = ("true" if force and not inset and os.environ.get(
+        "FLOWCAST_NATIVE_FULLSCREEN", "1") != "0" else "false")
+    if inset:
+        print(f"[runner] Reserving {inset}px on the right — window {target_w}x{h}, "
+              f"native full screen off")
 
     # IMPORTANT: target the LARGEST window, not "window 1". VS Code-based apps
     # keep tiny auxiliary windows (tooltips/panels — e.g. a 1512x33 strip) that
     # can be "window 1"; resizing that one loops forever while the real window
     # is untouched. Also: coerce AppleScript numbers with "as integer as text"
     # — `(item 1 of s) & "x"` builds a LIST ("1512, x…"), which broke parsing.
+    script = f'''
+    tell application "System Events" to tell process "{_TARGET_APP}"
+        set visible to true
+        set didRestore to false
+        repeat with win in windows
+            try
+                if value of attribute "AXMinimized" of win is true then
+                    set value of attribute "AXMinimized" of win to false
+                    set didRestore to true
+                end if
+            end try
+        end repeat
+        -- Only pay for the un-minimise animation when there was one.
+        if didRestore then delay 0.9
+        set best to missing value
+        set bestArea to 0
+        repeat with win in windows
+            set s to size of win
+            set a to (item 1 of s) * (item 2 of s)
+            if a > bestArea then
+                set bestArea to a
+                set best to win
+            end if
+        end repeat
+        if best is missing value then return "nowin"
+        -- Already in native full screen: report it on EVERY call. The light
+        -- per-action check used to fall through to "ok", which reset the
+        -- recorder to cropping a menu bar that is not there — every clip but
+        -- a step's first lost the top of the app.
+        try
+            if value of attribute "AXFullScreen" of best is true then
+                set sf to size of best
+                return "full:" & ((item 1 of sf) as integer as text) & "x" & ((item 2 of sf) as integer as text)
+            end if
+        end try
+        if {want_native} then
+            try
+                if value of attribute "AXFullScreen" of best is not true then
+                    set value of attribute "AXFullScreen" of best to true
+                    delay 1.6
+                end if
+                set sf to size of best
+                return "full:" & ((item 1 of sf) as integer as text) & "x" & ((item 2 of sf) as integer as text)
+            end try
+        end if
+        set s to size of best
+        if {size_is_wrong} then
+            set position of best to {{0, 0}}
+            delay 0.2
+            set size of best to {{{target_w}, {h}}}
+            delay 0.2
+            set s2 to size of best
+            return "resized:" & ((item 1 of s2) as integer as text) & "x" & ((item 2 of s2) as integer as text)
+        end if
+        return "ok:" & ((item 1 of s) as integer as text) & "x" & ((item 2 of s) as integer as text)
+    end tell'''
+    # A VS Code window does not always accept the new size on the first try —
+    # it can still be settling from a space change or an un-minimise. Setting
+    # it once and printing a warning left the run recording a half-size window,
+    # so `force` now checks the result and tries again.
+    attempts = 3 if force else 1
+    size = "?"
+    for attempt in range(1, attempts + 1):
+        try:
+            result = subprocess.run(["osascript", "-e", script],
+                                    capture_output=True, text=True, timeout=10)
+        except Exception as e:
+            print(f"[runner] Fullscreen enforcement failed: {e}")
+            return
+        if result.returncode != 0:
+            print(f"[runner] Fullscreen enforcement failed: {result.stderr.strip()}")
+            return
+        out = result.stdout.strip()
+        if out == "nowin":
+            print("[runner] Fullscreen: no window found for the app")
+            return
+
+        size = out.split(":", 1)[1] if ":" in out else "?"
+        if out.startswith("full:"):
+            _set_menu_crop(native=True)
+            print(f"[runner] Window is full screen at {size}")
+            return
+        _set_menu_crop(native=False)
+        if out.startswith("resized:"):
+            print(f"[runner] Window was not full screen — maximized to {size}")
+            time.sleep(0.5)
+        try:
+            nw, nh = (int(v) for v in size.split("x"))
+        except ValueError:
+            return
+        # The menu bar keeps a window a little short of the full height, so
+        # compare against the same tolerance the lazy path uses.
+        if nw >= int(target_w * 0.90) and nh >= int(h * 0.85):
+            return
+        if attempt < attempts:
+            print(f"[runner] Window stuck at {size} — retrying")
+            time.sleep(0.6)
+
+    print(f"[runner] WARNING: main window stuck at {size} (wanted {target_w}x{h}) — "
+          f"check Stage Manager, Split View, or a second display")
+
+
+def minimize_window() -> bool:
+    """Get the WSO2 Integrator window off the screen so a terminal prompt is
+    reachable — used between recorded steps (see src/step_input.py).
+
+    Tries AXMinimized on the real (largest) window first; a window sitting in
+    a native full-screen space cannot be minimized, so that is dropped out of
+    full screen first. If the accessibility route fails at all, the app is
+    hidden instead (same visible effect, and it always works).
+    Returns True if the window is no longer on screen.
+    """
     script = f'''
     tell application "System Events" to tell process "{_TARGET_APP}"
         set best to missing value
@@ -146,38 +375,52 @@ def ensure_fullscreen(force: bool = False) -> None:
             end if
         end repeat
         if best is missing value then return "nowin"
-        set s to size of best
-        if (item 1 of s) < {int(w * 0.90)} or (item 2 of s) < {int(h * 0.85)} then
-            set position of best to {{0, 0}}
-            delay 0.2
-            set size of best to {{{w}, {h}}}
-            delay 0.2
-            set s2 to size of best
-            return "resized:" & ((item 1 of s2) as integer as text) & "x" & ((item 2 of s2) as integer as text)
-        end if
-        return "ok:" & ((item 1 of s) as integer as text) & "x" & ((item 2 of s) as integer as text)
+        try
+            if value of attribute "AXFullScreen" of best is true then
+                set value of attribute "AXFullScreen" of best to false
+                delay 1.2
+            end if
+        end try
+        try
+            set value of attribute "AXMinimized" of best to true
+            return "minimized"
+        on error errMsg
+            return "failed:" & errMsg
+        end try
     end tell'''
     try:
-        result = subprocess.run(["osascript", "-e", script],
-                                capture_output=True, text=True, timeout=10)
-        out = result.stdout.strip()
-        if result.returncode != 0:
-            print(f"[runner] Fullscreen enforcement failed: {result.stderr.strip()}")
-        elif out.startswith("resized:"):
-            new_size = out.split(":", 1)[1]
-            print(f"[runner] Window was not full screen — maximized to {new_size}")
-            time.sleep(0.5)
-            try:
-                nw, nh = (int(v) for v in new_size.split("x"))
-                if nw < int(w * 0.90) or nh < int(h * 0.85):
-                    print(f"[runner] WARNING: main window stuck at {new_size} "
-                          f"(screen {w}x{h}) — check Stage Manager / display settings")
-            except ValueError:
-                pass
-        elif out == "nowin":
-            print("[runner] Fullscreen: no window found for the app")
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=15)
+        out = r.stdout.strip()
+        if out == "minimized":
+            time.sleep(0.6)
+            return True
+        if out == "nowin":
+            return False          # app not running yet — nothing to move
+        print(f"[runner] Could not minimize the window ({out or r.stderr.strip()}) "
+              f"— hiding the app instead")
     except Exception as e:
-        print(f"[runner] Fullscreen enforcement failed: {e}")
+        print(f"[runner] Minimize failed ({e}) — hiding the app instead")
+
+    # Fallback: hide the application (cmd+H equivalent).
+    try:
+        subprocess.run(
+            ["osascript", "-e",
+             f'tell application "System Events" to set visible of process "{_TARGET_APP}" to false'],
+            capture_output=True, text=True, timeout=10)
+        time.sleep(0.5)
+        return True
+    except Exception as e:
+        print(f"[runner] Could not hide {_TARGET_APP}: {e}")
+        return False
+
+
+def restore_window() -> None:
+    """Undo minimize_window(): bring the window back, full screen, ready to
+    record. ensure_fullscreen() does the un-hiding and un-minimising itself,
+    so this is just it plus time for the window to actually settle."""
+    ensure_fullscreen(force=True)
+    time.sleep(0.6)
 
 
 def detect_theme() -> str:
@@ -361,7 +604,7 @@ def resolve(action: dict[str, Any]) -> dict[str, Any]:
 
     # Always make the app full screen before any change (30s-memoized, no-op
     # when the window is already maximized).
-    if kind not in ("wait", "hotkey"):
+    if kind not in ("wait", "hotkey", "command", "shell"):
         ensure_fullscreen()
 
     if kind == "click":
@@ -642,10 +885,21 @@ def fire(action: dict[str, Any]) -> None:
                     else:
                         print(f"[runner] Ignored 'Set' button at {set_pos} (too far from target field)")
 
-        # Always select-all to clear any pre-filled content before pasting
-        pyautogui.hotkey("command", "a")
-        time.sleep(0.3)
-        _paste(action["value"])
+        value = str(action["value"])
+        if x is not None and y is not None and _holds(_field_words(x, y), value):
+            # Already holds it (a form's default, e.g. Path = /tmp): typing
+            # again is noise in the video, and a slip could double it.
+            print(f"[runner] '{action.get('field_target')}' already set to {value!r} — left as is")
+        else:
+            # Clear any pre-filled content, paste, and check what landed.
+            _select_all()
+            _paste(value)
+            if x is not None and y is not None:
+                now = _field_words(x, y)
+                if _mangled(now, value):
+                    print(f"[runner] field reads {now}, wanted {value!r} — clearing and pasting again")
+                    _select_all()
+                    _paste(value)
 
         # ── Wrong-field detection: blue selection band after typing ──────────
         # If the typed text (or surrounding text) is fully blue-highlighted,
@@ -701,6 +955,42 @@ def fire(action: dict[str, Any]) -> None:
     elif kind == "hotkey":
         _trigger_pre_move()
         pyautogui.hotkey(*action["keys"])
+
+    elif kind == "shell":
+        cmd = action["command"]
+        print(f"[runner] shell: {cmd}")
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        out = (r.stdout or r.stderr).strip()
+        if out:
+            print(f"[runner]   → {out[:200]}")
+        if r.returncode != 0:
+            raise RuntimeError(f"shell command exited {r.returncode}: {out[:200]}")
+
+    elif kind == "command":
+        _trigger_pre_move()
+        from src import command_input
+        workflow = action.get("_workflow") or ""
+        step_title = action.get("_step_title") or ""
+        action_index = action.get("_action_index", 0)
+
+        # Auto-replay a previously learned command (no prompting).
+        learned = command_input.get_learned(workflow, step_title, action_index) \
+            if workflow else None
+        if learned:
+            print(f"[command_input] Replaying learned command: '{learned}'")
+            command_input._run_command_background(learned)
+            action["_command_status"] = "replayed"
+        else:
+            cmd, status = command_input.prompt_for_command(
+                action, None, step_title, action_index)
+            if status == "skip" or not cmd:
+                print("[command_input] Command skipped — no action taken.")
+                action["_command_status"] = "skipped"
+            else:
+                command_input._run_command_background(cmd)
+                if workflow:
+                    command_input.save_learned(workflow, step_title, action_index, cmd)
+                action["_command_status"] = "ran"
 
     elif kind == "scroll":
         clicks = action.get("clicks", -3)

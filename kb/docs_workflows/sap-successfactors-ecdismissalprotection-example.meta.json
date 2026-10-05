@@ -1,0 +1,12 @@
+{
+  "title": "Example",
+  "time": "",
+  "build": "",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/connectors/catalog/hrms/sap.successfactors.ecdismissalprotection/example"
+    ]
+  ],
+  "slug": "sap-successfactors-ecdismissalprotection-example"
+}

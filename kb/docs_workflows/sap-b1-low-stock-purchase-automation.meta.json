@@ -1,0 +1,12 @@
+{
+  "title": "Raise SAP Business One Purchase Requests for Low-Stock Items",
+  "time": "About 25 minutes",
+  "build": "A scheduled automation that finds items running low on stock in SAP Business One, raises a purchase request for each, and emails the procurement team, with no code to write.",
+  "links": [
+    [
+      "Documentation",
+      "https://wso2.com/integration-platform/docs/guides/howtoguides/sap-b1-low-stock-purchase-automation"
+    ]
+  ],
+  "slug": "sap-b1-low-stock-purchase-automation"
+}
