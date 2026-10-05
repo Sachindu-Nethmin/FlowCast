@@ -419,10 +419,16 @@ def cmd_package(args) -> None:
         if not masters:
             continue
         master = max(masters, key=lambda p: p.stat().st_mtime)
-        title = master.stem.replace("-", " ")
+        title, when = master.stem.replace("-", " "), datetime.fromtimestamp(master.stat().st_mtime)
+        known = next((v for v in packager.listing() if v.get("slug") == d.name), None)
+        if known:                 # the name and date it already has in the Library
+            title = known.get("title") or title
+            try:
+                when = datetime.fromisoformat(known["made"])
+            except (KeyError, ValueError):
+                pass
         rec = RECORDINGS / d.name
-        folder = packager.package(master, title, d.name, _doc_url(d.name),
-                                  when=datetime.fromtimestamp(master.stat().st_mtime),
+        folder = packager.package(master, title, d.name, _doc_url(d.name), when=when,
                                   rec=rec, workflow=WORKFLOWS / f"{d.name}.md", theme=_theme(rec))
         print(f"{d.name} → {folder}")
         done.append(str(folder))

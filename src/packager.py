@@ -14,6 +14,8 @@ named for people:
         Medium/                       (src/medium.py)
             Build an HTTP API in WSO2 Integrator – Medium article.txt / .html
             01 Create the integration.gif …
+        LinkedIn/                     (src/linkedin.py)
+            1 Post (no links).txt · 2 First comment (links).txt · 3 Post with links (edit later).txt
         video.json
 
 YouTube takes the file name as the video's first title, so the video is named
@@ -118,6 +120,14 @@ def package(master: Path, title: str, slug: str, doc_url: str | None = None,
                                          doc_url, article))
         except Exception as e:          # the YouTube half is done either way
             print(f"[package] Medium folder skipped: {e}")
+    try:
+        from src import linkedin
+        steps = re.findall(r"^##\s*Step\s*\d+\s*:\s*(.+)$", workflow.read_text(), re.M) \
+            if workflow and workflow.exists() else []
+        manifest.update(linkedin.build(folder / "LinkedIn", title, [s.strip() for s in steps],
+                                       doc_url, article, description))
+    except Exception as e:
+        print(f"[package] LinkedIn texts skipped: {e}")
     (folder / MANIFEST).write_text(json.dumps(manifest, indent=2))
     _replace_older(root, slug, folder)
     return folder

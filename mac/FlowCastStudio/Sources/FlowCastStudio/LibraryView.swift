@@ -89,6 +89,12 @@ struct VideoTile: View {
                     } label: { Label("Medium", systemImage: "text.document") }
                     .help("The written guide and step GIFs for Medium")
                 }
+                if let l = video.linkedinFolder {
+                    Button {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: l))
+                    } label: { Label("LinkedIn", systemImage: "person.2") }
+                    .help("The post (no links), its first comment (the links), and the post with links for your edit later")
+                }
             }
             .controlSize(.small)
         }
@@ -102,6 +108,9 @@ struct VideoTile: View {
             }
             if let m = video.mediumFolder {
                 Button("Open Medium folder") { NSWorkspace.shared.open(URL(fileURLWithPath: m)) }
+            }
+            if let l = video.linkedinFolder {
+                Button("Open LinkedIn texts") { NSWorkspace.shared.open(URL(fileURLWithPath: l)) }
             }
             Button("Copy description") { copyDescription(video) }
         }
