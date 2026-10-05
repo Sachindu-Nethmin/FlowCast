@@ -797,9 +797,19 @@ final class Studio {
             job.status = .needsHelp
             job.task = (ev.string("kind") == "manual" ? "Your turn — " : "Waiting for you — ")
                 + (ev.string("label") ?? "an action failed")
-            showApp()
-            notify(ev.string("kind") == "manual" ? "Your turn" : "FlowCast needs you",
-                   "\(job.page.displayTitle): \(ev.string("label") ?? "an action failed")")
+            if job.stage == .record {
+                // Mid-recording the screen is being filmed: bringing this
+                // window forward switched away from WSO2 Integrator and put
+                // the desktop in a clip, and a notification banner lands on
+                // top of the app. You answer on the phone (it chimes); the
+                // Mac only plays a sound and bounces the Dock icon (hidden in
+                // full screen).
+                NSApp.requestUserAttention(.criticalRequest)
+            } else {
+                showApp()
+                notify(ev.string("kind") == "manual" ? "Your turn" : "FlowCast needs you",
+                       "\(job.page.displayTitle): \(ev.string("label") ?? "an action failed")")
+            }
             NSSound(named: "Glass")?.play()
         case "narration":
             job.narrationPath = ev.string("path")
